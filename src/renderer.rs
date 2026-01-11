@@ -325,133 +325,148 @@ impl Renderer {
         let line_height = 24.0 * self.scale;
         let start_y = tab_height + padding;
         let scroll_offset = tab.scroll_offset();
+        let scroll_x = tab.scroll_offset_x();
+        let do_wrap = tab.word_wrap();
 
         let text = tab.content();
         let cursor_pos = tab.cursor_position();
 
-        // Setup text paint with font
+        // Setup text paint
         let mut text_paint = Paint::color(Color::rgbf(
             self.theme.fg.0,
             self.theme.fg.1,
             self.theme.fg.2,
         ));
         text_paint.set_font(&self.fonts);
-        // Use physical font size (16 * scale) - scaled up for crisp rendering
         text_paint.set_font_size(16.0 * self.scale);
         let char_width = self.measure_char_width(&text_paint);
 
-        // Draw selection
-        if let Some(((start_line, start_col), (end_line, end_col))) = tab.selection_range_line_col()
-        {
-            let selection_color = Paint::color(Color::rgbf(
-                self.theme.selection.0,
-                self.theme.selection.1,
-                self.theme.selection.2,
-            ));
+        // Draw selection (Limited support for wrapping currently)
+        if !do_wrap {
+            if let Some(((start_line, start_col), (end_line, end_col))) =
+                tab.selection_range_line_col()
+            {
+                let selection_color = Paint::color(Color::rgbf(
+                    self.theme.selection.0,
+                    self.theme.selection.1,
+                    self.theme.selection.2,
+                ));
 
-            for line_idx in start_line..=end_line {
-                // Skip lines before scroll offset
-                if line_idx < scroll_offset {
-                    continue;
-                }
+                for line_idx in start_line..=end_line {
+                    if line_idx < scroll_offset {
+                        continue;
+                    }
+                    let visible_idx = line_idx - scroll_offset;
+                    let y = start_y + (visible_idx as f32 * line_height);
+                    if y > self.height {
+                        break;
+                    }
 
-                let visible_idx = line_idx - scroll_offset;
-                let y = start_y + (visible_idx as f32 * line_height);
-
-                // Stop if we're past visible area
-                if y > self.height {
-                    break;
-                }
-
-                let start_x = if line_idx == start_line {
-                    padding + (start_col as f32 * char_width)
-                } else {
-                    padding
-                };
-
-                let end_x = if line_idx == end_line {
-                    padding + (end_col as f32 * char_width)
-                } else {
-                    // For full line selection, use the matching line width plus a marker for newline
-                    // We need to look up the line content
-                    let lines: Vec<&str> = text.lines().collect();
-                    let line_len = if line_idx < lines.len() {
-                        lines[line_idx].chars().count()
+                    let start_x = if line_idx == start_line {
+                        padding - scroll_x + (start_col as f32 * char_width)
                     } else {
-                        0
+                        padding - scroll_x
                     };
-                    // Highlight text + newline (approx 0.5 char width or at least min width)
-                    padding + ((line_len as f32 + 0.5) * char_width)
-                };
 
-                if end_x > start_x {
-                    let mut path = Path::new();
-                    path.rect(start_x, y, end_x - start_x, line_height);
-                    self.canvas.fill_path(&path, &selection_color);
+                    let end_x = if line_idx == end_line {
+                        padding - scroll_x + (end_col as f32 * char_width)
+                    } else {
+                        // For full line selection, approximate width
+                        let lines: Vec<&str> = text.lines().collect();
+                        let line_len = if line_idx < lines.len() {
+                            lines[line_idx].chars().count()
+                        } else {
+                            0
+                        };
+                        padding - scroll_x + ((line_len as f32 + 0.5) * char_width)
+                    };
+
+                    if end_x > start_x {
+                        let mut path = Path::new();
+                        path.rect(start_x, y, end_x - start_x, line_height);
+                        self.canvas.fill_path(&path, &selection_color);
+                    }
                 }
             }
         }
 
-        // Calculate visible line range
-        let max_visible_lines = ((self.height - start_y - padding) / line_height).ceil() as usize;
+        // Draw text and cursor
+        let lines: Vec<&str> = text.lines().skip(scroll_offset).collect();
+        let mut current_y = start_y;
+        let (cursor_line_idx, cursor_col_idx) = self.get_cursor_line_col(text, cursor_pos);
+        let mut cursor_rect = None;
 
-        // Draw text line by line (only visible lines)
-        let lines: Vec<&str> = text.lines().collect();
-        for (visible_idx, line_idx) in (scroll_offset..).enumerate() {
-            if line_idx >= lines.len() {
+        for (idx, line) in lines.iter().enumerate() {
+            let logical_line_idx = scroll_offset + idx;
+            if current_y > self.height {
                 break;
             }
-            if visible_idx >= max_visible_lines {
-                break;
+
+            let mut x_offset = if do_wrap { padding } else { padding - scroll_x };
+            let line_has_cursor = logical_line_idx == cursor_line_idx;
+
+            // Check cursor at start of line (col 0)
+            if line_has_cursor && cursor_col_idx == 0 {
+                cursor_rect = Some((x_offset, current_y));
             }
 
-            let line = lines[line_idx];
-            let line_y = start_y + (visible_idx as f32 * line_height) + line_height * 0.75;
-            let line_y_snapped = Self::snap_to_pixel(line_y);
+            let mut current_col = 0;
+            let mut line_chars = line.chars(); // Use iterator
 
-            // let mut col = 0;
-            let mut x_offset = padding;
+            while let Some(ch) = line_chars.next() {
+                let advance = if ch == '\t' { 4 } else { 1 };
+                let char_w = char_width * advance as f32;
 
-            let mut buf = [0u8; 4];
-
-            for ch in line.chars() {
-                // Determine width of this character in grid cells
-                let advance = if ch == '\t' {
-                    4 // minimal tab handling
-                } else {
-                    1
-                };
-
-                // Draw non-whitespace characters
-                if !ch.is_control() && ch != ' ' {
-                    // Force grid alignment: always draw at computed grid position
-                    let text_x = Self::snap_to_pixel(x_offset);
-
-                    let s = ch.encode_utf8(&mut buf);
-                    let _ = self
-                        .canvas
-                        .fill_text(text_x, line_y_snapped, s, &text_paint);
+                // Wrap check
+                if do_wrap && x_offset + char_w > self.width - padding {
+                    current_y += line_height;
+                    x_offset = padding;
+                    if current_y > self.height {
+                        break;
+                    }
                 }
 
-                // Advance X by grid size
-                x_offset += char_width * advance as f32;
-                // col += advance; // This line is removed as per instruction
+                if current_y + line_height > 0.0 && current_y < self.height {
+                    if !ch.is_control() && ch != ' ' {
+                        let text_x = Self::snap_to_pixel(x_offset);
+                        let text_y_snapped = Self::snap_to_pixel(current_y + line_height * 0.75);
+                        let mut buf = [0u8; 4];
+                        let s = ch.encode_utf8(&mut buf);
+                        let _ = self
+                            .canvas
+                            .fill_text(text_x, text_y_snapped, s, &text_paint);
+                    }
+                }
+
+                x_offset += char_w;
+                current_col += 1;
+
+                if line_has_cursor && current_col == cursor_col_idx {
+                    cursor_rect = Some((x_offset, current_y));
+                }
+            }
+
+            // Move to next line
+            current_y += line_height;
+        }
+
+        // Handle cursor if it's past the last line (e.g. empty file or cursor at very end)
+        if cursor_rect.is_none() && scroll_offset <= cursor_line_idx {
+            // Fallback if not found in loop (e.g. empty line at end of file not in lines iter?)
+            // TextBuffer len_lines covers it?
+            // If cursor_line_idx >= lines.len() + scroll_offset ...
+            // Let's rely on the loop finding it via line iteration.
+            // Exception: Empty file. text.lines() is empty.
+            if text.is_empty() {
+                cursor_rect = Some((padding - scroll_x, start_y));
             }
         }
 
-        // Draw cursor (adjusted for scroll)
+        // Draw Cursor
         if cursor_visible {
-            let (cursor_line, cursor_col) = self.get_cursor_line_col(text, cursor_pos);
-
-            // Only draw cursor if it's in visible range
-            if cursor_line >= scroll_offset && cursor_line < scroll_offset + max_visible_lines {
-                let visible_cursor_line = cursor_line - scroll_offset;
-                let char_width = self.measure_char_width(&text_paint);
-                let cursor_x = padding + (cursor_col as f32 * char_width);
-                let cursor_y = start_y + (visible_cursor_line as f32 * line_height);
-
+            if let Some((cx, cy)) = cursor_rect {
                 let mut cursor_path = Path::new();
-                cursor_path.rect(cursor_x, cursor_y, 2.0 * self.scale, line_height);
+                cursor_path.rect(cx, cy, 2.0 * self.scale, line_height);
                 self.canvas.fill_path(
                     &cursor_path,
                     &Paint::color(Color::rgbf(
@@ -464,6 +479,7 @@ impl Renderer {
         }
 
         // Draw scrollbar
+        let max_visible_lines = ((self.height - start_y - padding) / line_height).ceil() as usize;
         let total_lines = lines.len().max(1);
         if total_lines > max_visible_lines {
             // Scrollbar logic

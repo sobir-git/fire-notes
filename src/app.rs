@@ -145,7 +145,9 @@ impl App {
 
     fn auto_scroll(&mut self) {
         let visible = self.visible_lines();
-        self.tabs[self.active_tab].ensure_cursor_visible(visible);
+        let visible_width = self.width - PADDING * 2.0 * self.scale;
+        let char_width = 9.6 * self.scale;
+        self.tabs[self.active_tab].ensure_cursor_visible(visible, visible_width, char_width);
         // Reset blinking on action
         self.cursor_visible = true;
         self.last_cursor_blink = Instant::now();
@@ -499,6 +501,12 @@ impl App {
             return AppResult::Redraw;
         }
         AppResult::Ok
+    }
+
+    pub fn toggle_word_wrap(&mut self) -> AppResult {
+        self.tabs[self.active_tab].toggle_word_wrap();
+        self.auto_scroll();
+        AppResult::Redraw
     }
 }
 

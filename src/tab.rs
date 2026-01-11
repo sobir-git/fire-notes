@@ -11,6 +11,8 @@ pub struct Tab {
     title: String,
     modified: bool,
     scroll_offset: usize, // Line offset for scrolling
+    scroll_offset_x: f32, // Horizontal pixel offset
+    word_wrap: bool,
 }
 
 impl Tab {
@@ -24,6 +26,8 @@ impl Tab {
             title: format!("Untitled-{}", num),
             modified: false,
             scroll_offset: 0,
+            scroll_offset_x: 0.0,
+            word_wrap: false,
         }
     }
 
@@ -41,6 +45,8 @@ impl Tab {
             title,
             modified: false,
             scroll_offset: 0,
+            scroll_offset_x: 0.0,
+            word_wrap: false,
         })
     }
 
@@ -179,6 +185,22 @@ impl Tab {
         self.scroll_offset
     }
 
+    pub fn scroll_offset_x(&self) -> f32 {
+        self.scroll_offset_x
+    }
+
+    pub fn word_wrap(&self) -> bool {
+        self.word_wrap
+    }
+
+    pub fn set_word_wrap(&mut self, wrap: bool) {
+        self.word_wrap = wrap;
+    }
+
+    pub fn toggle_word_wrap(&mut self) {
+        self.word_wrap = !self.word_wrap;
+    }
+
     pub fn scroll_up(&mut self, lines: usize) {
         self.scroll_offset = self.scroll_offset.saturating_sub(lines);
     }
@@ -196,8 +218,18 @@ impl Tab {
         text.chars().take(cursor).filter(|&c| c == '\n').count()
     }
 
+    pub fn cursor_col(&self) -> usize {
+        let (_, col) = self.buffer.char_to_line_col(self.buffer.cursor());
+        col
+    }
+
     /// Ensure cursor is visible by auto-scrolling
-    pub fn ensure_cursor_visible(&mut self, visible_lines: usize) {
+    pub fn ensure_cursor_visible(
+        &mut self,
+        visible_lines: usize,
+        visible_width: f32,
+        char_width: f32,
+    ) {
         let cursor_line = self.cursor_line();
 
         // Scroll up if cursor is above visible area
@@ -208,6 +240,24 @@ impl Tab {
         // Scroll down if cursor is below visible area
         if cursor_line >= self.scroll_offset + visible_lines {
             self.scroll_offset = cursor_line.saturating_sub(visible_lines - 1);
+        }
+
+        // Horizontal scrolling (only if wrap is off)
+        if !self.word_wrap {
+            let cursor_col = self.cursor_col();
+            let cursor_x = cursor_col as f32 * char_width;
+
+            // Scroll left
+            if cursor_x < self.scroll_offset_x {
+                self.scroll_offset_x = cursor_x;
+            }
+
+            // Scroll right
+            if cursor_x > self.scroll_offset_x + visible_width {
+                self.scroll_offset_x = cursor_x - visible_width + char_width * 2.0; // Add some padding
+            }
+        } else {
+            self.scroll_offset_x = 0.0;
         }
     }
 

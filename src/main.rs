@@ -266,6 +266,7 @@ impl ApplicationHandler for AppHandler {
                                 'x' if ctrl => state.app.handle_cut(),
                                 'v' if ctrl => state.app.handle_paste(),
                                 'z' if ctrl => state.app.handle_undo(),
+                                'z' if alt => state.app.toggle_word_wrap(),
                                 'y' if ctrl => state.app.handle_redo(),
                                 _ => {
                                     // Regular typing
