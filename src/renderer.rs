@@ -527,12 +527,19 @@ impl Renderer {
         }
     }
 
+    pub fn get_char_width(&self) -> f32 {
+        let mut text_paint = Paint::color(Color::rgb(255, 255, 255));
+        text_paint.set_font(&self.fonts);
+        text_paint.set_font_size(16.0 * self.scale);
+        self.measure_char_width(&text_paint)
+    }
+
     fn measure_char_width(&self, paint: &Paint) -> f32 {
         // Measure width of a single character
         if let Ok(metrics) = self.canvas.measure_text(0.0, 0.0, "M", paint) {
             metrics.width()
         } else {
-            9.6 // Fallback approximate width
+            9.6 * self.scale // Fallback approximate width
         }
     }
 

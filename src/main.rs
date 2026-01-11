@@ -7,6 +7,7 @@
 //! - Binary size: <2MB
 
 mod app;
+mod config;
 mod persistence;
 mod renderer;
 mod tab;
@@ -208,11 +209,7 @@ impl ApplicationHandler for AppHandler {
                         }
                         Key::Character(c) if ctrl && c.as_str() == "n" => state.app.new_tab(),
                         Key::Character(c) if ctrl && c.as_str() == "w" => {
-                            let res = state.app.close_current_tab();
-                            if res.should_exit() {
-                                event_loop.exit();
-                            }
-                            res
+                            state.app.close_current_tab()
                         }
                         Key::Character(c) if ctrl && c.as_str() == "s" => state.app.save_current(),
                         Key::Character(c) if ctrl && c.as_str() == "o" => state.app.open_file(),

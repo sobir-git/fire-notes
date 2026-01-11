@@ -1,30 +1,60 @@
 //! Application state and coordination
 
+use crate::config::{layout, timing};
 use crate::persistence;
 use crate::renderer::{HitTestResult, Renderer};
 use crate::tab::Tab;
 use std::time::{Duration, Instant};
 
-const LINE_HEIGHT: f32 = 24.0;
-const TAB_HEIGHT: f32 = 40.0;
-const PADDING: f32 = 16.0;
-
 use arboard::Clipboard;
 
+/// Result type for application actions that may trigger UI updates
 #[must_use = "Handle the AppResult to ensure the UI updates correctly"]
 pub enum AppResult {
+    /// No action needed
     Ok,
+    /// UI needs to be redrawn
     Redraw,
-    Quit,
 }
 
 impl AppResult {
     pub fn needs_redraw(&self) -> bool {
         matches!(self, AppResult::Redraw)
     }
+}
 
-    pub fn should_exit(&self) -> bool {
-        matches!(self, AppResult::Quit)
+/// Transient editor state for UI interactions (cursor blink, hover, drag, etc.)
+struct EditorState {
+    cursor_visible: bool,
+    last_cursor_blink: Instant,
+    hovered_tab: Option<usize>,
+    hovered_plus: bool,
+    is_dragging_scrollbar: bool,
+    last_drag_scroll: Instant,
+    last_mouse_x: f32,
+    last_mouse_y: f32,
+    tab_scroll_x: f32,
+}
+
+impl EditorState {
+    fn new() -> Self {
+        Self {
+            cursor_visible: true,
+            last_cursor_blink: Instant::now(),
+            hovered_tab: None,
+            hovered_plus: false,
+            is_dragging_scrollbar: false,
+            last_drag_scroll: Instant::now(),
+            last_mouse_x: 0.0,
+            last_mouse_y: 0.0,
+            tab_scroll_x: 0.0,
+        }
+    }
+
+    /// Reset cursor blink (call after user action)
+    fn reset_cursor_blink(&mut self) {
+        self.cursor_visible = true;
+        self.last_cursor_blink = Instant::now();
     }
 }
 
@@ -34,18 +64,9 @@ pub struct App {
     active_tab: usize,
     width: f32,
     height: f32,
-    clipboard: Option<Clipboard>,
-    is_dragging_scrollbar: bool,
     scale: f32,
-
-    // UI State
-    cursor_visible: bool,
-    last_cursor_blink: Instant,
-    hovered_tab: Option<usize>,
-    hovered_plus: bool,
-    tab_scroll_x: f32,
-    last_mouse_x: f32,
-    last_mouse_y: f32,
+    clipboard: Option<Clipboard>,
+    state: EditorState,
 }
 
 impl App {
@@ -73,84 +94,24 @@ impl App {
             active_tab: 0,
             width,
             height,
-            clipboard,
-            is_dragging_scrollbar: false,
             scale,
-            cursor_visible: true,
-            last_cursor_blink: Instant::now(),
-            hovered_tab: None,
-            hovered_plus: false,
-            tab_scroll_x: 0.0,
-            last_mouse_x: 0.0,
-            last_mouse_y: 0.0,
+            clipboard,
+            state: EditorState::new(),
         }
     }
 
+    // =========================================================================
+    // Core lifecycle
+    // =========================================================================
+
     pub fn tick(&mut self) -> AppResult {
-        if self.last_cursor_blink.elapsed() >= Duration::from_millis(500) {
-            self.cursor_visible = !self.cursor_visible;
-            self.last_cursor_blink = Instant::now();
+        if self.state.last_cursor_blink.elapsed() >= Duration::from_millis(timing::CURSOR_BLINK_MS)
+        {
+            self.state.cursor_visible = !self.state.cursor_visible;
+            self.state.last_cursor_blink = Instant::now();
             return AppResult::Redraw;
         }
         AppResult::Ok
-    }
-
-    pub fn handle_mouse_move(&mut self, x: f32, y: f32) -> AppResult {
-        self.props_mouse_move(x, y)
-    }
-
-    fn props_mouse_move(&mut self, x: f32, y: f32) -> AppResult {
-        self.last_mouse_x = x;
-        self.last_mouse_y = y;
-
-        // Update hover state
-        let tab_info: Vec<(&str, bool)> = self
-            .tabs
-            .iter()
-            .enumerate()
-            .map(|(i, t)| (t.title(), i == self.active_tab))
-            .collect();
-
-        let prev_hovered_tab = self.hovered_tab;
-        let prev_hovered_plus = self.hovered_plus;
-
-        match self.renderer.hit_test(x, y, &tab_info) {
-            Some(HitTestResult::Tab(i)) => {
-                self.hovered_tab = Some(i);
-                self.hovered_plus = false;
-            }
-            Some(HitTestResult::NewTabButton) => {
-                self.hovered_tab = None;
-                self.hovered_plus = true;
-            }
-            None => {
-                self.hovered_tab = None;
-                self.hovered_plus = false;
-            }
-        }
-
-        if prev_hovered_tab != self.hovered_tab || prev_hovered_plus != self.hovered_plus {
-            AppResult::Redraw
-        } else {
-            AppResult::Ok
-        }
-    }
-
-    fn visible_lines(&self) -> usize {
-        let content_height = self.height - TAB_HEIGHT * self.scale - PADDING * 2.0 * self.scale;
-        (content_height / (LINE_HEIGHT * self.scale))
-            .floor()
-            .max(1.0) as usize
-    }
-
-    fn auto_scroll(&mut self) {
-        let visible = self.visible_lines();
-        let visible_width = self.width - PADDING * 2.0 * self.scale;
-        let char_width = 9.6 * self.scale;
-        self.tabs[self.active_tab].ensure_cursor_visible(visible, visible_width, char_width);
-        // Reset blinking on action
-        self.cursor_visible = true;
-        self.last_cursor_blink = Instant::now();
     }
 
     pub fn resize(&mut self, width: f32, height: f32, scale: f32) {
@@ -170,15 +131,221 @@ impl App {
 
         let current_tab = &self.tabs[self.active_tab];
 
-        // Pass all UI state to renderer
         self.renderer.render(
             &tab_info,
             current_tab,
-            self.cursor_visible,
-            self.hovered_tab,
-            self.hovered_plus,
+            self.state.cursor_visible,
+            self.state.hovered_tab,
+            self.state.hovered_plus,
         );
     }
+
+    // =========================================================================
+    // Layout helpers
+    // =========================================================================
+
+    fn visible_lines(&self) -> usize {
+        let content_height =
+            self.height - layout::TAB_HEIGHT * self.scale - layout::PADDING * 2.0 * self.scale;
+        (content_height / (layout::LINE_HEIGHT * self.scale))
+            .floor()
+            .max(1.0) as usize
+    }
+
+    fn content_start_y(&self) -> f32 {
+        layout::TAB_HEIGHT * self.scale + layout::PADDING * self.scale
+    }
+
+    /// Convert screen coordinates to text coordinates (line, col).
+    /// Returns None if the click is outside the text area.
+    #[allow(dead_code)]
+    fn screen_to_text_coords(&self, x: f32, y: f32) -> Option<(usize, usize)> {
+        let content_start_y = self.content_start_y();
+        if y < content_start_y {
+            return None;
+        }
+
+        let relative_y = y - content_start_y;
+        let visual_line = (relative_y / (layout::LINE_HEIGHT * self.scale)).floor() as isize;
+        let scroll_offset = self.tabs[self.active_tab].scroll_offset();
+        let line = (scroll_offset as isize + visual_line).max(0) as usize;
+
+        let char_width = self.renderer.get_char_width();
+        let scroll_offset_x = self.tabs[self.active_tab].scroll_offset_x();
+        let relative_x = (x - layout::PADDING * self.scale + scroll_offset_x).max(0.0);
+        let col = (relative_x / char_width).round() as usize;
+
+        Some((line, col))
+    }
+
+    fn auto_scroll(&mut self) {
+        let visible = self.visible_lines();
+        let visible_width = self.width - layout::PADDING * 2.0 * self.scale;
+        let char_width = self.renderer.get_char_width();
+        self.tabs[self.active_tab].ensure_cursor_visible(visible, visible_width, char_width);
+        self.state.reset_cursor_blink();
+    }
+
+    // =========================================================================
+    // Mouse handling
+    // =========================================================================
+
+    pub fn handle_mouse_move(&mut self, x: f32, y: f32) -> AppResult {
+        self.state.last_mouse_x = x;
+        self.state.last_mouse_y = y;
+
+        let tab_info: Vec<(&str, bool)> = self
+            .tabs
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (t.title(), i == self.active_tab))
+            .collect();
+
+        let prev_hovered_tab = self.state.hovered_tab;
+        let prev_hovered_plus = self.state.hovered_plus;
+
+        match self.renderer.hit_test(x, y, &tab_info) {
+            Some(HitTestResult::Tab(i)) => {
+                self.state.hovered_tab = Some(i);
+                self.state.hovered_plus = false;
+            }
+            Some(HitTestResult::NewTabButton) => {
+                self.state.hovered_tab = None;
+                self.state.hovered_plus = true;
+            }
+            None => {
+                self.state.hovered_tab = None;
+                self.state.hovered_plus = false;
+            }
+        }
+
+        if prev_hovered_tab != self.state.hovered_tab
+            || prev_hovered_plus != self.state.hovered_plus
+        {
+            AppResult::Redraw
+        } else {
+            AppResult::Ok
+        }
+    }
+
+    pub fn click_at(&mut self, x: f32, y: f32, selecting: bool) -> AppResult {
+        let scrollbar_width = layout::SCROLLBAR_WIDTH * self.scale;
+        let tab_info: Vec<(&str, bool)> = self
+            .tabs
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (t.title(), i == self.active_tab))
+            .collect();
+
+        // Check for tab interactions first (only if not selecting)
+        if !selecting && y < layout::TAB_HEIGHT * self.scale {
+            match self.renderer.hit_test(x, y, &tab_info) {
+                Some(HitTestResult::Tab(i)) => {
+                    self.active_tab = i;
+                    self.auto_scroll();
+                    return AppResult::Redraw;
+                }
+                Some(HitTestResult::NewTabButton) => {
+                    return self.new_tab();
+                }
+                None => {
+                    return AppResult::Ok;
+                }
+            }
+        }
+
+        // Check if clicked on scrollbar (only if not already selecting text)
+        if !selecting {
+            if x > self.width - scrollbar_width {
+                let content_start_y = layout::TAB_HEIGHT * self.scale;
+                if y >= content_start_y {
+                    self.state.is_dragging_scrollbar = true;
+                    return self.drag_at(x, y);
+                }
+            } else {
+                self.state.is_dragging_scrollbar = false;
+            }
+        }
+
+        // Calculate which line was clicked
+        let content_start_y = self.content_start_y();
+
+        if !selecting && y < content_start_y {
+            return AppResult::Ok;
+        }
+
+        let height = self.visible_lines() as isize;
+        let relative_y = y - content_start_y;
+        let mut clicked_visual_line =
+            (relative_y / (layout::LINE_HEIGHT * self.scale)).floor() as isize;
+
+        if selecting {
+            if clicked_visual_line < 0 || clicked_visual_line >= height {
+                if self.state.last_drag_scroll.elapsed()
+                    < Duration::from_millis(timing::DRAG_SCROLL_THROTTLE_MS)
+                {
+                    return AppResult::Ok;
+                }
+                self.state.last_drag_scroll = Instant::now();
+
+                if clicked_visual_line < 0 {
+                    clicked_visual_line = -1;
+                } else {
+                    clicked_visual_line = height;
+                }
+            }
+        }
+
+        let scroll_offset = self.tabs[self.active_tab].scroll_offset();
+        let clicked_line = (scroll_offset as isize + clicked_visual_line).max(0) as usize;
+
+        let char_width = self.renderer.get_char_width();
+        let scroll_offset_x = self.tabs[self.active_tab].scroll_offset_x();
+        let relative_x = (x - layout::PADDING * self.scale + scroll_offset_x).max(0.0);
+        let clicked_col = (relative_x / char_width).round() as usize;
+
+        self.tabs[self.active_tab].set_cursor_position(clicked_line, clicked_col, selecting);
+
+        if selecting {
+            self.auto_scroll();
+        }
+
+        self.state.reset_cursor_blink();
+        AppResult::Redraw
+    }
+
+    pub fn handle_double_click(&mut self, x: f32, y: f32) -> AppResult {
+        let _ = self.click_at(x, y, false);
+        self.tabs[self.active_tab].select_word_at_cursor();
+        AppResult::Redraw
+    }
+
+    pub fn drag_at(&mut self, x: f32, y: f32) -> AppResult {
+        if self.state.is_dragging_scrollbar {
+            let start_y = layout::TAB_HEIGHT * self.scale;
+            let scroll_area_height = self.height - layout::TAB_HEIGHT * self.scale;
+
+            let relative_y = (y - start_y).clamp(0.0, scroll_area_height);
+            let scroll_ratio = relative_y / scroll_area_height;
+
+            let total_lines = self.tabs[self.active_tab].total_lines();
+            let visible_lines = self.visible_lines();
+
+            let max_scroll = total_lines.saturating_sub(visible_lines);
+            let scroll_offset = (scroll_ratio * max_scroll as f32).round() as usize;
+
+            if self.tabs[self.active_tab].set_scroll_offset(scroll_offset) {
+                return AppResult::Redraw;
+            }
+            return AppResult::Ok;
+        }
+
+        self.click_at(x, y, true)
+    }
+
+    // =========================================================================
+    // Tab management
+    // =========================================================================
 
     pub fn new_tab(&mut self) -> AppResult {
         self.tabs.push(Tab::new_untitled());
@@ -189,7 +356,7 @@ impl App {
 
     pub fn close_current_tab(&mut self) -> AppResult {
         if self.tabs.len() <= 1 {
-            return AppResult::Ok; // Cannot close the last tab
+            return AppResult::Ok;
         }
         self.tabs.remove(self.active_tab);
         if self.active_tab >= self.tabs.len() {
@@ -207,6 +374,10 @@ impl App {
         self.auto_scroll();
         AppResult::Redraw
     }
+
+    // =========================================================================
+    // Text editing
+    // =========================================================================
 
     pub fn handle_char(&mut self, ch: char) -> AppResult {
         self.tabs[self.active_tab].insert_char(ch);
@@ -227,6 +398,10 @@ impl App {
         self.auto_scroll();
         AppResult::Redraw
     }
+
+    // =========================================================================
+    // Cursor movement
+    // =========================================================================
 
     pub fn move_cursor_left(&mut self, selecting: bool) -> AppResult {
         self.tabs[self.active_tab].move_left(selecting);
@@ -264,32 +439,6 @@ impl App {
         AppResult::Redraw
     }
 
-    pub fn scroll_up(&mut self) -> AppResult {
-        if self.last_mouse_y < TAB_HEIGHT * self.scale {
-            // Scroll tabs
-            self.tab_scroll_x = (self.tab_scroll_x - 30.0 * self.scale).max(0.0);
-            self.renderer.set_tab_scroll_x(self.tab_scroll_x);
-            return AppResult::Redraw;
-        } else {
-            // Scroll content
-            self.tabs[self.active_tab].scroll_up(3);
-            AppResult::Redraw
-        }
-    }
-
-    pub fn scroll_down(&mut self) -> AppResult {
-        if self.last_mouse_y < TAB_HEIGHT * self.scale {
-            // Scroll tabs
-            let max_scroll = 1000.0; // TODO: Calculate max scroll based on tabs width
-            self.tab_scroll_x = (self.tab_scroll_x + 40.0 * self.scale).min(max_scroll);
-            self.renderer.set_tab_scroll_x(self.tab_scroll_x);
-            return AppResult::Redraw;
-        }
-        let visible = self.visible_lines();
-        self.tabs[self.active_tab].scroll_down(3, visible);
-        AppResult::Redraw
-    }
-
     pub fn move_cursor_to_line_start(&mut self, selecting: bool) -> AppResult {
         self.tabs[self.active_tab].move_to_line_start(selecting);
         self.auto_scroll();
@@ -314,9 +463,42 @@ impl App {
         AppResult::Redraw
     }
 
+    // =========================================================================
+    // Scrolling
+    // =========================================================================
+
+    pub fn scroll_up(&mut self) -> AppResult {
+        if self.state.last_mouse_y < layout::TAB_HEIGHT * self.scale {
+            self.state.tab_scroll_x =
+                (self.state.tab_scroll_x - layout::TAB_PADDING * 2.0 * self.scale).max(0.0);
+            self.renderer.set_tab_scroll_x(self.state.tab_scroll_x);
+            return AppResult::Redraw;
+        }
+        self.tabs[self.active_tab].scroll_up(crate::config::scroll::LINES_PER_WHEEL_TICK);
+        AppResult::Redraw
+    }
+
+    pub fn scroll_down(&mut self) -> AppResult {
+        if self.state.last_mouse_y < layout::TAB_HEIGHT * self.scale {
+            let max_scroll = 1000.0; // TODO: Calculate based on tabs width
+            self.state.tab_scroll_x =
+                (self.state.tab_scroll_x + layout::TAB_PADDING * 2.0 * self.scale).min(max_scroll);
+            self.renderer.set_tab_scroll_x(self.state.tab_scroll_x);
+            return AppResult::Redraw;
+        }
+        let visible = self.visible_lines();
+        self.tabs[self.active_tab]
+            .scroll_down(crate::config::scroll::LINES_PER_WHEEL_TICK, visible);
+        AppResult::Redraw
+    }
+
+    // =========================================================================
+    // File operations
+    // =========================================================================
+
     pub fn save_current(&mut self) -> AppResult {
         self.tabs[self.active_tab].save();
-        AppResult::Redraw // Title might change if saved as new file
+        AppResult::Redraw
     }
 
     pub fn open_file(&mut self) -> AppResult {
@@ -330,105 +512,9 @@ impl App {
         }
     }
 
-    /// Handle mouse click - position cursor at clicked location
-    pub fn click_at(&mut self, x: f32, y: f32, selecting: bool) -> AppResult {
-        let scrollbar_width = 12.0 * self.scale;
-        let tab_info: Vec<(&str, bool)> = self
-            .tabs
-            .iter()
-            .enumerate()
-            .map(|(i, t)| (t.title(), i == self.active_tab))
-            .collect();
-
-        // Check for tab interactions first
-        if y < TAB_HEIGHT * self.scale {
-            match self.renderer.hit_test(x, y, &tab_info) {
-                Some(HitTestResult::Tab(i)) => {
-                    self.active_tab = i;
-                    self.auto_scroll();
-                    return AppResult::Redraw;
-                }
-                Some(HitTestResult::NewTabButton) => {
-                    return self.new_tab();
-                }
-                None => {
-                    return AppResult::Ok; // Clicked in tab bar empty space
-                }
-            }
-        }
-
-        // Check if clicked on scrollbar
-        if x > self.width - scrollbar_width {
-            let content_start_y = TAB_HEIGHT * self.scale;
-            if y >= content_start_y {
-                // Clicked on scrollbar track
-                self.is_dragging_scrollbar = true;
-                return self.drag_at(x, y); // Drag at will handle the scroll and redraw
-            }
-        } else {
-            self.is_dragging_scrollbar = false;
-        }
-
-        // Calculate which line was clicked
-        let content_start_y = TAB_HEIGHT * self.scale + PADDING * self.scale;
-
-        if y < content_start_y {
-            return AppResult::Ok; // Clicked in tab bar empty space or padding
-        }
-
-        let relative_y = y - content_start_y;
-        let clicked_visual_line = (relative_y / (LINE_HEIGHT * self.scale)).floor() as usize;
-        let scroll_offset = self.tabs[self.active_tab].scroll_offset();
-        let clicked_line = scroll_offset + clicked_visual_line;
-
-        // Calculate which column was clicked (approximate based on char width)
-        let char_width = 9.6 * self.scale; // Approximate monospace character width
-        let relative_x = (x - PADDING * self.scale).max(0.0);
-        let clicked_col = (relative_x / char_width).round() as usize;
-
-        // Set cursor position
-        self.tabs[self.active_tab].set_cursor_position(clicked_line, clicked_col, selecting);
-
-        // Don't auto-scroll instantly on click unless necessary
-        // self.auto_scroll();
-
-        // Reset blinking
-        self.cursor_visible = true;
-        self.last_cursor_blink = Instant::now();
-        AppResult::Redraw
-    }
-
-    pub fn handle_double_click(&mut self, x: f32, y: f32) -> AppResult {
-        // First, place cursor (and clear previous selection)
-        let _ = self.click_at(x, y, false);
-        // Then select word at that cursor position
-        self.tabs[self.active_tab].select_word_at_cursor();
-        AppResult::Redraw
-    }
-
-    pub fn drag_at(&mut self, x: f32, y: f32) -> AppResult {
-        if self.is_dragging_scrollbar {
-            let start_y = TAB_HEIGHT * self.scale;
-            let scroll_area_height = self.height - TAB_HEIGHT * self.scale;
-
-            // Calculate scroll ratio from Y position
-            let relative_y = (y - start_y).clamp(0.0, scroll_area_height);
-            let scroll_ratio = relative_y / scroll_area_height;
-
-            let total_lines = self.tabs[self.active_tab].total_lines();
-            let visible_lines = self.visible_lines();
-
-            let max_scroll = total_lines.saturating_sub(visible_lines);
-            let scroll_offset = (scroll_ratio * max_scroll as f32).round() as usize;
-
-            if self.tabs[self.active_tab].set_scroll_offset(scroll_offset) {
-                return AppResult::Redraw;
-            }
-            return AppResult::Ok;
-        }
-
-        self.click_at(x, y, true)
-    }
+    // =========================================================================
+    // Clipboard operations
+    // =========================================================================
 
     pub fn handle_copy(&mut self) -> AppResult {
         if let Some(text) = self.tabs[self.active_tab].copy_selection() {
@@ -467,6 +553,10 @@ impl App {
         AppResult::Redraw
     }
 
+    // =========================================================================
+    // Line operations
+    // =========================================================================
+
     pub fn handle_move_lines_up(&mut self) -> AppResult {
         if self.tabs[self.active_tab].move_lines_up() {
             self.tabs[self.active_tab].auto_save();
@@ -484,6 +574,10 @@ impl App {
         }
         AppResult::Ok
     }
+
+    // =========================================================================
+    // Undo/Redo
+    // =========================================================================
 
     pub fn handle_undo(&mut self) -> AppResult {
         if self.tabs[self.active_tab].undo() {
@@ -503,6 +597,10 @@ impl App {
         AppResult::Ok
     }
 
+    // =========================================================================
+    // View settings
+    // =========================================================================
+
     pub fn toggle_word_wrap(&mut self) -> AppResult {
         self.tabs[self.active_tab].toggle_word_wrap();
         self.auto_scroll();
@@ -514,12 +612,8 @@ impl App {
 mod tests {
     use super::*;
 
-    // Note: GUI tests require actual OpenGL context
-    // These are structure tests only
-
     #[test]
     fn test_tab_management_logic() {
-        // We can't test the full App without OpenGL, but we can test Tab
         let tab = Tab::new_untitled();
         assert!(tab.title().starts_with("Untitled"));
     }

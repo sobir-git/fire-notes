@@ -43,6 +43,7 @@ pub fn save_note(filename: &str, content: &str) -> std::io::Result<PathBuf> {
 }
 
 /// Load a note from the data directory
+#[allow(dead_code)]
 pub fn load_note(path: &PathBuf) -> std::io::Result<String> {
     fs::read_to_string(path)
 }

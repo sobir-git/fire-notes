@@ -106,10 +106,12 @@ impl Tab {
         }
     }
 
+    #[allow(dead_code)]
     pub fn path(&self) -> Option<&PathBuf> {
         self.path.as_ref()
     }
 
+    #[allow(dead_code)]
     pub fn is_modified(&self) -> bool {
         self.modified
     }
@@ -193,6 +195,7 @@ impl Tab {
         self.word_wrap
     }
 
+    #[allow(dead_code)]
     pub fn set_word_wrap(&mut self, wrap: bool) {
         self.word_wrap = wrap;
     }
@@ -253,7 +256,7 @@ impl Tab {
             }
 
             // Scroll right
-            if cursor_x > self.scroll_offset_x + visible_width {
+            if cursor_x + char_width > self.scroll_offset_x + visible_width {
                 self.scroll_offset_x = cursor_x - visible_width + char_width * 2.0; // Add some padding
             }
         } else {
@@ -266,6 +269,7 @@ impl Tab {
         self.buffer.set_cursor_by_line_col(line, col, selecting);
     }
 
+    #[allow(dead_code)]
     pub fn selection_range(&self) -> Option<(usize, usize)> {
         self.buffer.selection_range()
     }

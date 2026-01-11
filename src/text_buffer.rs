@@ -13,6 +13,7 @@ enum Action {
         start: usize,
         text: String,
     },
+    #[allow(dead_code)]
     Replace {
         start: usize,
         old_text: String,
@@ -60,10 +61,12 @@ impl TextBuffer {
         self.cursor
     }
 
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.rope.len_chars()
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.rope.len_chars() == 0
     }
