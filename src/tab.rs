@@ -183,8 +183,10 @@ impl Tab {
         self.scroll_offset = self.scroll_offset.saturating_sub(lines);
     }
 
-    pub fn scroll_down(&mut self, lines: usize) {
-        self.scroll_offset += lines;
+    pub fn scroll_down(&mut self, lines: usize, visible_lines: usize) {
+        let total_lines = self.buffer.len_lines();
+        let max_scroll = total_lines.saturating_sub(visible_lines);
+        self.scroll_offset = (self.scroll_offset + lines).min(max_scroll);
     }
 
     /// Get the current cursor line number

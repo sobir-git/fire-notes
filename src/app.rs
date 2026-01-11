@@ -271,7 +271,6 @@ impl App {
         } else {
             // Scroll content
             self.tabs[self.active_tab].scroll_up(3);
-            self.auto_scroll();
             AppResult::Redraw
         }
     }
@@ -284,8 +283,8 @@ impl App {
             self.renderer.set_tab_scroll_x(self.tab_scroll_x);
             return AppResult::Redraw;
         }
-        self.tabs[self.active_tab].scroll_down(3);
-        self.auto_scroll();
+        let visible = self.visible_lines();
+        self.tabs[self.active_tab].scroll_down(3, visible);
         AppResult::Redraw
     }
 
@@ -399,7 +398,7 @@ impl App {
 
     pub fn handle_double_click(&mut self, x: f32, y: f32) -> AppResult {
         // First, place cursor (and clear previous selection)
-        self.click_at(x, y, false);
+        let _ = self.click_at(x, y, false);
         // Then select word at that cursor position
         self.tabs[self.active_tab].select_word_at_cursor();
         AppResult::Redraw
