@@ -243,11 +243,13 @@ impl Tab {
         text
     }
 
-    pub fn paste(&mut self, text: &str) {
+    pub fn paste_text(&mut self, text: &str) -> bool {
         if !text.is_empty() {
             self.buffer.insert_str(text);
             self.modified = true;
+            return true;
         }
+        false
     }
 
     pub fn select_all(&mut self) {
@@ -258,28 +260,39 @@ impl Tab {
         self.buffer.select_word_at_cursor();
     }
 
-    pub fn move_lines_up(&mut self) {
+    pub fn move_lines_up(&mut self) -> bool {
         self.buffer.move_lines_up();
+        // Assume buffering actions modify state for now, returns void in TextBuffer usually
+        // But for AppResult::Redraw optimization, better to assume true or check hash?
+        // Let's assume true for actions.
+        true
     }
 
-    pub fn move_lines_down(&mut self) {
+    pub fn move_lines_down(&mut self) -> bool {
         self.buffer.move_lines_down();
+        true
     }
 
-    pub fn undo(&mut self) {
+    pub fn undo(&mut self) -> bool {
         self.buffer.undo();
+        true
     }
 
-    pub fn redo(&mut self) {
+    pub fn redo(&mut self) -> bool {
         self.buffer.redo();
+        true
     }
 
     pub fn total_lines(&self) -> usize {
         self.buffer.len_lines()
     }
 
-    pub fn set_scroll_offset(&mut self, offset: usize) {
-        self.scroll_offset = offset;
+    pub fn set_scroll_offset(&mut self, offset: usize) -> bool {
+        if self.scroll_offset != offset {
+            self.scroll_offset = offset;
+            return true;
+        }
+        false
     }
 }
 

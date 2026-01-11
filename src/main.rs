@@ -201,91 +201,58 @@ impl ApplicationHandler for AppHandler {
                     let shift = self.modifiers.shift_key();
                     let alt = self.modifiers.alt_key();
 
-                    match &event.logical_key {
+                    let result = match &event.logical_key {
                         Key::Named(NamedKey::Escape) => {
                             event_loop.exit();
+                            return;
                         }
-                        Key::Character(c) if ctrl && c.as_str() == "n" => {
-                            state.app.new_tab();
-                            state.window.request_redraw();
-                        }
+                        Key::Character(c) if ctrl && c.as_str() == "n" => state.app.new_tab(),
                         Key::Character(c) if ctrl && c.as_str() == "w" => {
-                            if !state.app.close_current_tab() {
+                            let res = state.app.close_current_tab();
+                            if res.should_exit() {
                                 event_loop.exit();
                             }
-                            state.window.request_redraw();
+                            res
                         }
-                        Key::Character(c) if ctrl && c.as_str() == "s" => {
-                            state.app.save_current();
-                            state.window.request_redraw();
-                        }
-                        Key::Character(c) if ctrl && c.as_str() == "o" => {
-                            state.app.open_file();
-                            state.window.request_redraw();
-                        }
-                        Key::Character(c) if ctrl && c.as_str() == "c" => {
-                            state.app.handle_copy();
-                            state.window.request_redraw();
-                        }
-                        Key::Character(c) if ctrl && c.as_str() == "x" => {
-                            state.app.handle_cut();
-                            state.window.request_redraw();
-                        }
-                        Key::Character(c) if ctrl && c.as_str() == "v" => {
-                            state.app.handle_paste();
-                            state.window.request_redraw();
-                        }
+                        Key::Character(c) if ctrl && c.as_str() == "s" => state.app.save_current(),
+                        Key::Character(c) if ctrl && c.as_str() == "o" => state.app.open_file(),
+                        Key::Character(c) if ctrl && c.as_str() == "c" => state.app.handle_copy(),
+                        Key::Character(c) if ctrl && c.as_str() == "x" => state.app.handle_cut(),
+                        Key::Character(c) if ctrl && c.as_str() == "v" => state.app.handle_paste(),
                         Key::Character(c) if ctrl && c.as_str() == "a" => {
-                            state.app.handle_select_all();
-                            state.window.request_redraw();
+                            state.app.handle_select_all()
                         }
-                        Key::Named(NamedKey::Tab) if ctrl => {
-                            state.app.next_tab();
-                            state.window.request_redraw();
-                        }
-                        Key::Named(NamedKey::Backspace) => {
-                            state.app.handle_backspace();
-                            state.window.request_redraw();
-                        }
-                        Key::Named(NamedKey::Delete) => {
-                            state.app.handle_delete();
-                            state.window.request_redraw();
-                        }
-                        Key::Named(NamedKey::Enter) => {
-                            state.app.handle_char('\n');
-                            state.window.request_redraw();
-                        }
+                        Key::Named(NamedKey::Tab) if ctrl => state.app.next_tab(),
+                        Key::Named(NamedKey::Backspace) => state.app.handle_backspace(),
+                        Key::Named(NamedKey::Delete) => state.app.handle_delete(),
+                        Key::Named(NamedKey::Enter) => state.app.handle_char('\n'),
                         Key::Named(NamedKey::ArrowLeft) => {
                             if ctrl {
-                                state.app.move_cursor_word_left(shift);
+                                state.app.move_cursor_word_left(shift)
                             } else {
-                                state.app.move_cursor_left(shift);
+                                state.app.move_cursor_left(shift)
                             }
-                            state.window.request_redraw();
                         }
                         Key::Named(NamedKey::ArrowRight) => {
                             if ctrl {
-                                state.app.move_cursor_word_right(shift);
+                                state.app.move_cursor_word_right(shift)
                             } else {
-                                state.app.move_cursor_right(shift);
+                                state.app.move_cursor_right(shift)
                             }
-                            state.window.request_redraw();
                         }
                         Key::Named(NamedKey::ArrowUp) => {
                             if alt {
-                                state.app.handle_move_lines_up();
+                                state.app.handle_move_lines_up()
                             } else {
-                                state.app.move_cursor_up(shift);
+                                state.app.move_cursor_up(shift)
                             }
-                            state.window.request_redraw();
                         }
                         Key::Named(NamedKey::ArrowDown) => {
                             if alt {
-                                state.app.handle_move_lines_down();
+                                state.app.handle_move_lines_down()
                             } else {
-                                state.app.move_cursor_down(shift);
+                                state.app.move_cursor_down(shift)
                             }
-                            state.window.request_redraw();
                         }
                         Key::Character(c) => {
                             let char_lower = c
@@ -294,71 +261,44 @@ impl ApplicationHandler for AppHandler {
                                 .next()
                                 .unwrap_or(c.chars().next().unwrap_or('\0'));
                             match char_lower {
-                                'a' if ctrl => {
-                                    state.app.handle_select_all();
-                                    state.window.request_redraw();
-                                }
-                                'c' if ctrl => {
-                                    state.app.handle_copy();
-                                    state.window.request_redraw();
-                                }
-                                'x' if ctrl => {
-                                    state.app.handle_cut();
-                                    state.window.request_redraw();
-                                }
-                                'v' if ctrl => {
-                                    state.app.handle_paste();
-                                    state.window.request_redraw();
-                                }
-                                'z' if ctrl => {
-                                    state.app.handle_undo();
-                                    state.window.request_redraw();
-                                }
-                                'y' if ctrl => {
-                                    state.app.handle_redo();
-                                    state.window.request_redraw();
-                                }
+                                'a' if ctrl => state.app.handle_select_all(),
+                                'c' if ctrl => state.app.handle_copy(),
+                                'x' if ctrl => state.app.handle_cut(),
+                                'v' if ctrl => state.app.handle_paste(),
+                                'z' if ctrl => state.app.handle_undo(),
+                                'y' if ctrl => state.app.handle_redo(),
                                 _ => {
                                     // Regular typing
                                     if !ctrl && !alt {
-                                        // We need original case char here, not lower
-                                        // But winit Key::Character gives distinct chars usually
-                                        // If it's a printable char:
-                                        state.app.handle_char(c.chars().next().unwrap_or('\0'));
-                                        state.window.request_redraw();
+                                        state.app.handle_char(c.chars().next().unwrap_or('\0'))
+                                    } else {
+                                        crate::app::AppResult::Ok
                                     }
                                 }
                             }
                         }
-                        Key::Named(NamedKey::Space) => {
-                            state.app.handle_char(' ');
-                            state.window.request_redraw();
-                        }
-                        Key::Named(NamedKey::PageUp) => {
-                            state.app.scroll_up();
-                            state.window.request_redraw();
-                        }
-                        Key::Named(NamedKey::PageDown) => {
-                            state.app.scroll_down();
-                            state.window.request_redraw();
-                        }
+                        Key::Named(NamedKey::Space) => state.app.handle_char(' '),
+                        Key::Named(NamedKey::PageUp) => state.app.scroll_up(),
+                        Key::Named(NamedKey::PageDown) => state.app.scroll_down(),
                         Key::Named(NamedKey::Home) => {
                             if ctrl {
-                                state.app.move_cursor_to_start(shift);
+                                state.app.move_cursor_to_start(shift)
                             } else {
-                                state.app.move_cursor_to_line_start(shift);
+                                state.app.move_cursor_to_line_start(shift)
                             }
-                            state.window.request_redraw();
                         }
                         Key::Named(NamedKey::End) => {
                             if ctrl {
-                                state.app.move_cursor_to_end(shift);
+                                state.app.move_cursor_to_end(shift)
                             } else {
-                                state.app.move_cursor_to_line_end(shift);
+                                state.app.move_cursor_to_line_end(shift)
                             }
-                            state.window.request_redraw();
                         }
-                        _ => {}
+                        _ => crate::app::AppResult::Ok,
+                    };
+
+                    if result.needs_redraw() {
+                        state.window.request_redraw();
                     }
                 }
             }
@@ -369,24 +309,42 @@ impl ApplicationHandler for AppHandler {
                     MouseScrollDelta::PixelDelta(pos) => -(pos.y / 24.0) as i32,
                 };
 
+                let mut redraw = false;
                 if scroll_lines > 0 {
                     for _ in 0..scroll_lines {
-                        state.app.scroll_down();
+                        if state.app.scroll_down().needs_redraw() {
+                            redraw = true;
+                        }
                     }
                 } else {
                     for _ in 0..(-scroll_lines) {
-                        state.app.scroll_up();
+                        if state.app.scroll_up().needs_redraw() {
+                            redraw = true;
+                        }
                     }
                 }
-                state.window.request_redraw();
+
+                if redraw {
+                    state.window.request_redraw();
+                }
             }
 
             WindowEvent::CursorMoved { position, .. } => {
                 self.mouse_position = (position.x, position.y);
+                let needs_redraw_on_hover = state
+                    .app
+                    .handle_mouse_move(self.mouse_position.0 as f32, self.mouse_position.1 as f32)
+                    .needs_redraw();
+
                 if self.mouse_pressed {
-                    state
+                    if state
                         .app
-                        .drag_at(self.mouse_position.0 as f32, self.mouse_position.1 as f32);
+                        .drag_at(self.mouse_position.0 as f32, self.mouse_position.1 as f32)
+                        .needs_redraw()
+                    {
+                        state.window.request_redraw();
+                    }
+                } else if needs_redraw_on_hover {
                     state.window.request_redraw();
                 }
             }
@@ -415,26 +373,31 @@ impl ApplicationHandler for AppHandler {
                             }
                         }
 
-                        if is_double_click {
-                            state.app.handle_double_click(
+                        let result = if is_double_click {
+                            let r = state.app.handle_double_click(
                                 self.mouse_position.0 as f32,
                                 self.mouse_position.1 as f32,
                             );
-                            self.last_click_time = None; // Reset to prevent triple-click triggering double again immediately
+                            self.last_click_time = None;
+                            r
                         } else {
                             let shift = self.modifiers.shift_key();
-                            state.app.click_at(
+                            let r = state.app.click_at(
                                 self.mouse_position.0 as f32,
                                 self.mouse_position.1 as f32,
                                 shift,
                             );
                             self.last_click_time = Some(now);
                             self.last_click_pos = Some(self.mouse_position);
+                            r
+                        };
+
+                        if result.needs_redraw() {
+                            state.window.request_redraw();
                         }
                     } else {
                         self.mouse_pressed = false;
                     }
-                    state.window.request_redraw();
                 }
             }
 
@@ -448,5 +411,14 @@ impl ApplicationHandler for AppHandler {
 
             _ => {}
         }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if let Some(state) = &mut self.state {
+            if state.app.tick().needs_redraw() {
+                state.window.request_redraw();
+            }
+        }
+        event_loop.set_control_flow(ControlFlow::Poll);
     }
 }

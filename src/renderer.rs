@@ -4,14 +4,21 @@ use crate::tab::Tab;
 use crate::theme::Theme;
 use femtovg::{Canvas, Color, FontId, Paint, Path, renderer::OpenGl};
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HitTestResult {
+    Tab(usize),
+    NewTabButton,
+}
+
 pub struct Renderer {
     canvas: Canvas<OpenGl>,
-    font: FontId,
+    fonts: Vec<FontId>,
     theme: Theme,
     width: f32,
     height: f32,
     scale: f32,
-    new_tab_button_bounds: Option<(f32, f32, f32, f32)>, // (x, y, width, height)
+    tab_scroll_x: f32,
+    // (x, y, width, height)
 }
 
 impl Renderer {
@@ -25,25 +32,27 @@ impl Renderer {
     pub fn new(renderer: OpenGl, width: f32, height: f32, scale: f32) -> Self {
         let mut canvas = Canvas::new(renderer).expect("Failed to create canvas");
 
-        // Load a system monospace font - try common paths
-        let font = Self::load_font(&mut canvas);
+        // Load fonts with fallbacks
+        let fonts = Self::load_fonts(&mut canvas);
 
         let theme = Theme::dark();
 
         Self {
             canvas,
-            font,
+            fonts,
             theme,
             width,
             height,
             scale,
-            new_tab_button_bounds: None,
+            tab_scroll_x: 0.0,
         }
     }
 
-    fn load_font(canvas: &mut Canvas<OpenGl>) -> FontId {
-        // Try common monospace font paths on Linux
-        let font_paths = [
+    fn load_fonts(canvas: &mut Canvas<OpenGl>) -> Vec<FontId> {
+        let mut fonts = Vec::new();
+
+        // 1. Try common monospace font paths on Linux
+        let mono_paths = [
             "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
             "/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf",
@@ -51,22 +60,43 @@ impl Renderer {
             "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
         ];
 
-        for path in &font_paths {
+        for path in &mono_paths {
             if let Ok(font) = canvas.add_font(path) {
-                return font;
+                fonts.push(font);
+                break; // Use the first available monospace font
             }
         }
 
-        // Fallback: try to find any TTF font
-        if let Ok(entries) = std::fs::read_dir("/usr/share/fonts/truetype") {
-            for entry in entries.flatten() {
-                if entry.path().is_dir() {
-                    if let Ok(sub_entries) = std::fs::read_dir(entry.path()) {
-                        for sub_entry in sub_entries.flatten() {
-                            let path = sub_entry.path();
-                            if path.extension().map(|e| e == "ttf").unwrap_or(false) {
-                                if let Ok(font) = canvas.add_font(path) {
-                                    return font;
+        // 2. Add fallback fonts for extended coverage (Cyrillic, CJK, etc.)
+        // These might not be monospace, but better than a box.
+        let fallback_paths = [
+            "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf", // Excellent fallback
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",           // Good generic coverage
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        ];
+
+        for path in &fallback_paths {
+            if let Ok(font) = canvas.add_font(path) {
+                // Avoid adding duplicates if we somehow loaded the same file?
+                // FontId is unique per add_font call usually.
+                fonts.push(font);
+            }
+        }
+
+        // 3. Fallback: if no fonts loaded at all, try to find any TTF
+        if fonts.is_empty() {
+            if let Ok(entries) = std::fs::read_dir("/usr/share/fonts/truetype") {
+                for entry in entries.flatten() {
+                    if entry.path().is_dir() {
+                        if let Ok(sub_entries) = std::fs::read_dir(entry.path()) {
+                            for sub_entry in sub_entries.flatten() {
+                                let path = sub_entry.path();
+                                if path.extension().map(|e| e == "ttf").unwrap_or(false) {
+                                    if let Ok(font) = canvas.add_font(path) {
+                                        fonts.push(font);
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -75,7 +105,13 @@ impl Renderer {
             }
         }
 
-        panic!("No suitable font found! Please install dejavu-fonts or liberation-fonts.");
+        if fonts.is_empty() {
+            panic!(
+                "No suitable font found! Please install dejavu-fonts, liberation-fonts, or fonts-droid-fallback."
+            );
+        }
+
+        fonts
     }
 
     pub fn resize(&mut self, width: f32, height: f32, scale: f32) {
@@ -84,11 +120,18 @@ impl Renderer {
         self.scale = scale;
     }
 
-    pub fn new_tab_button_bounds(&self) -> Option<(f32, f32, f32, f32)> {
-        self.new_tab_button_bounds
+    pub fn set_tab_scroll_x(&mut self, scroll: f32) {
+        self.tab_scroll_x = scroll;
     }
 
-    pub fn render(&mut self, tabs: &[(&str, bool)], current_tab: &Tab) {
+    pub fn render(
+        &mut self,
+        tabs: &[(&str, bool)],
+        current_tab: &Tab,
+        cursor_visible: bool,
+        hovered_tab_index: Option<usize>,
+        hovered_plus: bool,
+    ) {
         let (width, height, _) = (self.width, self.height, self.scale);
 
         // Use DPI=1.0, but we compensate by using larger font sizes in physical pixels
@@ -103,22 +146,89 @@ impl Renderer {
         );
 
         // Draw tab bar
-        self.draw_tab_bar(tabs);
+        self.draw_tab_bar(tabs, hovered_tab_index, hovered_plus);
 
         // Draw text content
-        self.draw_text_content(current_tab);
+        self.draw_text_content(current_tab, cursor_visible);
 
         self.canvas.flush();
     }
 
-    fn draw_tab_bar(&mut self, tabs: &[(&str, bool)]) {
-        let tab_height = 36.0 * self.scale;
-        let mut x = 0.0;
+    pub fn hit_test(&self, x: f32, y: f32, tabs: &[(&str, bool)]) -> Option<HitTestResult> {
+        let tab_height = 40.0 * self.scale;
+
+        if y > tab_height {
+            return None;
+        }
+
+        let mut current_x = -self.tab_scroll_x;
         let tab_padding = 16.0 * self.scale;
 
-        for (title, is_active) in tabs {
+        // Check tabs
+        for (i, (title, _)) in tabs.iter().enumerate() {
             let tab_width =
                 (title.len() as f32 * 9.0 * self.scale + tab_padding * 2.0).max(100.0 * self.scale);
+
+            // Optimization: check if relevant area
+            if current_x + tab_width > 0.0 && current_x < self.width {
+                if x >= current_x && x < current_x + tab_width {
+                    return Some(HitTestResult::Tab(i));
+                }
+            }
+
+            current_x += tab_width + 1.0;
+        }
+
+        // Check new tab button - flows with tabs
+        let new_tab_button_size = 28.0 * self.scale;
+        let button_x = current_x + 8.0 * self.scale;
+        let button_y = (tab_height - new_tab_button_size) / 2.0;
+
+        if x >= button_x
+            && x <= button_x + new_tab_button_size
+            && y >= button_y
+            && y <= button_y + new_tab_button_size
+        {
+            return Some(HitTestResult::NewTabButton);
+        }
+
+        None
+    }
+
+    fn draw_tab_bar(
+        &mut self,
+        tabs: &[(&str, bool)],
+        hovered_tab_index: Option<usize>,
+        hovered_plus: bool,
+    ) {
+        let tab_height = 40.0 * self.scale;
+        let tab_padding = 16.0 * self.scale;
+
+        // Save state for clipping
+        self.canvas.save();
+
+        // Clip to tab bar area to prevent drawing outside when scrolling
+        self.canvas
+            .intersect_scissor(0.0, 0.0, self.width, tab_height);
+
+        let mut x = -self.tab_scroll_x;
+
+        for (i, (title, is_active)) in tabs.iter().enumerate() {
+            let tab_width =
+                (title.len() as f32 * 9.0 * self.scale + tab_padding * 2.0).max(100.0 * self.scale);
+
+            // Optimization: skip drawing off-screen tabs
+            if x + tab_width < 0.0 {
+                x += tab_width + 1.0;
+                continue;
+            }
+            if x > self.width {
+                // If we're past the width, we still need to calculate X for the plus button,
+                // but we can break the loop if we assume plus button is always at end.
+                // However, we need to know the final X. So we can't just break unless we calculate remaining width.
+                // For simplicity, let's just continue loop but not draw?
+                // Actually, let's just draw properly. Canvas handles clipping.
+            }
 
             // Tab background
             let mut path = Path::new();
@@ -130,6 +240,10 @@ impl Renderer {
                     self.theme.tab_active.1,
                     self.theme.tab_active.2,
                 )
+            } else if Some(i) == hovered_tab_index {
+                // Slightly lighter than inactive for hover
+                let c = self.theme.tab_inactive;
+                Color::rgbf(c.0 + 0.05, c.1 + 0.05, c.2 + 0.05)
             } else {
                 Color::rgbf(
                     self.theme.tab_inactive.0,
@@ -146,11 +260,11 @@ impl Renderer {
                 self.theme.fg.1,
                 self.theme.fg.2,
             ));
-            text_paint.set_font(&[self.font]);
+            text_paint.set_font(&self.fonts);
             text_paint.set_font_size(14.0 * self.scale);
 
             let text_x = Self::snap_to_pixel(x + tab_padding);
-            let text_y = Self::snap_to_pixel(tab_height / 2.0 + 5.0);
+            let text_y = Self::snap_to_pixel(tab_height / 2.0 + 5.0 * self.scale);
             let _ = self.canvas.fill_text(text_x, text_y, title, &text_paint);
 
             x += tab_width + 1.0;
@@ -169,20 +283,34 @@ impl Renderer {
             new_tab_button_size,
             4.0 * self.scale,
         );
-        self.canvas
-            .fill_path(&btn_path, &Paint::color(Color::rgbf(0.25, 0.25, 0.25)));
+
+        let btn_color = if hovered_plus {
+            Color::rgbf(0.35, 0.35, 0.35)
+        } else {
+            Color::rgbf(0.25, 0.25, 0.25)
+        };
+        self.canvas.fill_path(&btn_path, &Paint::color(btn_color));
 
         // Draw + symbol
         let mut plus_paint = Paint::color(Color::rgbf(0.7, 0.7, 0.7));
-        plus_paint.set_font(&[self.font]);
-        plus_paint.set_font_size(18.0 * self.scale);
-        let plus_x = Self::snap_to_pixel(button_x + new_tab_button_size / 2.0 - 4.0 * self.scale);
-        let plus_y = Self::snap_to_pixel(button_y + new_tab_button_size / 2.0 + 6.0 * self.scale);
+        plus_paint.set_font(&self.fonts);
+        plus_paint.set_font_size(20.0 * self.scale); // Slightly larger
+
+        // Measure to center perfectly
+        let mut plus_width = 0.0;
+        if let Ok(metrics) = self.canvas.measure_text(0.0, 0.0, "+", &plus_paint) {
+            plus_width = metrics.width();
+        }
+
+        // Center X: button_x + (button_width - text_width) / 2
+        // Center Y: button_y + button_height / 2 + text_height_adjustment
+        // heuristic for vertical center with this font: + 7.0 * scale
+        let plus_x = Self::snap_to_pixel(button_x + (new_tab_button_size - plus_width) / 2.0);
+        let plus_y = Self::snap_to_pixel(button_y + new_tab_button_size / 2.0 + 7.0 * self.scale);
         let _ = self.canvas.fill_text(plus_x, plus_y, "+", &plus_paint);
 
-        // Store button bounds for click detection
-        self.new_tab_button_bounds =
-            Some((button_x, button_y, new_tab_button_size, new_tab_button_size));
+        // Restore state (clear clipping)
+        self.canvas.restore();
 
         // Tab bar bottom line
         let mut line = Path::new();
@@ -191,8 +319,8 @@ impl Renderer {
             .fill_path(&line, &Paint::color(Color::rgbf(0.3, 0.3, 0.3)));
     }
 
-    fn draw_text_content(&mut self, tab: &Tab) {
-        let tab_height = 36.0 * self.scale;
+    fn draw_text_content(&mut self, tab: &Tab, cursor_visible: bool) {
+        let tab_height = 40.0 * self.scale;
         let padding = 16.0 * self.scale;
         let line_height = 24.0 * self.scale;
         let start_y = tab_height + padding;
@@ -207,7 +335,7 @@ impl Renderer {
             self.theme.fg.1,
             self.theme.fg.2,
         ));
-        text_paint.set_font(&[self.font]);
+        text_paint.set_font(&self.fonts);
         // Use physical font size (16 * scale) - scaled up for crisp rendering
         text_paint.set_font_size(16.0 * self.scale);
         let char_width = self.measure_char_width(&text_paint);
@@ -277,36 +405,62 @@ impl Renderer {
                 break;
             }
 
-            // Snap to pixel grid to prevent blurry text from bilinear filtering
-            let text_x = Self::snap_to_pixel(padding);
-            let text_y = Self::snap_to_pixel(
-                start_y + (visible_idx as f32 * line_height) + line_height * 0.75,
-            );
-            let _ = self
-                .canvas
-                .fill_text(text_x, text_y, lines[line_idx], &text_paint);
+            let line = lines[line_idx];
+            let line_y = start_y + (visible_idx as f32 * line_height) + line_height * 0.75;
+            let line_y_snapped = Self::snap_to_pixel(line_y);
+
+            // let mut col = 0;
+            let mut x_offset = padding;
+
+            let mut buf = [0u8; 4];
+
+            for ch in line.chars() {
+                // Determine width of this character in grid cells
+                let advance = if ch == '\t' {
+                    4 // minimal tab handling
+                } else {
+                    1
+                };
+
+                // Draw non-whitespace characters
+                if !ch.is_control() && ch != ' ' {
+                    // Force grid alignment: always draw at computed grid position
+                    let text_x = Self::snap_to_pixel(x_offset);
+
+                    let s = ch.encode_utf8(&mut buf);
+                    let _ = self
+                        .canvas
+                        .fill_text(text_x, line_y_snapped, s, &text_paint);
+                }
+
+                // Advance X by grid size
+                x_offset += char_width * advance as f32;
+                // col += advance; // This line is removed as per instruction
+            }
         }
 
         // Draw cursor (adjusted for scroll)
-        let (cursor_line, cursor_col) = self.get_cursor_line_col(text, cursor_pos);
+        if cursor_visible {
+            let (cursor_line, cursor_col) = self.get_cursor_line_col(text, cursor_pos);
 
-        // Only draw cursor if it's in visible range
-        if cursor_line >= scroll_offset && cursor_line < scroll_offset + max_visible_lines {
-            let visible_cursor_line = cursor_line - scroll_offset;
-            let char_width = self.measure_char_width(&text_paint);
-            let cursor_x = padding + (cursor_col as f32 * char_width);
-            let cursor_y = start_y + (visible_cursor_line as f32 * line_height);
+            // Only draw cursor if it's in visible range
+            if cursor_line >= scroll_offset && cursor_line < scroll_offset + max_visible_lines {
+                let visible_cursor_line = cursor_line - scroll_offset;
+                let char_width = self.measure_char_width(&text_paint);
+                let cursor_x = padding + (cursor_col as f32 * char_width);
+                let cursor_y = start_y + (visible_cursor_line as f32 * line_height);
 
-            let mut cursor_path = Path::new();
-            cursor_path.rect(cursor_x, cursor_y, 2.0 * self.scale, line_height);
-            self.canvas.fill_path(
-                &cursor_path,
-                &Paint::color(Color::rgbf(
-                    self.theme.cursor.0,
-                    self.theme.cursor.1,
-                    self.theme.cursor.2,
-                )),
-            );
+                let mut cursor_path = Path::new();
+                cursor_path.rect(cursor_x, cursor_y, 2.0 * self.scale, line_height);
+                self.canvas.fill_path(
+                    &cursor_path,
+                    &Paint::color(Color::rgbf(
+                        self.theme.cursor.0,
+                        self.theme.cursor.1,
+                        self.theme.cursor.2,
+                    )),
+                );
+            }
         }
 
         // Draw scrollbar
