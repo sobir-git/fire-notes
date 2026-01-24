@@ -9,6 +9,18 @@ pub struct Theme {
     pub tab_active: (f32, f32, f32),
     /// Inactive tab background
     pub tab_inactive: (f32, f32, f32),
+    /// Hovered tab background
+    pub tab_hover: (f32, f32, f32),
+    /// Active tab accent border/line
+    pub tab_active_border: (f32, f32, f32),
+    /// General UI button background
+    pub button_bg: (f32, f32, f32),
+    /// General UI button hover background
+    pub button_hover: (f32, f32, f32),
+    /// General UI button foreground (text/icon)
+    pub button_fg: (f32, f32, f32),
+    /// Border color for UI elements
+    pub border: (f32, f32, f32),
     /// Cursor color
     pub cursor: (f32, f32, f32),
     /// Selection color
@@ -19,12 +31,18 @@ impl Theme {
     /// Dark theme (default)
     pub fn dark() -> Self {
         Self {
-            bg: (0.11, 0.11, 0.13),           // #1c1c21
-            fg: (0.9, 0.9, 0.9),              // #e6e6e6
-            tab_active: (0.18, 0.18, 0.22),   // #2e2e38
-            tab_inactive: (0.13, 0.13, 0.16), // #212126
-            cursor: (0.4, 0.7, 1.0),          // Light blue
-            selection: (0.3, 0.5, 0.8, 0.4),  // Blue with alpha
+            bg: (0.11, 0.11, 0.13),             // #1c1c21
+            fg: (0.9, 0.9, 0.9),                // #e6e6e6
+            tab_active: (0.18, 0.18, 0.22),     // #2e2e38
+            tab_inactive: (0.13, 0.13, 0.16),   // #212126
+            tab_hover: (0.22, 0.22, 0.26),      // #383842
+            tab_active_border: (0.4, 0.7, 1.0), // Blue accent
+            button_bg: (0.15, 0.15, 0.18),      // Slightly lighter than inactive
+            button_hover: (0.22, 0.22, 0.26),   // Matches tab hover
+            button_fg: (0.4, 0.7, 1.0),         // Blue accent for the + sign
+            border: (0.18, 0.18, 0.22),         // Matches active tab bg
+            cursor: (0.4, 0.7, 1.0),            // Light blue
+            selection: (0.3, 0.5, 0.8, 0.4),    // Blue with alpha
         }
     }
 
@@ -32,12 +50,18 @@ impl Theme {
     #[allow(dead_code)]
     pub fn light() -> Self {
         Self {
-            bg: (0.98, 0.98, 0.98),           // #fafafa
-            fg: (0.1, 0.1, 0.1),              // #1a1a1a
-            tab_active: (1.0, 1.0, 1.0),      // White
-            tab_inactive: (0.92, 0.92, 0.92), // #ebebeb
-            cursor: (0.2, 0.4, 0.8),          // Blue
-            selection: (0.3, 0.5, 0.8, 0.3),  // Blue with alpha
+            bg: (0.98, 0.98, 0.98),             // #fafafa
+            fg: (0.1, 0.1, 0.1),                // #1a1a1a
+            tab_active: (1.0, 1.0, 1.0),        // White
+            tab_inactive: (0.92, 0.92, 0.92),   // #ebebeb
+            tab_hover: (0.95, 0.95, 0.95),      // Slight grey
+            tab_active_border: (0.2, 0.4, 0.8), // Blue accent
+            button_bg: (0.95, 0.95, 0.95),
+            button_hover: (0.9, 0.9, 0.9),
+            button_fg: (0.2, 0.4, 0.8), // Blue accent
+            border: (0.85, 0.85, 0.85),
+            cursor: (0.2, 0.4, 0.8),         // Blue
+            selection: (0.3, 0.5, 0.8, 0.3), // Blue with alpha
         }
     }
 }

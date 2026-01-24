@@ -330,6 +330,10 @@ impl Tab {
         self.buffer.select_word_at_cursor();
     }
 
+    pub fn select_line_at_cursor(&mut self) {
+        self.buffer.select_line_at_cursor();
+    }
+
     pub fn move_lines_up(&mut self) -> bool {
         self.buffer.move_lines_up();
         // Assume buffering actions modify state for now, returns void in TextBuffer usually

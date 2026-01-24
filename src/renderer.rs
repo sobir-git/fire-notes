@@ -243,9 +243,11 @@ impl Renderer {
                     self.theme.tab_active.2,
                 )
             } else if Some(i) == hovered_tab_index {
-                // Slightly lighter than inactive for hover
-                let c = self.theme.tab_inactive;
-                Color::rgbf(c.0 + 0.05, c.1 + 0.05, c.2 + 0.05)
+                Color::rgbf(
+                    self.theme.tab_hover.0,
+                    self.theme.tab_hover.1,
+                    self.theme.tab_hover.2,
+                )
             } else {
                 Color::rgbf(
                     self.theme.tab_inactive.0,
@@ -255,6 +257,20 @@ impl Renderer {
             };
 
             self.canvas.fill_path(&path, &Paint::color(color));
+
+            // Active tab indicator (top line)
+            if *is_active {
+                let mut indicator = Path::new();
+                indicator.rect(x, 0.0, tab_width, 2.0 * self.scale);
+                self.canvas.fill_path(
+                    &indicator,
+                    &Paint::color(Color::rgbf(
+                        self.theme.tab_active_border.0,
+                        self.theme.tab_active_border.1,
+                        self.theme.tab_active_border.2,
+                    )),
+                );
+            }
 
             // Tab title
             let mut text_paint = Paint::color(Color::rgbf(
@@ -271,7 +287,10 @@ impl Renderer {
 
             // Draw underline if this tab is being renamed
             if Some(i) == renaming_tab {
-                let metrics = self.canvas.measure_text(text_x, text_y, title, &text_paint).unwrap_or_default();
+                let metrics = self
+                    .canvas
+                    .measure_text(text_x, text_y, title, &text_paint)
+                    .unwrap_or_default();
                 let text_width = metrics.width();
                 let underline_y = text_y + 12.0 * self.scale;
                 let mut underline_path = Path::new();
@@ -304,14 +323,26 @@ impl Renderer {
         );
 
         let btn_color = if hovered_plus {
-            Color::rgbf(0.35, 0.35, 0.35)
+            Color::rgbf(
+                self.theme.button_hover.0,
+                self.theme.button_hover.1,
+                self.theme.button_hover.2,
+            )
         } else {
-            Color::rgbf(0.25, 0.25, 0.25)
+            Color::rgbf(
+                self.theme.button_bg.0,
+                self.theme.button_bg.1,
+                self.theme.button_bg.2,
+            )
         };
         self.canvas.fill_path(&btn_path, &Paint::color(btn_color));
 
         // Draw + symbol
-        let mut plus_paint = Paint::color(Color::rgbf(0.7, 0.7, 0.7));
+        let mut plus_paint = Paint::color(Color::rgbf(
+            self.theme.button_fg.0,
+            self.theme.button_fg.1,
+            self.theme.button_fg.2,
+        ));
         plus_paint.set_font(&self.fonts);
         plus_paint.set_font_size(20.0 * self.scale); // Slightly larger
 
@@ -334,8 +365,14 @@ impl Renderer {
         // Tab bar bottom line
         let mut line = Path::new();
         line.rect(0.0, tab_height, self.width, 1.0);
-        self.canvas
-            .fill_path(&line, &Paint::color(Color::rgbf(0.3, 0.3, 0.3)));
+        self.canvas.fill_path(
+            &line,
+            &Paint::color(Color::rgbf(
+                self.theme.border.0,
+                self.theme.border.1,
+                self.theme.border.2,
+            )),
+        );
     }
 
     fn draw_text_content(&mut self, tab: &Tab, cursor_visible: bool) {

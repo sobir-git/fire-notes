@@ -598,6 +598,24 @@ impl TextBuffer {
         self.cursor = end;
     }
 
+    pub fn select_line_at_cursor(&mut self) {
+        let len = self.rope.len_chars();
+        if len == 0 {
+            return;
+        }
+
+        let line_idx = self.rope.char_to_line(self.cursor);
+        let start = self.rope.line_to_char(line_idx);
+        let end = if line_idx + 1 < self.rope.len_lines() {
+            self.rope.line_to_char(line_idx + 1)
+        } else {
+            len
+        };
+
+        self.selection_anchor = Some(start);
+        self.cursor = end;
+    }
+
     pub fn char_to_line_col(&self, char_idx: usize) -> (usize, usize) {
         let line = self.rope.char_to_line(char_idx);
         let line_start = self.rope.line_to_char(line);

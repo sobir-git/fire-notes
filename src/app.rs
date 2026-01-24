@@ -361,6 +361,12 @@ impl App {
         AppResult::Redraw
     }
 
+    pub fn handle_triple_click(&mut self, x: f32, y: f32) -> AppResult {
+        let _ = self.click_at(x, y, false);
+        self.tabs[self.active_tab].select_line_at_cursor();
+        AppResult::Redraw
+    }
+
     pub fn right_click_at(&mut self, x: f32, y: f32) -> AppResult {
         println!("right_click_at: ({}, {}) scale={}", x, y, self.scale);
         if y >= layout::TAB_HEIGHT * self.scale {
@@ -837,7 +843,10 @@ impl App {
         if let Some(tab) = self.tabs.get(tab_index) {
             self.state.renaming_tab = Some(tab_index);
             self.state.rename_buffer = tab.title().to_string();
-            println!("renaming_tab set to {:?}, buffer='{}'", self.state.renaming_tab, self.state.rename_buffer);
+            println!(
+                "renaming_tab set to {:?}, buffer='{}'",
+                self.state.renaming_tab, self.state.rename_buffer
+            );
         }
     }
 

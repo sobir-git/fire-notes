@@ -15,13 +15,13 @@ mod text_buffer;
 mod theme;
 
 use app::App;
-use persistence::{load_window_state, save_session_state, save_window_state, WindowState};
 use glutin::config::ConfigTemplateBuilder;
 use glutin::context::{ContextApi, ContextAttributesBuilder, PossiblyCurrentContext};
 use glutin::display::GetGlDisplay;
 use glutin::prelude::*;
 use glutin::surface::{Surface, SurfaceAttributesBuilder, WindowSurface};
 use glutin_winit::DisplayBuilder;
+use persistence::{WindowState, load_window_state, save_session_state, save_window_state};
 use raw_window_handle::HasWindowHandle;
 use std::ffi::CString;
 use std::num::NonZeroU32;
@@ -62,6 +62,7 @@ struct AppHandler {
     mouse_pressed: bool,
     last_click_time: Option<Instant>,
     last_click_pos: Option<(f64, f64)>,
+    click_count: u32,
 }
 
 struct AppState {
@@ -80,6 +81,7 @@ impl AppHandler {
             mouse_pressed: false,
             last_click_time: None,
             last_click_pos: None,
+            click_count: 0,
         }
     }
 }
@@ -408,69 +410,79 @@ impl ApplicationHandler for AppHandler {
                 state: button_state,
                 button,
                 ..
-            } => {
-                match button {
-                    MouseButton::Left => {
-                        if button_state == ElementState::Pressed {
-                            self.mouse_pressed = true;
-                            let now = Instant::now();
-                            let mut is_double_click = false;
+            } => match button {
+                MouseButton::Left => {
+                    if button_state == ElementState::Pressed {
+                        self.mouse_pressed = true;
+                        let now = Instant::now();
+                        let mut is_consecutive_click = false;
 
-                            if let Some(last_time) = self.last_click_time {
-                                if now.duration_since(last_time).as_millis() < 500 {
-                                    if let Some((last_x, last_y)) = self.last_click_pos {
-                                        let dist = ((self.mouse_position.0 - last_x).powi(2)
-                                            + (self.mouse_position.1 - last_y).powi(2))
-                                        .sqrt();
-                                        if dist < 5.0 {
-                                            is_double_click = true;
-                                        }
+                        if let Some(last_time) = self.last_click_time {
+                            if now.duration_since(last_time).as_millis() < 500 {
+                                if let Some((last_x, last_y)) = self.last_click_pos {
+                                    let dist = ((self.mouse_position.0 - last_x).powi(2)
+                                        + (self.mouse_position.1 - last_y).powi(2))
+                                    .sqrt();
+                                    if dist < 5.0 {
+                                        is_consecutive_click = true;
                                     }
                                 }
                             }
+                        }
 
-                            let result = if is_double_click {
-                                let r = state.app.handle_double_click(
+                        if is_consecutive_click {
+                            self.click_count += 1;
+                        } else {
+                            self.click_count = 1;
+                        }
+
+                        self.last_click_time = Some(now);
+                        self.last_click_pos = Some(self.mouse_position);
+
+                        let result = match self.click_count {
+                            2 => state.app.handle_double_click(
+                                self.mouse_position.0 as f32,
+                                self.mouse_position.1 as f32,
+                            ),
+                            3 => {
+                                let res = state.app.handle_triple_click(
                                     self.mouse_position.0 as f32,
                                     self.mouse_position.1 as f32,
                                 );
-                                self.last_click_time = None;
-                                r
-                            } else {
+                                self.click_count = 0; // Reset after triple click
+                                res
+                            }
+                            _ => {
                                 let shift = self.modifiers.shift_key();
-                                let r = state.app.click_at(
+                                state.app.click_at(
                                     self.mouse_position.0 as f32,
                                     self.mouse_position.1 as f32,
                                     shift,
-                                );
-                                self.last_click_time = Some(now);
-                                self.last_click_pos = Some(self.mouse_position);
-                                r
-                            };
-
-                            if result.needs_redraw() {
-                                state.window.request_redraw();
+                                )
                             }
-                        } else {
-                            self.mouse_pressed = false;
-                            state.app.end_drag();
-                        }
-                    }
-                    MouseButton::Right | MouseButton::Other(2) | MouseButton::Middle
-                        if button_state == ElementState::Pressed =>
-                    {
-                        println!("Right-click detected at {:?}", self.mouse_position);
-                        let result = state.app.right_click_at(
-                            self.mouse_position.0 as f32,
-                            self.mouse_position.1 as f32,
-                        );
+                        };
+
                         if result.needs_redraw() {
                             state.window.request_redraw();
                         }
+                    } else {
+                        self.mouse_pressed = false;
+                        state.app.end_drag();
                     }
-                    _ => {}
                 }
-            }
+                MouseButton::Right | MouseButton::Other(2) | MouseButton::Middle
+                    if button_state == ElementState::Pressed =>
+                {
+                    println!("Right-click detected at {:?}", self.mouse_position);
+                    let result = state
+                        .app
+                        .right_click_at(self.mouse_position.0 as f32, self.mouse_position.1 as f32);
+                    if result.needs_redraw() {
+                        state.window.request_redraw();
+                    }
+                }
+                _ => {}
+            },
 
             WindowEvent::RedrawRequested => {
                 state.app.render();
