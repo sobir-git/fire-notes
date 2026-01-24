@@ -237,6 +237,19 @@ impl ApplicationHandler for AppHandler {
                             event_loop.exit();
                             return;
                         }
+                        Key::Character(c)
+                            if ctrl
+                                && c.as_str().len() == 1
+                                && c.as_str().chars().next().unwrap().is_ascii_digit() =>
+                        {
+                            let digit = c.as_str().chars().next().unwrap();
+                            if digit == '0' {
+                                crate::app::AppResult::Ok
+                            } else {
+                                let index = digit.to_digit(10).unwrap() as usize - 1;
+                                state.app.go_to_tab(index)
+                            }
+                        }
                         Key::Character(c) if ctrl && c.as_str() == "n" => state.app.new_tab(),
                         Key::Character(c) if ctrl && c.as_str() == "w" => {
                             state.app.close_current_tab()
@@ -252,6 +265,7 @@ impl ApplicationHandler for AppHandler {
                         Key::Character(c) if ctrl && c.as_str() == "a" => {
                             state.app.handle_select_all()
                         }
+                        Key::Named(NamedKey::Tab) if ctrl && shift => state.app.previous_tab(),
                         Key::Named(NamedKey::Tab) if ctrl => state.app.next_tab(),
                         Key::Named(NamedKey::Backspace) => state.app.handle_backspace(),
                         Key::Named(NamedKey::Delete) => state.app.handle_delete(),

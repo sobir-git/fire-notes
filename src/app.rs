@@ -499,6 +499,28 @@ impl App {
         AppResult::Redraw
     }
 
+    pub fn previous_tab(&mut self) -> AppResult {
+        if self.tabs.is_empty() {
+            return AppResult::Ok;
+        }
+        if self.active_tab == 0 {
+            self.active_tab = self.tabs.len() - 1;
+        } else {
+            self.active_tab -= 1;
+        }
+        self.auto_scroll();
+        AppResult::Redraw
+    }
+
+    pub fn go_to_tab(&mut self, index: usize) -> AppResult {
+        if index >= self.tabs.len() {
+            return AppResult::Ok;
+        }
+        self.active_tab = index;
+        self.auto_scroll();
+        AppResult::Redraw
+    }
+
     // =========================================================================
     // Text editing
     // =========================================================================
