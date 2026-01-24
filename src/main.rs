@@ -229,6 +229,11 @@ impl ApplicationHandler for AppHandler {
 
                     let result = match &event.logical_key {
                         Key::Named(NamedKey::Escape) => {
+                            let result = state.app.cancel_rename();
+                            if result.needs_redraw() {
+                                state.window.request_redraw();
+                                return;
+                            }
                             event_loop.exit();
                             return;
                         }
@@ -238,6 +243,9 @@ impl ApplicationHandler for AppHandler {
                         }
                         Key::Character(c) if ctrl && c.as_str() == "s" => state.app.save_current(),
                         Key::Character(c) if ctrl && c.as_str() == "o" => state.app.open_file(),
+                        Key::Character(c) if ctrl && c.as_str().eq_ignore_ascii_case("r") => {
+                            state.app.rename_current()
+                        }
                         Key::Character(c) if ctrl && c.as_str() == "c" => state.app.handle_copy(),
                         Key::Character(c) if ctrl && c.as_str() == "x" => state.app.handle_cut(),
                         Key::Character(c) if ctrl && c.as_str() == "v" => state.app.handle_paste(),
@@ -247,7 +255,14 @@ impl ApplicationHandler for AppHandler {
                         Key::Named(NamedKey::Tab) if ctrl => state.app.next_tab(),
                         Key::Named(NamedKey::Backspace) => state.app.handle_backspace(),
                         Key::Named(NamedKey::Delete) => state.app.handle_delete(),
-                        Key::Named(NamedKey::Enter) => state.app.handle_char('\n'),
+                        Key::Named(NamedKey::Enter) => {
+                            let result = state.app.confirm_rename();
+                            if result.needs_redraw() {
+                                result
+                            } else {
+                                state.app.handle_char('\n')
+                            }
+                        }
                         Key::Named(NamedKey::ArrowLeft) => {
                             if ctrl {
                                 state.app.move_cursor_word_left(shift)
@@ -377,50 +392,65 @@ impl ApplicationHandler for AppHandler {
                 button,
                 ..
             } => {
-                if button == MouseButton::Left {
-                    if button_state == ElementState::Pressed {
-                        self.mouse_pressed = true;
-                        let now = Instant::now();
-                        let mut is_double_click = false;
+                match button {
+                    MouseButton::Left => {
+                        if button_state == ElementState::Pressed {
+                            self.mouse_pressed = true;
+                            let now = Instant::now();
+                            let mut is_double_click = false;
 
-                        if let Some(last_time) = self.last_click_time {
-                            if now.duration_since(last_time).as_millis() < 500 {
-                                if let Some((last_x, last_y)) = self.last_click_pos {
-                                    let dist = ((self.mouse_position.0 - last_x).powi(2)
-                                        + (self.mouse_position.1 - last_y).powi(2))
-                                    .sqrt();
-                                    if dist < 5.0 {
-                                        is_double_click = true;
+                            if let Some(last_time) = self.last_click_time {
+                                if now.duration_since(last_time).as_millis() < 500 {
+                                    if let Some((last_x, last_y)) = self.last_click_pos {
+                                        let dist = ((self.mouse_position.0 - last_x).powi(2)
+                                            + (self.mouse_position.1 - last_y).powi(2))
+                                        .sqrt();
+                                        if dist < 5.0 {
+                                            is_double_click = true;
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        let result = if is_double_click {
-                            let r = state.app.handle_double_click(
-                                self.mouse_position.0 as f32,
-                                self.mouse_position.1 as f32,
-                            );
-                            self.last_click_time = None;
-                            r
+                            let result = if is_double_click {
+                                let r = state.app.handle_double_click(
+                                    self.mouse_position.0 as f32,
+                                    self.mouse_position.1 as f32,
+                                );
+                                self.last_click_time = None;
+                                r
+                            } else {
+                                let shift = self.modifiers.shift_key();
+                                let r = state.app.click_at(
+                                    self.mouse_position.0 as f32,
+                                    self.mouse_position.1 as f32,
+                                    shift,
+                                );
+                                self.last_click_time = Some(now);
+                                self.last_click_pos = Some(self.mouse_position);
+                                r
+                            };
+
+                            if result.needs_redraw() {
+                                state.window.request_redraw();
+                            }
                         } else {
-                            let shift = self.modifiers.shift_key();
-                            let r = state.app.click_at(
-                                self.mouse_position.0 as f32,
-                                self.mouse_position.1 as f32,
-                                shift,
-                            );
-                            self.last_click_time = Some(now);
-                            self.last_click_pos = Some(self.mouse_position);
-                            r
-                        };
-
+                            self.mouse_pressed = false;
+                        }
+                    }
+                    MouseButton::Right | MouseButton::Other(2) | MouseButton::Middle
+                        if button_state == ElementState::Pressed =>
+                    {
+                        println!("Right-click detected at {:?}", self.mouse_position);
+                        let result = state.app.right_click_at(
+                            self.mouse_position.0 as f32,
+                            self.mouse_position.1 as f32,
+                        );
                         if result.needs_redraw() {
                             state.window.request_redraw();
                         }
-                    } else {
-                        self.mouse_pressed = false;
                     }
+                    _ => {}
                 }
             }
 

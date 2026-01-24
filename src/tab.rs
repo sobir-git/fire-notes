@@ -1,6 +1,6 @@
 //! Tab state - represents a single open file
 
-use crate::persistence::TabState;
+use crate::persistence::{self, TabState};
 use crate::text_buffer::TextBuffer;
 use native_dialog::FileDialog;
 use std::fs;
@@ -34,11 +34,12 @@ impl Tab {
 
     pub fn from_file(path: PathBuf) -> Option<Self> {
         let content = fs::read_to_string(&path).ok()?;
-        let title = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("Unknown")
-            .to_string();
+        let title = persistence::load_note_title(&path).unwrap_or_else(|| {
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("Unknown")
+                .to_string()
+        });
 
         Some(Self {
             buffer: TextBuffer::from_str(&content),
@@ -83,17 +84,17 @@ impl Tab {
         };
 
         if fs::write(&path, self.buffer.content()).is_ok() {
+            let _ = persistence::save_note_title(&path, &self.title);
             self.modified = false;
         }
     }
 
     /// Auto-save to data directory (silent, no dialog)
     pub fn auto_save(&mut self) {
-        use crate::persistence;
-
         // If we have a path, save there
         if let Some(ref path) = self.path {
             let _ = fs::write(path, self.buffer.content());
+            let _ = persistence::save_note_title(path, &self.title);
             self.modified = false;
             return;
         }
@@ -102,7 +103,7 @@ impl Tab {
         let filename = persistence::generate_note_filename();
         if let Ok(path) = persistence::save_note(&filename, self.buffer.content()) {
             self.path = Some(path.clone());
-            self.title = filename;
+            let _ = persistence::save_note_title(&path, &self.title);
             self.modified = false;
         }
     }
@@ -119,6 +120,13 @@ impl Tab {
 
     pub fn title(&self) -> &str {
         &self.title
+    }
+
+    pub fn set_title(&mut self, title: String) {
+        self.title = title;
+        if let Some(path) = &self.path {
+            let _ = persistence::save_note_title(path, &self.title);
+        }
     }
 
     pub fn content(&self) -> &str {

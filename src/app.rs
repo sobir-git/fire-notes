@@ -27,13 +27,15 @@ impl AppResult {
 struct EditorState {
     cursor_visible: bool,
     last_cursor_blink: Instant,
-    hovered_tab: Option<usize>,
+    hovered_tab_index: Option<usize>,
     hovered_plus: bool,
     is_dragging_scrollbar: bool,
     last_drag_scroll: Instant,
     last_mouse_x: f32,
     last_mouse_y: f32,
     tab_scroll_x: f32,
+    renaming_tab: Option<usize>,
+    rename_buffer: String,
 }
 
 impl EditorState {
@@ -41,13 +43,15 @@ impl EditorState {
         Self {
             cursor_visible: true,
             last_cursor_blink: Instant::now(),
-            hovered_tab: None,
+            hovered_tab_index: None,
             hovered_plus: false,
             is_dragging_scrollbar: false,
             last_drag_scroll: Instant::now(),
             last_mouse_x: 0.0,
             last_mouse_y: 0.0,
             tab_scroll_x: 0.0,
+            renaming_tab: None,
+            rename_buffer: String::new(),
         }
     }
 
@@ -153,7 +157,13 @@ impl App {
             .tabs
             .iter()
             .enumerate()
-            .map(|(i, t)| (t.title(), i == self.active_tab))
+            .map(|(i, t)| {
+                if Some(i) == self.state.renaming_tab {
+                    (self.state.rename_buffer.as_str(), i == self.active_tab)
+                } else {
+                    (t.title(), i == self.active_tab)
+                }
+            })
             .collect();
 
         let current_tab = &self.tabs[self.active_tab];
@@ -162,8 +172,9 @@ impl App {
             &tab_info,
             current_tab,
             self.state.cursor_visible,
-            self.state.hovered_tab,
+            self.state.hovered_tab_index,
             self.state.hovered_plus,
+            self.state.renaming_tab,
         );
     }
 
@@ -228,25 +239,25 @@ impl App {
             .map(|(i, t)| (t.title(), i == self.active_tab))
             .collect();
 
-        let prev_hovered_tab = self.state.hovered_tab;
+        let prev_hovered_tab_index = self.state.hovered_tab_index;
         let prev_hovered_plus = self.state.hovered_plus;
 
         match self.renderer.hit_test(x, y, &tab_info) {
             Some(HitTestResult::Tab(i)) => {
-                self.state.hovered_tab = Some(i);
+                self.state.hovered_tab_index = Some(i);
                 self.state.hovered_plus = false;
             }
             Some(HitTestResult::NewTabButton) => {
-                self.state.hovered_tab = None;
+                self.state.hovered_tab_index = None;
                 self.state.hovered_plus = true;
             }
             None => {
-                self.state.hovered_tab = None;
+                self.state.hovered_tab_index = None;
                 self.state.hovered_plus = false;
             }
         }
 
-        if prev_hovered_tab != self.state.hovered_tab
+        if prev_hovered_tab_index != self.state.hovered_tab_index
             || prev_hovered_plus != self.state.hovered_plus
         {
             AppResult::Redraw
@@ -347,6 +358,33 @@ impl App {
         AppResult::Redraw
     }
 
+    pub fn right_click_at(&mut self, x: f32, y: f32) -> AppResult {
+        println!("right_click_at: ({}, {}) scale={}", x, y, self.scale);
+        if y >= layout::TAB_HEIGHT * self.scale {
+            println!("Click below tab bar");
+            return AppResult::Ok;
+        }
+
+        let tab_info: Vec<(&str, bool)> = self
+            .tabs
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (t.title(), i == self.active_tab))
+            .collect();
+
+        match self.renderer.hit_test(x, y, &tab_info) {
+            Some(HitTestResult::Tab(i)) => {
+                println!("Hit tab {}", i);
+                self.start_rename(i);
+                AppResult::Redraw
+            }
+            r => {
+                println!("Hit test result: {:?}", r);
+                AppResult::Ok
+            }
+        }
+    }
+
     pub fn drag_at(&mut self, x: f32, y: f32) -> AppResult {
         if self.state.is_dragging_scrollbar {
             let start_y = layout::TAB_HEIGHT * self.scale;
@@ -407,6 +445,13 @@ impl App {
     // =========================================================================
 
     pub fn handle_char(&mut self, ch: char) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            if !ch.is_control() {
+                self.state.rename_buffer.push(ch);
+                return AppResult::Redraw;
+            }
+            return AppResult::Ok;
+        }
         self.tabs[self.active_tab].insert_char(ch);
         self.tabs[self.active_tab].auto_save();
         self.auto_scroll();
@@ -414,6 +459,10 @@ impl App {
     }
 
     pub fn handle_backspace(&mut self) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            self.state.rename_buffer.pop();
+            return AppResult::Redraw;
+        }
         self.tabs[self.active_tab].backspace();
         self.tabs[self.active_tab].auto_save();
         self.auto_scroll();
@@ -421,6 +470,10 @@ impl App {
     }
 
     pub fn handle_delete(&mut self) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            self.state.rename_buffer.clear();
+            return AppResult::Redraw;
+        }
         self.tabs[self.active_tab].delete();
         self.auto_scroll();
         AppResult::Redraw
@@ -431,60 +484,90 @@ impl App {
     // =========================================================================
 
     pub fn move_cursor_left(&mut self, selecting: bool) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
         self.tabs[self.active_tab].move_left(selecting);
         self.auto_scroll();
         AppResult::Redraw
     }
 
     pub fn move_cursor_right(&mut self, selecting: bool) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
         self.tabs[self.active_tab].move_right(selecting);
         self.auto_scroll();
         AppResult::Redraw
     }
 
     pub fn move_cursor_word_left(&mut self, selecting: bool) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
         self.tabs[self.active_tab].move_word_left(selecting);
         self.auto_scroll();
         AppResult::Redraw
     }
 
     pub fn move_cursor_word_right(&mut self, selecting: bool) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
         self.tabs[self.active_tab].move_word_right(selecting);
         self.auto_scroll();
         AppResult::Redraw
     }
 
     pub fn move_cursor_up(&mut self, selecting: bool) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
         self.tabs[self.active_tab].move_up(selecting);
         self.auto_scroll();
         AppResult::Redraw
     }
 
     pub fn move_cursor_down(&mut self, selecting: bool) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
         self.tabs[self.active_tab].move_down(selecting);
         self.auto_scroll();
         AppResult::Redraw
     }
 
     pub fn move_cursor_to_line_start(&mut self, selecting: bool) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
         self.tabs[self.active_tab].move_to_line_start(selecting);
         self.auto_scroll();
         AppResult::Redraw
     }
 
     pub fn move_cursor_to_line_end(&mut self, selecting: bool) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
         self.tabs[self.active_tab].move_to_line_end(selecting);
         self.auto_scroll();
         AppResult::Redraw
     }
 
     pub fn move_cursor_to_start(&mut self, selecting: bool) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
         self.tabs[self.active_tab].move_to_start(selecting);
         self.auto_scroll();
         AppResult::Redraw
     }
 
     pub fn move_cursor_to_end(&mut self, selecting: bool) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
         self.tabs[self.active_tab].move_to_end(selecting);
         self.auto_scroll();
         AppResult::Redraw
@@ -539,6 +622,11 @@ impl App {
         }
     }
 
+    pub fn rename_current(&mut self) -> AppResult {
+        self.start_rename(self.active_tab);
+        AppResult::Redraw
+    }
+
     // =========================================================================
     // Clipboard operations
     // =========================================================================
@@ -576,6 +664,9 @@ impl App {
     }
 
     pub fn handle_select_all(&mut self) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
         self.tabs[self.active_tab].select_all();
         AppResult::Redraw
     }
@@ -585,6 +676,9 @@ impl App {
     // =========================================================================
 
     pub fn handle_move_lines_up(&mut self) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
         if self.tabs[self.active_tab].move_lines_up() {
             self.tabs[self.active_tab].auto_save();
             self.auto_scroll();
@@ -594,6 +688,9 @@ impl App {
     }
 
     pub fn handle_move_lines_down(&mut self) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
         if self.tabs[self.active_tab].move_lines_down() {
             self.tabs[self.active_tab].auto_save();
             self.auto_scroll();
@@ -607,6 +704,9 @@ impl App {
     // =========================================================================
 
     pub fn handle_undo(&mut self) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
         if self.tabs[self.active_tab].undo() {
             self.tabs[self.active_tab].auto_save();
             self.auto_scroll();
@@ -616,6 +716,9 @@ impl App {
     }
 
     pub fn handle_redo(&mut self) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
         if self.tabs[self.active_tab].redo() {
             self.tabs[self.active_tab].auto_save();
             self.auto_scroll();
@@ -629,9 +732,43 @@ impl App {
     // =========================================================================
 
     pub fn toggle_word_wrap(&mut self) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
         self.tabs[self.active_tab].toggle_word_wrap();
         self.auto_scroll();
         AppResult::Redraw
+    }
+
+    pub fn start_rename(&mut self, tab_index: usize) {
+        println!("start_rename: tab_index={}", tab_index);
+        if let Some(tab) = self.tabs.get(tab_index) {
+            self.state.renaming_tab = Some(tab_index);
+            self.state.rename_buffer = tab.title().to_string();
+            println!("renaming_tab set to {:?}, buffer='{}'", self.state.renaming_tab, self.state.rename_buffer);
+        }
+    }
+
+    pub fn confirm_rename(&mut self) -> AppResult {
+        if let Some(tab_index) = self.state.renaming_tab.take() {
+            let title = self.state.rename_buffer.trim();
+            if !title.is_empty() {
+                if let Some(tab) = self.tabs.get_mut(tab_index) {
+                    tab.set_title(title.to_string());
+                }
+            }
+            self.state.rename_buffer.clear();
+            return AppResult::Redraw;
+        }
+        AppResult::Ok
+    }
+
+    pub fn cancel_rename(&mut self) -> AppResult {
+        if self.state.renaming_tab.take().is_some() {
+            self.state.rename_buffer.clear();
+            return AppResult::Redraw;
+        }
+        AppResult::Ok
     }
 
     pub fn export_session_state(&self) -> persistence::SessionState {

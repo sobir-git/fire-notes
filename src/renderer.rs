@@ -131,6 +131,7 @@ impl Renderer {
         cursor_visible: bool,
         hovered_tab_index: Option<usize>,
         hovered_plus: bool,
+        renaming_tab: Option<usize>,
     ) {
         let (width, height, _) = (self.width, self.height, self.scale);
 
@@ -146,7 +147,7 @@ impl Renderer {
         );
 
         // Draw tab bar
-        self.draw_tab_bar(tabs, hovered_tab_index, hovered_plus);
+        self.draw_tab_bar(tabs, hovered_tab_index, hovered_plus, renaming_tab);
 
         // Draw text content
         self.draw_text_content(current_tab, cursor_visible);
@@ -200,6 +201,7 @@ impl Renderer {
         tabs: &[(&str, bool)],
         hovered_tab_index: Option<usize>,
         hovered_plus: bool,
+        renaming_tab: Option<usize>,
     ) {
         let tab_height = 40.0 * self.scale;
         let tab_padding = 16.0 * self.scale;
@@ -266,6 +268,23 @@ impl Renderer {
             let text_x = Self::snap_to_pixel(x + tab_padding);
             let text_y = Self::snap_to_pixel(tab_height / 2.0 + 5.0 * self.scale);
             let _ = self.canvas.fill_text(text_x, text_y, title, &text_paint);
+
+            // Draw underline if this tab is being renamed
+            if Some(i) == renaming_tab {
+                let metrics = self.canvas.measure_text(text_x, text_y, title, &text_paint).unwrap_or_default();
+                let text_width = metrics.width();
+                let underline_y = text_y + 12.0 * self.scale;
+                let mut underline_path = Path::new();
+                underline_path.move_to(text_x, underline_y);
+                underline_path.line_to(text_x + text_width, underline_y);
+                let mut underline_paint = Paint::color(Color::rgbf(
+                    self.theme.fg.0,
+                    self.theme.fg.1,
+                    self.theme.fg.2,
+                ));
+                underline_paint.set_line_width(2.0 * self.scale);
+                self.canvas.stroke_path(&underline_path, &underline_paint);
+            }
 
             x += tab_width + 1.0;
         }

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -33,7 +34,39 @@ fn is_internal_state_file(path: &PathBuf) -> bool {
             | Some("session_state.txt")
             | Some("window_state.json")
             | Some("session_state.json")
+            | Some("note_metadata.json")
     )
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct NoteMetadata {
+    titles: HashMap<String, String>,
+}
+
+fn note_metadata_path() -> PathBuf {
+    get_data_dir().join("note_metadata.json")
+}
+
+fn load_note_metadata() -> NoteMetadata {
+    let content = fs::read_to_string(note_metadata_path()).ok();
+    content
+        .and_then(|payload| serde_json::from_str::<NoteMetadata>(&payload).ok())
+        .unwrap_or_default()
+}
+
+pub fn load_note_title(path: &PathBuf) -> Option<String> {
+    let metadata = load_note_metadata();
+    metadata.titles.get(&path.to_string_lossy().to_string()).cloned()
+}
+
+pub fn save_note_title(path: &PathBuf, title: &str) -> std::io::Result<()> {
+    let mut metadata = load_note_metadata();
+    metadata
+        .titles
+        .insert(path.to_string_lossy().to_string(), title.to_string());
+    let payload = serde_json::to_string_pretty(&metadata)
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))?;
+    fs::write(note_metadata_path(), payload)
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
