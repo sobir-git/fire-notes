@@ -3,6 +3,15 @@ set -e
 
 echo "🔥 Installing Fire Notes..."
 
+# 0. Backup notes/state
+BACKUP_ROOT="$HOME/.local/share/fire-notes-backups"
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+mkdir -p "$BACKUP_ROOT"
+if [ -d "$HOME/.local/share/fire-notes" ]; then
+  echo "🛟 Backing up installed notes/state..."
+  tar -czf "$BACKUP_ROOT/fire-notes_installed_$TIMESTAMP.tar.gz" -C "$HOME/.local/share" fire-notes
+fi
+
 # 1. Build release binary
 echo "📦 Building release binary..."
 cargo build --release
