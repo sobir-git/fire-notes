@@ -436,6 +436,7 @@ impl ApplicationHandler for AppHandler {
                             }
                         } else {
                             self.mouse_pressed = false;
+                            state.app.end_drag();
                         }
                     }
                     MouseButton::Right | MouseButton::Other(2) | MouseButton::Middle

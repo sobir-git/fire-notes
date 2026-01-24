@@ -30,6 +30,7 @@ struct EditorState {
     hovered_tab_index: Option<usize>,
     hovered_plus: bool,
     is_dragging_scrollbar: bool,
+    dragging_tab_index: Option<usize>,
     last_drag_scroll: Instant,
     last_mouse_x: f32,
     last_mouse_y: f32,
@@ -46,6 +47,7 @@ impl EditorState {
             hovered_tab_index: None,
             hovered_plus: false,
             is_dragging_scrollbar: false,
+            dragging_tab_index: None,
             last_drag_scroll: Instant::now(),
             last_mouse_x: 0.0,
             last_mouse_y: 0.0,
@@ -281,6 +283,7 @@ impl App {
                 Some(HitTestResult::Tab(i)) => {
                     self.active_tab = i;
                     self.auto_scroll();
+                    self.state.dragging_tab_index = Some(i);
                     return AppResult::Redraw;
                 }
                 Some(HitTestResult::NewTabButton) => {
@@ -386,6 +389,11 @@ impl App {
     }
 
     pub fn drag_at(&mut self, x: f32, y: f32) -> AppResult {
+        if y < layout::TAB_HEIGHT * self.scale {
+            if let Some(drag_index) = self.state.dragging_tab_index {
+                return self.reorder_tab_at(x, y, drag_index);
+            }
+        }
         if self.state.is_dragging_scrollbar {
             let start_y = layout::TAB_HEIGHT * self.scale;
             let scroll_area_height = self.height - layout::TAB_HEIGHT * self.scale;
@@ -406,6 +414,57 @@ impl App {
         }
 
         self.click_at(x, y, true)
+    }
+
+    pub fn end_drag(&mut self) {
+        self.state.dragging_tab_index = None;
+        self.state.is_dragging_scrollbar = false;
+    }
+
+    fn reorder_tab_at(&mut self, x: f32, y: f32, from_index: usize) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            return AppResult::Ok;
+        }
+
+        let tab_info: Vec<(&str, bool)> = self
+            .tabs
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (t.title(), i == self.active_tab))
+            .collect();
+
+        if let Some(HitTestResult::Tab(to_index)) = self.renderer.hit_test(x, y, &tab_info) {
+            if to_index != from_index && from_index < self.tabs.len() && to_index < self.tabs.len()
+            {
+                let tab = self.tabs.remove(from_index);
+                self.tabs.insert(to_index, tab);
+
+                if self.active_tab == from_index {
+                    self.active_tab = to_index;
+                } else if from_index < self.active_tab && to_index >= self.active_tab {
+                    self.active_tab = self.active_tab.saturating_sub(1);
+                } else if from_index > self.active_tab && to_index <= self.active_tab {
+                    self.active_tab = (self.active_tab + 1).min(self.tabs.len() - 1);
+                }
+
+                if let Some(rename_index) = self.state.renaming_tab {
+                    self.state.renaming_tab = if rename_index == from_index {
+                        Some(to_index)
+                    } else if from_index < rename_index && to_index >= rename_index {
+                        Some(rename_index - 1)
+                    } else if from_index > rename_index && to_index <= rename_index {
+                        Some(rename_index + 1)
+                    } else {
+                        Some(rename_index)
+                    };
+                }
+
+                self.state.dragging_tab_index = Some(to_index);
+                return AppResult::Redraw;
+            }
+        }
+
+        AppResult::Ok
     }
 
     // =========================================================================
