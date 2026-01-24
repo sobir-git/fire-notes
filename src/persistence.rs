@@ -2,15 +2,35 @@ use std::fs;
 use std::path::PathBuf;
 
 /// Get the data directory for storing notes
-/// Returns ~/.local/share/fire-notes on Linux
+/// - If running from source (binary path contains "target") or FIRE_NOTES_DEV is set: ./tmp/fire-notes
+/// - If installed (binary path elsewhere): ~/.local/share/fire-notes
 pub fn get_data_dir() -> PathBuf {
-    let base = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
-    base.join("fire-notes")
+    // Check if we should use local storage
+    let use_local_storage = std::env::var("FIRE_NOTES_DEV").is_ok()
+        || std::env::current_exe()
+            .map(|p| p.iter().any(|c| c == "target"))
+            .unwrap_or(false);
+
+    if use_local_storage {
+        // Local/Dev mode: use local tmp directory relative to current working directory
+        // We use current_dir because when running via 'cargo run', it sets CWD to project root
+        let mut path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        path.push("tmp");
+        path.push("fire-notes");
+        path
+    } else {
+        // Installed mode: use system data directory
+        let base = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
+        base.join("fire-notes")
+    }
 }
 
 /// Ensure the data directory exists
 pub fn ensure_data_dir() -> std::io::Result<PathBuf> {
     let dir = get_data_dir();
+    if let Some(parent) = dir.parent() {
+        fs::create_dir_all(parent)?;
+    }
     fs::create_dir_all(&dir)?;
     Ok(dir)
 }
