@@ -550,6 +550,17 @@ impl App {
         AppResult::Redraw
     }
 
+    pub fn handle_delete_word_left(&mut self) -> AppResult {
+        if self.state.renaming_tab.is_some() {
+            self.state.rename_buffer.clear();
+            return AppResult::Redraw;
+        }
+        self.tabs[self.active_tab].delete_word_left();
+        self.tabs[self.active_tab].auto_save();
+        self.auto_scroll();
+        AppResult::Redraw
+    }
+
     pub fn handle_delete(&mut self) -> AppResult {
         if self.state.renaming_tab.is_some() {
             self.state.rename_buffer.clear();

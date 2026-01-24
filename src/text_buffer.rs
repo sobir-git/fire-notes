@@ -180,6 +180,69 @@ impl TextBuffer {
         }
     }
 
+    pub fn delete_word_left(&mut self) {
+        if self.has_selection() {
+            self.delete_selection();
+            return;
+        }
+
+        if self.cursor == 0 {
+            return;
+        }
+
+        let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
+        let is_whitespace = |c: char| c.is_whitespace();
+        let category_check = |c: char| -> u8 {
+            if is_word_char(c) {
+                1
+            } else if is_whitespace(c) {
+                2
+            } else {
+                3
+            }
+        };
+
+        let mut start = self.cursor;
+
+        // Count consecutive spaces immediately before cursor
+        let mut space_count = 0;
+        while start > 0 && category_check(self.rope.char(start - 1)) == 2 {
+            start -= 1;
+            space_count += 1;
+        }
+
+        if space_count > 1 {
+            // More than one space: treat spaces as a word, already deleted above
+        } else {
+            // Single space or not space: normal word deletion
+            // If we deleted a single space, restore it and do normal word deletion
+            if space_count == 1 {
+                start = self.cursor;
+            }
+            // Normal word deletion: skip trailing whitespace first
+            while start > 0 && category_check(self.rope.char(start - 1)) == 2 {
+                start -= 1;
+            }
+
+            if start > 0 {
+                let category = category_check(self.rope.char(start - 1));
+                while start > 0 && category_check(self.rope.char(start - 1)) == category {
+                    start -= 1;
+                }
+            }
+        }
+
+        if start < self.cursor {
+            let removed_text = self.rope.slice(start..self.cursor).to_string();
+            self.record_action(Action::Delete {
+                start,
+                text: removed_text,
+            });
+            self.rope.remove(start..self.cursor);
+            self.cursor = start;
+        }
+    }
+
     pub fn delete(&mut self) {
         if self.has_selection() {
             self.delete_selection();

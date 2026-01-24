@@ -16,7 +16,15 @@ fi
 echo "📦 Building release binary..."
 cargo build --release
 
-# 2. Install binary
+# 2. Stop running fire-notes instances and install binary
+echo "🛑 Stopping any running fire-notes instances..."
+if pkill -f fire-notes; then
+  echo "Stopped fire-notes processes."
+  sleep 1
+else
+  echo "No running fire-notes processes found."
+fi
+
 echo "🚀 Installing to ~/.local/bin..."
 mkdir -p ~/.local/bin
 cp target/release/fire-notes ~/.local/bin/
@@ -43,3 +51,12 @@ EOF
 
 echo "✅ Done! You may need to log out and back in specifically if you use Wayland or some DEs."
 echo "You can launch it by typing 'fire-notes' in a new terminal or finding it in your app launcher."
+
+# 5. Relaunch fire-notes if it was running
+echo "🚀 Relaunching fire-notes..."
+if command -v fire-notes >/dev/null 2>&1; then
+  fire-notes &
+  echo "Fire Notes relaunched in the background."
+else
+  echo "fire-notes command not found in PATH."
+fi

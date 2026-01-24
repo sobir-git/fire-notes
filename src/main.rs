@@ -267,6 +267,9 @@ impl ApplicationHandler for AppHandler {
                         }
                         Key::Named(NamedKey::Tab) if ctrl && shift => state.app.previous_tab(),
                         Key::Named(NamedKey::Tab) if ctrl => state.app.next_tab(),
+                        Key::Named(NamedKey::Backspace) if ctrl => {
+                            state.app.handle_delete_word_left()
+                        }
                         Key::Named(NamedKey::Backspace) => state.app.handle_backspace(),
                         Key::Named(NamedKey::Delete) => state.app.handle_delete(),
                         Key::Named(NamedKey::Enter) => {
