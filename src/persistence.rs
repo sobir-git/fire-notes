@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
@@ -25,6 +26,149 @@ pub fn get_data_dir() -> PathBuf {
     }
 }
 
+fn is_internal_state_file(path: &PathBuf) -> bool {
+    matches!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some("window_state.txt")
+            | Some("session_state.txt")
+            | Some("window_state.json")
+            | Some("session_state.json")
+    )
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct WindowState {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+fn window_state_path() -> PathBuf {
+    get_data_dir().join("window_state.json")
+}
+
+fn window_state_legacy_path() -> PathBuf {
+    get_data_dir().join("window_state.txt")
+}
+
+pub fn load_window_state() -> Option<WindowState> {
+    if let Ok(content) = fs::read_to_string(window_state_path()) {
+        if let Ok(state) = serde_json::from_str::<WindowState>(&content) {
+            if state.width > 0 && state.height > 0 {
+                return Some(state);
+            }
+        }
+    }
+
+    let content = fs::read_to_string(window_state_legacy_path()).ok()?;
+    let mut parts = content.split_whitespace();
+    let x = parts.next()?.parse().ok()?;
+    let y = parts.next()?.parse().ok()?;
+    let width: u32 = parts.next()?.parse().ok()?;
+    let height: u32 = parts.next()?.parse().ok()?;
+    if width == 0 || height == 0 {
+        return None;
+    }
+    Some(WindowState {
+        x,
+        y,
+        width,
+        height,
+    })
+}
+
+pub fn save_window_state(state: WindowState) -> std::io::Result<()> {
+    let dir = ensure_data_dir()?;
+    let path = dir.join("window_state.json");
+    let payload = serde_json::to_string_pretty(&state)
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))?;
+    fs::write(path, payload)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TabState {
+    pub path: PathBuf,
+    pub cursor_line: usize,
+    pub cursor_col: usize,
+    pub scroll_offset: usize,
+    pub scroll_offset_x: f32,
+    pub word_wrap: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionState {
+    pub active_path: Option<PathBuf>,
+    pub tabs: Vec<TabState>,
+}
+
+fn session_state_path() -> PathBuf {
+    get_data_dir().join("session_state.json")
+}
+
+fn session_state_legacy_path() -> PathBuf {
+    get_data_dir().join("session_state.txt")
+}
+
+pub fn load_session_state() -> Option<SessionState> {
+    if let Ok(content) = fs::read_to_string(session_state_path()) {
+        if let Ok(state) = serde_json::from_str::<SessionState>(&content) {
+            if !state.tabs.is_empty() || state.active_path.is_some() {
+                return Some(state);
+            }
+        }
+    }
+
+    let content = fs::read_to_string(session_state_legacy_path()).ok()?;
+    let mut active_path = None;
+    let mut tabs = Vec::new();
+
+    for line in content.lines() {
+        let mut parts = line.split('\t');
+        let tag = parts.next()?;
+        match tag {
+            "active" => {
+                if let Some(path) = parts.next() {
+                    if !path.is_empty() {
+                        active_path = Some(PathBuf::from(path));
+                    }
+                }
+            }
+            "tab" => {
+                let path = PathBuf::from(parts.next()?);
+                let cursor_line = parts.next()?.parse().ok()?;
+                let cursor_col = parts.next()?.parse().ok()?;
+                let scroll_offset = parts.next()?.parse().ok()?;
+                let scroll_offset_x = parts.next()?.parse().ok()?;
+                let word_wrap = parts.next()?.parse().ok()?;
+                tabs.push(TabState {
+                    path,
+                    cursor_line,
+                    cursor_col,
+                    scroll_offset,
+                    scroll_offset_x,
+                    word_wrap,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    if active_path.is_none() && tabs.is_empty() {
+        return None;
+    }
+
+    Some(SessionState { active_path, tabs })
+}
+
+pub fn save_session_state(state: &SessionState) -> std::io::Result<()> {
+    let dir = ensure_data_dir()?;
+    let path = dir.join("session_state.json");
+    let payload = serde_json::to_string_pretty(state)
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))?;
+    fs::write(path, payload)
+}
+
 /// Ensure the data directory exists
 pub fn ensure_data_dir() -> std::io::Result<PathBuf> {
     let dir = get_data_dir();
@@ -46,7 +190,10 @@ pub fn list_notes() -> std::io::Result<Vec<PathBuf>> {
     for entry in fs::read_dir(&dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.is_file() && path.extension().map_or(false, |e| e == "md" || e == "txt") {
+        if path.is_file()
+            && path.extension().map_or(false, |e| e == "md" || e == "txt")
+            && !is_internal_state_file(&path)
+        {
             notes.push(path);
         }
     }

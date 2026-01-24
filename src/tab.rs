@@ -1,5 +1,6 @@
 //! Tab state - represents a single open file
 
+use crate::persistence::TabState;
 use crate::text_buffer::TextBuffer;
 use native_dialog::FileDialog;
 use std::fs;
@@ -349,6 +350,25 @@ impl Tab {
             return true;
         }
         false
+    }
+
+    pub fn export_state(&self) -> Option<TabState> {
+        let path = self.path.clone()?;
+        Some(TabState {
+            path,
+            cursor_line: self.cursor_line(),
+            cursor_col: self.cursor_col(),
+            scroll_offset: self.scroll_offset,
+            scroll_offset_x: self.scroll_offset_x,
+            word_wrap: self.word_wrap,
+        })
+    }
+
+    pub fn apply_state(&mut self, state: &TabState) {
+        self.set_cursor_position(state.cursor_line, state.cursor_col, false);
+        self.scroll_offset = state.scroll_offset;
+        self.scroll_offset_x = state.scroll_offset_x.max(0.0);
+        self.word_wrap = state.word_wrap;
     }
 }
 

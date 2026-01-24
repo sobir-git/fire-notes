@@ -79,19 +79,46 @@ impl App {
         let renderer = Renderer::new(gl_renderer, width, height, scale);
         let clipboard = Clipboard::new().ok();
 
-        // Load existing notes or create a new one
-        let tabs = match persistence::list_notes() {
-            Ok(note_paths) if !note_paths.is_empty() => note_paths
-                .into_iter()
-                .filter_map(|path| Tab::from_file(path))
-                .collect(),
-            _ => vec![Tab::new_untitled()],
+        let (mut tabs, active_tab) = if let Some(session) = persistence::load_session_state() {
+            let mut loaded_tabs = Vec::new();
+            let mut active_index = None;
+
+            for (index, tab_state) in session.tabs.iter().enumerate() {
+                if let Some(mut tab) = Tab::from_file(tab_state.path.clone()) {
+                    tab.apply_state(tab_state);
+                    if session
+                        .active_path
+                        .as_ref()
+                        .map(|path| path == &tab_state.path)
+                        .unwrap_or(false)
+                    {
+                        active_index = Some(index);
+                    }
+                    loaded_tabs.push(tab);
+                }
+            }
+
+            let active_tab = active_index.unwrap_or(0);
+            (loaded_tabs, active_tab)
+        } else {
+            let tabs = match persistence::list_notes() {
+                Ok(note_paths) if !note_paths.is_empty() => note_paths
+                    .into_iter()
+                    .filter_map(|path| Tab::from_file(path))
+                    .collect(),
+                _ => vec![Tab::new_untitled()],
+            };
+            (tabs, 0)
         };
+
+        if tabs.is_empty() {
+            tabs.push(Tab::new_untitled());
+        }
 
         Self {
             renderer,
             tabs,
-            active_tab: 0,
+            active_tab,
             width,
             height,
             scale,
@@ -605,6 +632,19 @@ impl App {
         self.tabs[self.active_tab].toggle_word_wrap();
         self.auto_scroll();
         AppResult::Redraw
+    }
+
+    pub fn export_session_state(&self) -> persistence::SessionState {
+        let active_path = self
+            .tabs
+            .get(self.active_tab)
+            .and_then(|tab| tab.path().cloned());
+        let tabs = self
+            .tabs
+            .iter()
+            .filter_map(|tab| tab.export_state())
+            .collect();
+        persistence::SessionState { active_path, tabs }
     }
 }
 

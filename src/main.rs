@@ -15,6 +15,7 @@ mod text_buffer;
 mod theme;
 
 use app::App;
+use persistence::{load_window_state, save_session_state, save_window_state, WindowState};
 use glutin::config::ConfigTemplateBuilder;
 use glutin::context::{ContextApi, ContextAttributesBuilder, PossiblyCurrentContext};
 use glutin::display::GetGlDisplay;
@@ -26,7 +27,7 @@ use std::ffi::CString;
 use std::num::NonZeroU32;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
+use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
@@ -38,6 +39,20 @@ fn main() {
 
     let mut handler = AppHandler::new();
     event_loop.run_app(&mut handler).expect("Event loop failed");
+}
+
+fn capture_window_state(window: &Window) -> Option<WindowState> {
+    let position = window.outer_position().ok()?;
+    let size = window.inner_size();
+    if size.width == 0 || size.height == 0 {
+        return None;
+    }
+    Some(WindowState {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+    })
 }
 
 struct AppHandler {
@@ -76,9 +91,14 @@ impl ApplicationHandler for AppHandler {
         }
 
         // Window attributes - smaller for easier testing
-        let window_attrs = WindowAttributes::default()
-            .with_title("Fire Notes")
-            .with_inner_size(LogicalSize::new(600.0, 400.0));
+        let mut window_attrs = WindowAttributes::default().with_title("Fire Notes");
+        if let Some(saved) = load_window_state() {
+            window_attrs = window_attrs
+                .with_inner_size(PhysicalSize::new(saved.width, saved.height))
+                .with_position(PhysicalPosition::new(saved.x, saved.y));
+        } else {
+            window_attrs = window_attrs.with_inner_size(LogicalSize::new(600.0, 400.0));
+        }
 
         // OpenGL config with 4x MSAA for smooth text and edges
         let config_template = ConfigTemplateBuilder::new()
@@ -174,6 +194,11 @@ impl ApplicationHandler for AppHandler {
 
         match event {
             WindowEvent::CloseRequested => {
+                if let Some(window_state) = capture_window_state(&state.window) {
+                    let _ = save_window_state(window_state);
+                }
+                let session_state = state.app.export_session_state();
+                let _ = save_session_state(&session_state);
                 event_loop.exit();
             }
 
