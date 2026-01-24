@@ -502,18 +502,25 @@ impl Renderer {
                 }
             }
 
+            // Check if cursor is at end of line (after last character)
+            if line_has_cursor && cursor_col_idx == current_col && cursor_rect.is_none() {
+                cursor_rect = Some((x_offset, current_y));
+            }
+
             // Move to next line
             current_y += line_height;
         }
 
         // Handle cursor if it's past the last line (e.g. empty file or cursor at very end)
         if cursor_rect.is_none() && scroll_offset <= cursor_line_idx {
-            // Fallback if not found in loop (e.g. empty line at end of file not in lines iter?)
-            // TextBuffer len_lines covers it?
-            // If cursor_line_idx >= lines.len() + scroll_offset ...
-            // Let's rely on the loop finding it via line iteration.
-            // Exception: Empty file. text.lines() is empty.
-            if text.is_empty() {
+            // If cursor is beyond the last line, place it at the beginning of a new line
+            if cursor_line_idx >= lines.len() {
+                // Calculate y position for the cursor line
+                let cursor_y = start_y + (cursor_line_idx as f32 * line_height);
+                cursor_rect = Some((padding - scroll_x, cursor_y));
+            }
+            // Exception: Empty file
+            else if text.is_empty() {
                 cursor_rect = Some((padding - scroll_x, start_y));
             }
         }

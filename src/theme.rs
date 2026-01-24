@@ -31,18 +31,18 @@ impl Theme {
     /// Dark theme (default)
     pub fn dark() -> Self {
         Self {
-            bg: (0.11, 0.11, 0.13),             // #1c1c21
-            fg: (0.9, 0.9, 0.9),                // #e6e6e6
-            tab_active: (0.18, 0.18, 0.22),     // #2e2e38
-            tab_inactive: (0.13, 0.13, 0.16),   // #212126
-            tab_hover: (0.22, 0.22, 0.26),      // #383842
-            tab_active_border: (0.4, 0.7, 1.0), // Blue accent
-            button_bg: (0.15, 0.15, 0.18),      // Slightly lighter than inactive
-            button_hover: (0.22, 0.22, 0.26),   // Matches tab hover
-            button_fg: (0.4, 0.7, 1.0),         // Blue accent for the + sign
-            border: (0.18, 0.18, 0.22),         // Matches active tab bg
-            cursor: (0.4, 0.7, 1.0),            // Light blue
-            selection: (0.3, 0.5, 0.8, 0.4),    // Blue with alpha
+            bg: (0.0, 0.0, 0.0),                 // Pure black
+            fg: (1.0, 0.9, 0.8),                // Warm off-white
+            tab_active: (0.15, 0.05, 0.05),     // Dark deep red
+            tab_inactive: (0.05, 0.02, 0.02),   // Very dark red/black
+            tab_hover: (0.25, 0.1, 0.05),       // Fire orange-red
+            tab_active_border: (1.0, 0.4, 0.0), // Bright fire orange
+            button_bg: (0.1, 0.03, 0.03),      // Dark ember
+            button_hover: (0.3, 0.1, 0.05),     // Glowing coal
+            button_fg: (1.0, 0.6, 0.0),         // Flame yellow-orange
+            border: (0.2, 0.05, 0.05),          // Deep ember border
+            cursor: (1.0, 0.8, 0.0),            // Bright yellow flame
+            selection: (1.0, 0.3, 0.0, 0.3),    // Transparent orange fire
         }
     }
 
