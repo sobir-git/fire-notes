@@ -1,0 +1,216 @@
+//! Tab bar rendering
+
+use crate::theme::Theme;
+use femtovg::{Canvas, Color, FontId, Paint, Path, renderer::OpenGl};
+
+/// Snap a coordinate to the pixel grid to prevent blurry text rendering.
+#[inline]
+fn snap_to_pixel(coord: f32) -> f32 {
+    coord.round()
+}
+
+pub struct TabBarRenderer<'a> {
+    canvas: &'a mut Canvas<OpenGl>,
+    fonts: &'a [FontId],
+    theme: &'a Theme,
+    width: f32,
+    scale: f32,
+    tab_scroll_x: f32,
+}
+
+impl<'a> TabBarRenderer<'a> {
+    pub fn new(
+        canvas: &'a mut Canvas<OpenGl>,
+        fonts: &'a [FontId],
+        theme: &'a Theme,
+        width: f32,
+        scale: f32,
+        tab_scroll_x: f32,
+    ) -> Self {
+        Self {
+            canvas,
+            fonts,
+            theme,
+            width,
+            scale,
+            tab_scroll_x,
+        }
+    }
+
+    pub fn draw(
+        &mut self,
+        tabs: &[(&str, bool)],
+        hovered_tab_index: Option<usize>,
+        hovered_plus: bool,
+        renaming_tab: Option<usize>,
+    ) {
+        let tab_height = 40.0 * self.scale;
+        let tab_padding = 16.0 * self.scale;
+
+        // Save state for clipping
+        self.canvas.save();
+
+        // Clip to tab bar area to prevent drawing outside when scrolling
+        self.canvas
+            .intersect_scissor(0.0, 0.0, self.width, tab_height);
+
+        let mut x = -self.tab_scroll_x;
+
+        for (i, (title, is_active)) in tabs.iter().enumerate() {
+            let tab_width =
+                (title.len() as f32 * 9.0 * self.scale + tab_padding * 2.0).max(100.0 * self.scale);
+
+            // Optimization: skip drawing off-screen tabs
+            if x + tab_width < 0.0 {
+                x += tab_width + 1.0;
+                continue;
+            }
+
+            // Tab background
+            let mut path = Path::new();
+            path.rect(x, 0.0, tab_width, tab_height);
+
+            let color = if *is_active {
+                Color::rgbf(
+                    self.theme.tab_active.0,
+                    self.theme.tab_active.1,
+                    self.theme.tab_active.2,
+                )
+            } else if Some(i) == hovered_tab_index {
+                Color::rgbf(
+                    self.theme.tab_hover.0,
+                    self.theme.tab_hover.1,
+                    self.theme.tab_hover.2,
+                )
+            } else {
+                Color::rgbf(
+                    self.theme.tab_inactive.0,
+                    self.theme.tab_inactive.1,
+                    self.theme.tab_inactive.2,
+                )
+            };
+
+            self.canvas.fill_path(&path, &Paint::color(color));
+
+            // Active tab indicator (top line)
+            if *is_active {
+                let mut indicator = Path::new();
+                indicator.rect(x, 0.0, tab_width, 2.0 * self.scale);
+                self.canvas.fill_path(
+                    &indicator,
+                    &Paint::color(Color::rgbf(
+                        self.theme.tab_active_border.0,
+                        self.theme.tab_active_border.1,
+                        self.theme.tab_active_border.2,
+                    )),
+                );
+            }
+
+            // Tab title
+            let mut text_paint = Paint::color(Color::rgbf(
+                self.theme.fg.0,
+                self.theme.fg.1,
+                self.theme.fg.2,
+            ));
+            text_paint.set_font(self.fonts);
+            text_paint.set_font_size(14.0 * self.scale);
+
+            let text_x = snap_to_pixel(x + tab_padding);
+            let text_y = snap_to_pixel(tab_height / 2.0 + 5.0 * self.scale);
+            let _ = self.canvas.fill_text(text_x, text_y, title, &text_paint);
+
+            // Draw underline if this tab is being renamed
+            if Some(i) == renaming_tab {
+                let metrics = self
+                    .canvas
+                    .measure_text(text_x, text_y, title, &text_paint)
+                    .unwrap_or_default();
+                let text_width = metrics.width();
+                let underline_y = text_y + 12.0 * self.scale;
+                let mut underline_path = Path::new();
+                underline_path.move_to(text_x, underline_y);
+                underline_path.line_to(text_x + text_width, underline_y);
+                let mut underline_paint = Paint::color(Color::rgbf(
+                    self.theme.fg.0,
+                    self.theme.fg.1,
+                    self.theme.fg.2,
+                ));
+                underline_paint.set_line_width(2.0 * self.scale);
+                self.canvas.stroke_path(&underline_path, &underline_paint);
+            }
+
+            x += tab_width + 1.0;
+        }
+
+        // New Tab (+) button
+        self.draw_new_tab_button(x, tab_height, hovered_plus);
+
+        // Restore state (clear clipping)
+        self.canvas.restore();
+
+        // Tab bar bottom line
+        self.draw_bottom_line(tab_height);
+    }
+
+    fn draw_new_tab_button(&mut self, x: f32, tab_height: f32, hovered: bool) {
+        let new_tab_button_size = 28.0 * self.scale;
+        let button_x = x + 8.0 * self.scale;
+        let button_y = (tab_height - new_tab_button_size) / 2.0;
+
+        let mut btn_path = Path::new();
+        btn_path.rounded_rect(
+            button_x,
+            button_y,
+            new_tab_button_size,
+            new_tab_button_size,
+            4.0 * self.scale,
+        );
+
+        let btn_color = if hovered {
+            Color::rgbf(
+                self.theme.button_hover.0,
+                self.theme.button_hover.1,
+                self.theme.button_hover.2,
+            )
+        } else {
+            Color::rgbf(
+                self.theme.button_bg.0,
+                self.theme.button_bg.1,
+                self.theme.button_bg.2,
+            )
+        };
+        self.canvas.fill_path(&btn_path, &Paint::color(btn_color));
+
+        // Draw + symbol
+        let mut plus_paint = Paint::color(Color::rgbf(
+            self.theme.button_fg.0,
+            self.theme.button_fg.1,
+            self.theme.button_fg.2,
+        ));
+        plus_paint.set_font(self.fonts);
+        plus_paint.set_font_size(20.0 * self.scale);
+
+        // Measure to center perfectly
+        let mut plus_width = 0.0;
+        if let Ok(metrics) = self.canvas.measure_text(0.0, 0.0, "+", &plus_paint) {
+            plus_width = metrics.width();
+        }
+
+        let plus_x = snap_to_pixel(button_x + (new_tab_button_size - plus_width) / 2.0);
+        let plus_y = snap_to_pixel(button_y + new_tab_button_size / 2.0 + 7.0 * self.scale);
+        let _ = self.canvas.fill_text(plus_x, plus_y, "+", &plus_paint);
+    }
+
+    fn draw_bottom_line(&mut self, tab_height: f32) {
+        let mut line = Path::new();
+        line.rect(0.0, tab_height, self.width, 1.0);
+        self.canvas.fill_path(
+            &line,
+            &Paint::color(Color::rgbf(
+                self.theme.border.0,
+                self.theme.border.1,
+                self.theme.border.2,
+            )),
+        );
+    }
+}
