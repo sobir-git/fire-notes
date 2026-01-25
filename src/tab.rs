@@ -283,6 +283,11 @@ impl Tab {
         self.buffer.set_cursor_by_line_col(line, col, selecting);
     }
 
+    /// Convert visual column to character column (accounting for tab width)
+    pub fn visual_col_to_char_col(&self, line: usize, visual_col: usize) -> usize {
+        self.buffer.visual_col_to_char_col(line, visual_col)
+    }
+
     #[allow(dead_code)]
     pub fn selection_range(&self) -> Option<(usize, usize)> {
         self.buffer.selection_range()

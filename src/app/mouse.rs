@@ -157,7 +157,10 @@ impl App {
         let char_width = self.renderer.get_char_width();
         let scroll_offset_x = self.tabs[self.active_tab].scroll_offset_x();
         let relative_x = (x - layout::PADDING * self.scale + scroll_offset_x).max(0.0);
-        let clicked_col = (relative_x / char_width).round() as usize;
+        let clicked_visual_col = (relative_x / char_width).round() as usize;
+        
+        // Convert visual column to character column (accounting for tab width)
+        let clicked_col = self.tabs[self.active_tab].visual_col_to_char_col(clicked_line, clicked_visual_col);
 
         self.tabs[self.active_tab].set_cursor_position(clicked_line, clicked_col, selecting);
 
@@ -339,7 +342,10 @@ impl App {
         let char_width = self.renderer.get_char_width();
         let scroll_offset_x = self.tabs[self.active_tab].scroll_offset_x();
         let relative_x = (x - layout::PADDING * self.scale + scroll_offset_x).max(0.0);
-        let clicked_col = (relative_x / char_width).round() as usize;
+        let clicked_visual_col = (relative_x / char_width).round() as usize;
+        
+        // Convert visual column to character column (accounting for tab width)
+        let clicked_col = self.tabs[self.active_tab].visual_col_to_char_col(clicked_line, clicked_visual_col);
 
         self.tabs[self.active_tab].set_cursor_position(clicked_line, clicked_col, true);
         self.auto_scroll();

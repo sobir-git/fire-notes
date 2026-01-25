@@ -182,28 +182,6 @@ impl App {
         layout::TAB_HEIGHT * self.scale + layout::PADDING * self.scale
     }
 
-    /// Convert screen coordinates to text coordinates (line, col).
-    /// Returns None if the click is outside the text area.
-    #[allow(dead_code)]
-    fn screen_to_text_coords(&self, x: f32, y: f32) -> Option<(usize, usize)> {
-        let content_start_y = self.content_start_y();
-        if y < content_start_y {
-            return None;
-        }
-
-        let relative_y = y - content_start_y;
-        let visual_line = (relative_y / (layout::LINE_HEIGHT * self.scale)).floor() as isize;
-        let scroll_offset = self.tabs[self.active_tab].scroll_offset();
-        let line = (scroll_offset as isize + visual_line).max(0) as usize;
-
-        let char_width = self.renderer.get_char_width();
-        let scroll_offset_x = self.tabs[self.active_tab].scroll_offset_x();
-        let relative_x = (x - layout::PADDING * self.scale + scroll_offset_x).max(0.0);
-        let col = (relative_x / char_width).round() as usize;
-
-        Some((line, col))
-    }
-
     pub(crate) fn auto_scroll(&mut self) {
         let visible = self.visible_lines();
         let visible_width = self.width - layout::PADDING * 2.0 * self.scale;

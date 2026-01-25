@@ -14,6 +14,7 @@ mod tab;
 mod text_buffer;
 mod theme;
 mod ui;
+mod visual_position;
 
 use app::App;
 use glutin::config::ConfigTemplateBuilder;
@@ -226,7 +227,13 @@ impl ApplicationHandler for AppHandler {
                 self.modifiers = mods.state();
             }
 
-            WindowEvent::KeyboardInput { event, .. } => {
+            WindowEvent::KeyboardInput { event, is_synthetic, .. } => {
+                // Ignore synthetic key events generated when window gains/loses focus
+                // This prevents Tab insertion from Alt+Tab window switching
+                if is_synthetic {
+                    return;
+                }
+                
                 if event.state == ElementState::Pressed {
                     let ctrl = self.modifiers.control_key();
                     let shift = self.modifiers.shift_key();
@@ -337,6 +344,7 @@ impl ApplicationHandler for AppHandler {
                                 }
                             }
                         }
+                        Key::Named(NamedKey::Tab) => state.app.handle_char('\t'),
                         Key::Named(NamedKey::Space) => state.app.handle_char(' '),
                         Key::Named(NamedKey::PageUp) => state.app.page_up(shift),
                         Key::Named(NamedKey::PageDown) => state.app.page_down(shift),

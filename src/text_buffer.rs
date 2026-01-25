@@ -634,6 +634,17 @@ impl TextBuffer {
         (line, col)
     }
 
+    /// Convert visual column (accounting for tab width) to character column
+    /// Returns the character column that corresponds to the given visual column
+    pub fn visual_col_to_char_col(&self, line: usize, visual_col: usize) -> usize {
+        if line >= self.rope.len_lines() {
+            return 0;
+        }
+        
+        let line_content = self.rope.line(line).as_str().unwrap_or("");
+        crate::visual_position::visual_col_to_char_col(line_content, visual_col)
+    }
+
     /// Move current line or selected lines up one line
     pub fn move_lines_up(&mut self) {
         let (start_line, _end_line) = self.get_line_range_to_move();
