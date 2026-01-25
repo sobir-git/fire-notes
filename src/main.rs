@@ -93,8 +93,10 @@ impl ApplicationHandler for AppHandler {
             return;
         }
 
-        // Window attributes - smaller for easier testing
-        let mut window_attrs = WindowAttributes::default().with_title("Fire Notes");
+        // Window attributes - borderless for custom title bar
+        let mut window_attrs = WindowAttributes::default()
+            .with_title("Fire Notes")
+            .with_decorations(false);
         if let Some(saved) = load_window_state() {
             window_attrs = window_attrs
                 .with_inner_size(PhysicalSize::new(saved.width, saved.height))
@@ -409,6 +411,23 @@ impl ApplicationHandler for AppHandler {
                     .handle_mouse_move(self.mouse_position.0 as f32, self.mouse_position.1 as f32)
                     .needs_redraw();
 
+                // Update cursor based on hovered resize edge
+                use winit::window::CursorIcon;
+                let cursor = match state.app.hovered_resize_edge() {
+                    Some(crate::ui::ResizeEdge::North) | Some(crate::ui::ResizeEdge::South) => {
+                        CursorIcon::NsResize
+                    }
+                    Some(crate::ui::ResizeEdge::East) | Some(crate::ui::ResizeEdge::West) => {
+                        CursorIcon::EwResize
+                    }
+                    Some(crate::ui::ResizeEdge::NorthEast)
+                    | Some(crate::ui::ResizeEdge::SouthWest) => CursorIcon::NeswResize,
+                    Some(crate::ui::ResizeEdge::NorthWest)
+                    | Some(crate::ui::ResizeEdge::SouthEast) => CursorIcon::NwseResize,
+                    None => CursorIcon::Default,
+                };
+                state.window.set_cursor(cursor);
+
                 if self.mouse_pressed {
                     if state
                         .app
@@ -477,6 +496,50 @@ impl ApplicationHandler for AppHandler {
                                 )
                             }
                         };
+
+                        // Handle window control actions
+                        match &result {
+                            crate::app::AppResult::WindowMinimize => {
+                                state.window.set_minimized(true);
+                            }
+                            crate::app::AppResult::WindowMaximize => {
+                                let is_maximized = state.window.is_maximized();
+                                state.window.set_maximized(!is_maximized);
+                            }
+                            crate::app::AppResult::WindowClose => {
+                                if let Some(window_state) = capture_window_state(&state.window) {
+                                    let _ = save_window_state(window_state);
+                                }
+                                let session_state = state.app.export_session_state();
+                                let _ = save_session_state(&session_state);
+                                event_loop.exit();
+                                return;
+                            }
+                            crate::app::AppResult::WindowDrag => {
+                                let _ = state.window.drag_window();
+                                // OS takes over, reset our state
+                                self.mouse_pressed = false;
+                                state.app.end_drag();
+                            }
+                            crate::app::AppResult::WindowResize(edge) => {
+                                use winit::window::ResizeDirection;
+                                let direction = match edge {
+                                    crate::ui::ResizeEdge::North => ResizeDirection::North,
+                                    crate::ui::ResizeEdge::South => ResizeDirection::South,
+                                    crate::ui::ResizeEdge::East => ResizeDirection::East,
+                                    crate::ui::ResizeEdge::West => ResizeDirection::West,
+                                    crate::ui::ResizeEdge::NorthEast => ResizeDirection::NorthEast,
+                                    crate::ui::ResizeEdge::NorthWest => ResizeDirection::NorthWest,
+                                    crate::ui::ResizeEdge::SouthEast => ResizeDirection::SouthEast,
+                                    crate::ui::ResizeEdge::SouthWest => ResizeDirection::SouthWest,
+                                };
+                                let _ = state.window.drag_resize_window(direction);
+                                // OS takes over, reset our state
+                                self.mouse_pressed = false;
+                                state.app.end_drag();
+                            }
+                            _ => {}
+                        }
 
                         if result.needs_redraw() {
                             state.window.request_redraw();

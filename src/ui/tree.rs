@@ -3,13 +3,18 @@
 use super::tab_bar::TabBar;
 use super::scrollbar::{ScrollbarAction, ScrollbarWidget};
 use super::text_area::TextArea;
-use super::types::{UiAction, UiDragAction, UiHover, UiNode};
+use super::types::{ResizeEdge, UiAction, UiDragAction, UiHover, UiNode};
+
+const RESIZE_BORDER: f32 = 5.0;
 
 #[derive(Debug, Clone)]
 pub struct UiTree {
     pub tab_bar: TabBar,
     pub scrollbar: ScrollbarWidget,
     pub text_area: TextArea,
+    width: f32,
+    height: f32,
+    scale: f32,
 }
 
 impl UiTree {
@@ -18,6 +23,29 @@ impl UiTree {
             tab_bar: TabBar::new(width, scale, tab_scroll_x, tabs),
             scrollbar: ScrollbarWidget::new(width, height, scale),
             text_area: TextArea::new(width, height, scale),
+            width,
+            height,
+            scale,
+        }
+    }
+
+    fn detect_resize_edge(&self, x: f32, y: f32) -> Option<ResizeEdge> {
+        let border = RESIZE_BORDER * self.scale;
+        let near_left = x < border;
+        let near_right = x > self.width - border;
+        let near_top = y < border;
+        let near_bottom = y > self.height - border;
+
+        match (near_left, near_right, near_top, near_bottom) {
+            (true, _, true, _) => Some(ResizeEdge::NorthWest),
+            (true, _, _, true) => Some(ResizeEdge::SouthWest),
+            (_, true, true, _) => Some(ResizeEdge::NorthEast),
+            (_, true, _, true) => Some(ResizeEdge::SouthEast),
+            (true, _, _, _) => Some(ResizeEdge::West),
+            (_, true, _, _) => Some(ResizeEdge::East),
+            (_, _, true, _) => Some(ResizeEdge::North),
+            (_, _, _, true) => Some(ResizeEdge::South),
+            _ => None,
         }
     }
 
@@ -30,9 +58,19 @@ impl UiTree {
         scroll_offset: usize,
     ) -> UiHover {
         let mut hover = UiHover::default();
+
+        // Check resize edges first
+        if let Some(edge) = self.detect_resize_edge(x, y) {
+            hover.resize_edge = Some(edge);
+            return hover;
+        }
+
         match self.tab_bar.hit_test(x, y) {
             UiNode::Tab(i) => hover.tab_index = Some(i),
             UiNode::NewTabButton => hover.plus = true,
+            UiNode::WindowMinimize => hover.window_minimize = true,
+            UiNode::WindowMaximize => hover.window_maximize = true,
+            UiNode::WindowClose => hover.window_close = true,
             _ => {}
         }
 
@@ -56,7 +94,11 @@ impl UiTree {
         match self.hit_test(x, y) {
             UiNode::Tab(i) if !selecting => UiAction::ActivateTab(i),
             UiNode::NewTabButton if !selecting => UiAction::NewTab,
-            UiNode::TabBar if !selecting => UiAction::TabBarClick,
+            UiNode::TabBar if !selecting => UiAction::WindowDrag,
+            UiNode::WindowMinimize if !selecting => UiAction::WindowMinimize,
+            UiNode::WindowMaximize if !selecting => UiAction::WindowMaximize,
+            UiNode::WindowClose if !selecting => UiAction::WindowClose,
+            UiNode::WindowResizeEdge(edge) if !selecting => UiAction::WindowResize(edge),
             UiNode::Scrollbar => {
                 if selecting {
                     return UiAction::None;
@@ -103,12 +145,14 @@ impl UiTree {
         scroll_offset: usize,
     ) -> UiAction {
         match self.hit_test(x, y) {
-            UiNode::Tab(_) | UiNode::NewTabButton | UiNode::TabBar => {
+            UiNode::Tab(_) | UiNode::NewTabButton | UiNode::TabBar
+            | UiNode::WindowMinimize | UiNode::WindowMaximize | UiNode::WindowClose
+            | UiNode::WindowResizeEdge(_) => {
                 return self.click(x, y, total_lines, visible_lines, scroll_offset, false);
             }
             UiNode::Scrollbar => return UiAction::None,
             UiNode::TextArea => return UiAction::TextClick,
-            _ => return UiAction::None,
+            UiNode::None => return UiAction::None,
         }
     }
 
@@ -121,16 +165,23 @@ impl UiTree {
         scroll_offset: usize,
     ) -> UiAction {
         match self.hit_test(x, y) {
-            UiNode::Tab(_) | UiNode::NewTabButton | UiNode::TabBar => {
+            UiNode::Tab(_) | UiNode::NewTabButton | UiNode::TabBar
+            | UiNode::WindowMinimize | UiNode::WindowMaximize | UiNode::WindowClose
+            | UiNode::WindowResizeEdge(_) => {
                 return self.click(x, y, total_lines, visible_lines, scroll_offset, false);
             }
             UiNode::Scrollbar => return UiAction::None,
             UiNode::TextArea => return UiAction::TextClick,
-            _ => return UiAction::None,
+            UiNode::None => return UiAction::None,
         }
     }
 
     pub fn hit_test(&self, x: f32, y: f32) -> UiNode {
+        // Check resize edges first (highest priority for borderless window)
+        if let Some(edge) = self.detect_resize_edge(x, y) {
+            return UiNode::WindowResizeEdge(edge);
+        }
+
         if self.tab_bar.rect.contains(x, y) {
             return self.tab_bar.hit_test(x, y);
         }

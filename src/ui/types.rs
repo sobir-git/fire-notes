@@ -8,6 +8,10 @@ pub enum UiNode {
     Scrollbar,
     TextArea,
     TabBar,
+    WindowMinimize,
+    WindowMaximize,
+    WindowClose,
+    WindowResizeEdge(ResizeEdge),
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -15,6 +19,10 @@ pub struct UiHover {
     pub tab_index: Option<usize>,
     pub plus: bool,
     pub scrollbar: bool,
+    pub window_minimize: bool,
+    pub window_maximize: bool,
+    pub window_close: bool,
+    pub resize_edge: Option<ResizeEdge>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -25,7 +33,23 @@ pub enum UiAction {
     StartScrollbarDrag { drag_offset: f32 },
     ScrollbarJump { ratio: f32 },
     TextClick,
-    TabBarClick,
+    WindowMinimize,
+    WindowMaximize,
+    WindowClose,
+    WindowDrag,
+    WindowResize(ResizeEdge),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ResizeEdge {
+    North,
+    South,
+    East,
+    West,
+    NorthEast,
+    NorthWest,
+    SouthEast,
+    SouthWest,
 }
 
 #[derive(Debug, Clone, Copy)]

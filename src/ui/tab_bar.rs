@@ -14,12 +14,38 @@ pub struct TabBar {
     pub rect: Rect,
     pub tabs: Vec<TabMetrics>,
     pub new_tab_rect: Rect,
+    pub minimize_rect: Rect,
+    pub maximize_rect: Rect,
+    pub close_rect: Rect,
 }
 
 impl TabBar {
     pub fn new(width: f32, scale: f32, tab_scroll_x: f32, tabs: &[(&str, bool)]) -> Self {
         let tab_height = layout::TAB_HEIGHT * scale;
         let tab_padding = layout::TAB_PADDING * scale;
+        let button_size = 28.0 * scale;
+        let button_margin = 8.0 * scale;
+        let button_y = (tab_height - button_size) / 2.0;
+
+        // Window control buttons on the right
+        let close_rect = Rect {
+            x: width - button_size - button_margin,
+            y: button_y,
+            width: button_size,
+            height: button_size,
+        };
+        let maximize_rect = Rect {
+            x: close_rect.x - button_size - 4.0 * scale,
+            y: button_y,
+            width: button_size,
+            height: button_size,
+        };
+        let minimize_rect = Rect {
+            x: maximize_rect.x - button_size - 4.0 * scale,
+            y: button_y,
+            width: button_size,
+            height: button_size,
+        };
 
         let mut current_x = -tab_scroll_x;
         let mut tab_metrics = Vec::with_capacity(tabs.len());
@@ -55,12 +81,26 @@ impl TabBar {
             },
             tabs: tab_metrics,
             new_tab_rect,
+            minimize_rect,
+            maximize_rect,
+            close_rect,
         }
     }
 
     pub fn hit_test(&self, x: f32, y: f32) -> UiNode {
         if !self.rect.contains(x, y) {
             return UiNode::None;
+        }
+
+        // Check window control buttons first (they're on top)
+        if self.close_rect.contains(x, y) {
+            return UiNode::WindowClose;
+        }
+        if self.maximize_rect.contains(x, y) {
+            return UiNode::WindowMaximize;
+        }
+        if self.minimize_rect.contains(x, y) {
+            return UiNode::WindowMinimize;
         }
 
         for tab in &self.tabs {

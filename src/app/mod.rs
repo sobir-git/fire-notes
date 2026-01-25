@@ -157,9 +157,12 @@ impl App {
             self.state.hovered_tab_index,
             self.state.hovered_plus,
             self.state.hovered_scrollbar,
-            self.state.is_dragging_scrollbar,
+            matches!(self.state.mouse_interaction, crate::app::state::MouseInteraction::ScrollbarDrag { .. }),
             self.state.renaming_tab,
             &self.state.typing_flame_positions,
+            self.state.hovered_window_minimize,
+            self.state.hovered_window_maximize,
+            self.state.hovered_window_close,
         );
     }
 
@@ -215,6 +218,10 @@ impl App {
             .enumerate()
             .map(|(i, t)| (t.title(), i == self.active_tab))
             .collect()
+    }
+
+    pub fn hovered_resize_edge(&self) -> Option<crate::ui::ResizeEdge> {
+        self.state.hovered_resize_edge
     }
 
     // =========================================================================

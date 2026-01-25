@@ -74,6 +74,9 @@ impl Renderer {
         dragging_scrollbar: bool,
         renaming_tab: Option<usize>,
         typing_flame_positions: &[(usize, usize, Instant)],
+        hovered_window_minimize: bool,
+        hovered_window_maximize: bool,
+        hovered_window_close: bool,
     ) {
         let (width, height) = (self.width, self.height);
 
@@ -98,7 +101,15 @@ impl Renderer {
                 self.scale,
                 self.tab_scroll_x,
             );
-            tab_bar.draw(tabs, hovered_tab_index, hovered_plus, renaming_tab);
+            tab_bar.draw(
+                tabs,
+                hovered_tab_index,
+                hovered_plus,
+                renaming_tab,
+                hovered_window_minimize,
+                hovered_window_maximize,
+                hovered_window_close,
+            );
         }
 
         // Draw text content
