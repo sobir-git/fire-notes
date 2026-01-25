@@ -106,28 +106,13 @@ impl<'a> TextContentRenderer<'a> {
             
             let line_bottom_y = y + line_height;
             
-            // Calculate visual x position accounting for tabs
-            let mut char_x = padding - scroll_x;
-            if line < text_lines.len() {
-                let line_content = text_lines[line];
-                char_x = crate::visual_position::char_col_to_visual_x(
-                    line_content,
-                    col,
-                    padding - scroll_x,
-                    char_width,
-                );
-                
-                // Center the flame on the character (or tab)
-                let ch = line_content.chars().nth(col).unwrap_or(' ');
-                let char_advance = if ch == '\t' { 
-                    crate::visual_position::TAB_WIDTH as f32 
-                } else { 
-                    1.0 
-                };
-                char_x += char_width * char_advance * 0.5;
+            // Calculate center visual x position accounting for tabs
+            let char_x = if line < text_lines.len() {
+                let visual_line = crate::visual_position::VisualLine::new(text_lines[line]);
+                visual_line.char_col_to_visual_center_x(col, padding - scroll_x, char_width)
             } else {
-                char_x += char_width * 0.5;
-            }
+                padding - scroll_x + char_width * 0.5
+            };
             
             let char_y = y + line_height * 0.5;
             char_positions.push((char_x, char_y, line_bottom_y, age));
@@ -250,23 +235,13 @@ impl<'a> TextContentRenderer<'a> {
                     };
 
                     // Collect position for each selected character (age = 0.0 for selection)
+                    let visual_line = crate::visual_position::VisualLine::new(line_content);
                     for col in start_col_in_line..end_col_in_line {
-                        // Calculate visual x position accounting for tabs
-                        let visual_x = crate::visual_position::char_col_to_visual_x(
-                            line_content,
+                        let char_x = visual_line.char_col_to_visual_center_x(
                             col,
                             padding - scroll_x,
                             char_width,
                         );
-                        
-                        // Center the flame on the character (or tab)
-                        let ch = line_content.chars().nth(col).unwrap_or(' ');
-                        let char_advance = if ch == '\t' { 
-                            crate::visual_position::TAB_WIDTH as f32 
-                        } else { 
-                            1.0 
-                        };
-                        let char_x = visual_x + (char_width * char_advance * 0.5);
                         let char_y = y + line_height * 0.5;
                         char_positions.push((char_x, char_y, line_bottom_y, 0.0));
                     }
@@ -306,12 +281,8 @@ impl<'a> TextContentRenderer<'a> {
 
         // Get line content for accurate x position (handles tabs)
         let line_content = text.lines().nth(cursor_line).unwrap_or("");
-        let x = crate::visual_position::char_col_to_visual_x(
-            line_content,
-            cursor_col,
-            padding - scroll_x,
-            char_width,
-        );
+        let visual_line = crate::visual_position::VisualLine::new(line_content);
+        let x = visual_line.char_col_to_visual_x(cursor_col, padding - scroll_x, char_width);
 
         Some((x, y))
     }
@@ -345,7 +316,7 @@ impl<'a> TextContentRenderer<'a> {
             };
 
             for ch in line.chars() {
-                let advance = if ch == '\t' { crate::visual_position::TAB_WIDTH } else { 1 };
+                let advance = crate::visual_position::get_char_visual_width(ch);
                 let char_w = char_width * advance as f32;
 
                 // Wrap check

@@ -285,7 +285,13 @@ impl Tab {
 
     /// Convert visual column to character column (accounting for tab width)
     pub fn visual_col_to_char_col(&self, line: usize, visual_col: usize) -> usize {
-        self.buffer.visual_col_to_char_col(line, visual_col)
+        // Get the line content and use VisualLine abstraction
+        if let Some(line_content) = self.content().lines().nth(line) {
+            let visual_line = crate::visual_position::VisualLine::new(line_content);
+            visual_line.visual_col_to_char_col(visual_col)
+        } else {
+            0
+        }
     }
 
     #[allow(dead_code)]
