@@ -372,43 +372,29 @@ impl ApplicationHandler for AppHandler {
             }
 
             WindowEvent::MouseWheel { delta, .. } => {
-                // LineDelta: discrete wheel notches (y typically ±1.0 to ±3.0)
-                // PixelDelta: smooth scrolling (touchpads, high-res wheels)
-                let scroll_amount = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => {
-                        // Each notch = 1 scroll action, ensure at least 1 if any movement
-                        let amt = -y as i32;
-                        if amt == 0 && y != 0.0 {
-                            -y.signum() as i32
-                        } else {
-                            amt
-                        }
-                    }
-                    MouseScrollDelta::PixelDelta(pos) => {
-                        // More sensitive: ~15px per scroll unit
-                        let amt = -(pos.y / 15.0) as i32;
-                        if amt == 0 && pos.y != 0.0 {
-                            -pos.y.signum() as i32
-                        } else {
-                            amt
-                        }
-                    }
-                };
+                use crate::app::ScrollInput;
 
-                let mut redraw = false;
-                for _ in 0..scroll_amount.abs() {
-                    let result = if scroll_amount > 0 {
-                        state.app.scroll_down()
-                    } else {
-                        state.app.scroll_up()
+                // Check if scrolling in tab bar area (horizontal scroll)
+                if state.app.is_mouse_in_tab_bar() {
+                    let scroll_delta = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => y * 30.0,
+                        MouseScrollDelta::PixelDelta(pos) => pos.y as f32 / 2.0,
                     };
+                    let result = state.app.scroll_tab_bar(scroll_delta);
                     if result.needs_redraw() {
-                        redraw = true;
+                        state.window.request_redraw();
                     }
-                }
+                } else {
+                    // Content area scrolling - use centralized scroll abstraction
+                    let scroll_input = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => ScrollInput::LineDelta(y),
+                        MouseScrollDelta::PixelDelta(pos) => ScrollInput::PixelDelta(pos.y as f32),
+                    };
 
-                if redraw {
-                    state.window.request_redraw();
+                    let result = state.app.handle_scroll_event(scroll_input);
+                    if result.needs_redraw() {
+                        state.window.request_redraw();
+                    }
                 }
             }
 
@@ -555,6 +541,7 @@ impl ApplicationHandler for AppHandler {
                     } else {
                         self.mouse_pressed = false;
                         state.app.end_drag();
+                        state.app.reset_scroll_state();
                     }
                 }
                 MouseButton::Right | MouseButton::Other(2) | MouseButton::Middle

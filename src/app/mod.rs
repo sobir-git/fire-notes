@@ -7,6 +7,7 @@ mod editing;
 mod clipboard;
 mod file;
 mod scroll;
+mod scroll_state;
 
 use std::time::Duration;
 
@@ -18,6 +19,7 @@ use crate::renderer::Renderer;
 use crate::tab::Tab;
 
 pub use state::AppResult;
+pub use scroll_state::{ScrollDirection, ScrollInput, ScrollState};
 use state::EditorState;
 
 pub struct App {
@@ -29,6 +31,7 @@ pub struct App {
     scale: f32,
     clipboard: Option<Clipboard>,
     state: EditorState,
+    scroll_state: ScrollState,
 }
 
 impl App {
@@ -86,6 +89,7 @@ impl App {
             scale,
             clipboard,
             state: EditorState::new(),
+            scroll_state: ScrollState::new(),
         }
     }
 
@@ -200,6 +204,54 @@ impl App {
 
     pub fn hovered_resize_edge(&self) -> Option<crate::ui::ResizeEdge> {
         self.state.hovered_resize_edge
+    }
+
+    /// Process a scroll event and apply it to the active tab
+    /// Returns whether a redraw is needed
+    pub fn handle_scroll_event(&mut self, input: ScrollInput) -> AppResult {
+        // Process scroll through state machine
+        let Some((direction, lines)) = self.scroll_state.process_scroll(input) else {
+            return AppResult::Ok; // First notch ignored or invalid input
+        };
+
+        // Apply scroll based on direction
+        match direction {
+            ScrollDirection::Up => {
+                for _ in 0..lines {
+                    self.tabs[self.active_tab].scroll_up(1);
+                }
+            }
+            ScrollDirection::Down => {
+                let visible = self.visible_lines();
+                for _ in 0..lines {
+                    self.tabs[self.active_tab].scroll_down(1, visible);
+                }
+            }
+        }
+
+        AppResult::Redraw
+    }
+
+    /// Check if mouse is in tab bar area
+    pub fn is_mouse_in_tab_bar(&self) -> bool {
+        self.state.last_mouse_y < layout::TAB_HEIGHT * self.scale
+    }
+
+    /// Scroll the tab bar horizontally
+    pub fn scroll_tab_bar(&mut self, delta: f32) -> AppResult {
+        if delta > 0.0 {
+            self.state.tab_scroll_x = (self.state.tab_scroll_x - delta.abs()).max(0.0);
+        } else {
+            let max_scroll = 1000.0; // TODO: Calculate based on tabs width
+            self.state.tab_scroll_x = (self.state.tab_scroll_x + delta.abs()).min(max_scroll);
+        }
+        self.renderer.set_tab_scroll_x(self.state.tab_scroll_x);
+        AppResult::Redraw
+    }
+
+    /// Reset scroll state (call when scroll interaction ends)
+    pub fn reset_scroll_state(&mut self) {
+        self.scroll_state.reset();
     }
 
     // =========================================================================

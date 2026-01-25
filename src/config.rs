@@ -52,7 +52,7 @@ pub mod rendering {
 /// Scroll behavior constants
 pub mod scroll {
     /// Lines to scroll per wheel tick
-    pub const LINES_PER_WHEEL_TICK: usize = 3;
+    pub const LINES_PER_WHEEL_TICK: usize = 1;
     /// Pixels per scroll for tab bar horizontal scroll
     pub const TAB_SCROLL_PIXELS: f32 = 30.0;
 }
