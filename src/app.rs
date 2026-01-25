@@ -2,8 +2,9 @@
 
 use crate::config::{layout, timing};
 use crate::persistence;
-use crate::renderer::{HitTestResult, Renderer};
+use crate::renderer::Renderer;
 use crate::tab::Tab;
+use crate::ui::{UiAction, UiDragAction, UiNode, UiTree};
 use std::time::{Duration, Instant};
 
 use arboard::Clipboard;
@@ -29,7 +30,9 @@ struct EditorState {
     last_cursor_blink: Instant,
     hovered_tab_index: Option<usize>,
     hovered_plus: bool,
+    hovered_scrollbar: bool,
     is_dragging_scrollbar: bool,
+    scrollbar_drag_offset: f32,
     dragging_tab_index: Option<usize>,
     last_drag_scroll: Instant,
     last_mouse_x: f32,
@@ -46,7 +49,9 @@ impl EditorState {
             last_cursor_blink: Instant::now(),
             hovered_tab_index: None,
             hovered_plus: false,
+            hovered_scrollbar: false,
             is_dragging_scrollbar: false,
+            scrollbar_drag_offset: 0.0,
             dragging_tab_index: None,
             last_drag_scroll: Instant::now(),
             last_mouse_x: 0.0,
@@ -176,6 +181,8 @@ impl App {
             self.state.cursor_visible,
             self.state.hovered_tab_index,
             self.state.hovered_plus,
+            self.state.hovered_scrollbar,
+            self.state.is_dragging_scrollbar,
             self.state.renaming_tab,
         );
     }
@@ -243,24 +250,20 @@ impl App {
 
         let prev_hovered_tab_index = self.state.hovered_tab_index;
         let prev_hovered_plus = self.state.hovered_plus;
+        let prev_hovered_scrollbar = self.state.hovered_scrollbar;
 
-        match self.renderer.hit_test(x, y, &tab_info) {
-            Some(HitTestResult::Tab(i)) => {
-                self.state.hovered_tab_index = Some(i);
-                self.state.hovered_plus = false;
-            }
-            Some(HitTestResult::NewTabButton) => {
-                self.state.hovered_tab_index = None;
-                self.state.hovered_plus = true;
-            }
-            None => {
-                self.state.hovered_tab_index = None;
-                self.state.hovered_plus = false;
-            }
-        }
+        let total_lines = self.tabs[self.active_tab].total_lines();
+        let visible_lines = self.visible_lines();
+        let scroll_offset = self.tabs[self.active_tab].scroll_offset();
+        let ui_tree = UiTree::new(self.width, self.height, self.scale, self.state.tab_scroll_x, &tab_info);
+        let hover = ui_tree.hover(x, y, total_lines, visible_lines, scroll_offset);
+        self.state.hovered_tab_index = hover.tab_index;
+        self.state.hovered_plus = hover.plus;
+        self.state.hovered_scrollbar = hover.scrollbar;
 
         if prev_hovered_tab_index != self.state.hovered_tab_index
             || prev_hovered_plus != self.state.hovered_plus
+            || prev_hovered_scrollbar != self.state.hovered_scrollbar
         {
             AppResult::Redraw
         } else {
@@ -269,43 +272,45 @@ impl App {
     }
 
     pub fn click_at(&mut self, x: f32, y: f32, selecting: bool) -> AppResult {
-        let scrollbar_width = layout::SCROLLBAR_WIDTH * self.scale;
         let tab_info: Vec<(&str, bool)> = self
             .tabs
             .iter()
             .enumerate()
             .map(|(i, t)| (t.title(), i == self.active_tab))
             .collect();
+        let total_lines = self.tabs[self.active_tab].total_lines();
+        let visible_lines = self.visible_lines();
+        let scroll_offset = self.tabs[self.active_tab].scroll_offset();
+        let ui_tree = UiTree::new(self.width, self.height, self.scale, self.state.tab_scroll_x, &tab_info);
 
-        // Check for tab interactions first (only if not selecting)
-        if !selecting && y < layout::TAB_HEIGHT * self.scale {
-            match self.renderer.hit_test(x, y, &tab_info) {
-                Some(HitTestResult::Tab(i)) => {
-                    self.active_tab = i;
-                    self.auto_scroll();
-                    self.state.dragging_tab_index = Some(i);
-                    return AppResult::Redraw;
-                }
-                Some(HitTestResult::NewTabButton) => {
-                    return self.new_tab();
-                }
-                None => {
-                    return AppResult::Ok;
-                }
+        match ui_tree.click(x, y, total_lines, visible_lines, scroll_offset, selecting) {
+            UiAction::ActivateTab(i) => {
+                self.active_tab = i;
+                self.auto_scroll();
+                self.state.dragging_tab_index = Some(i);
+                return AppResult::Redraw;
             }
-        }
-
-        // Check if clicked on scrollbar (only if not already selecting text)
-        if !selecting {
-            if x > self.width - scrollbar_width {
-                let content_start_y = layout::TAB_HEIGHT * self.scale;
-                if y >= content_start_y {
-                    self.state.is_dragging_scrollbar = true;
-                    return self.drag_at(x, y);
-                }
-            } else {
+            UiAction::NewTab => {
+                return self.new_tab();
+            }
+            UiAction::StartScrollbarDrag { drag_offset } => {
+                self.state.is_dragging_scrollbar = true;
+                self.state.scrollbar_drag_offset = drag_offset;
+                return AppResult::Ok;
+            }
+            UiAction::ScrollbarJump { ratio } => {
                 self.state.is_dragging_scrollbar = false;
+                self.state.scrollbar_drag_offset = 0.0;
+                return self.jump_scrollbar_to_ratio(ratio);
             }
+            UiAction::TabBarClick => {
+                return AppResult::Ok;
+            }
+            UiAction::None => {
+                self.state.is_dragging_scrollbar = false;
+                self.state.scrollbar_drag_offset = 0.0;
+            }
+            UiAction::TextClick => {}
         }
 
         // Calculate which line was clicked
@@ -356,24 +361,66 @@ impl App {
     }
 
     pub fn handle_double_click(&mut self, x: f32, y: f32) -> AppResult {
-        let _ = self.click_at(x, y, false);
-        self.tabs[self.active_tab].select_word_at_cursor();
-        AppResult::Redraw
+        let tab_info: Vec<(&str, bool)> = self
+            .tabs
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (t.title(), i == self.active_tab))
+            .collect();
+        let total_lines = self.tabs[self.active_tab].total_lines();
+        let visible_lines = self.visible_lines();
+        let scroll_offset = self.tabs[self.active_tab].scroll_offset();
+        let ui_tree = UiTree::new(self.width, self.height, self.scale, self.state.tab_scroll_x, &tab_info);
+
+        match ui_tree.double_click(x, y, total_lines, visible_lines, scroll_offset) {
+            UiAction::ActivateTab(i) => {
+                self.active_tab = i;
+                self.auto_scroll();
+                return AppResult::Redraw;
+            }
+            UiAction::NewTab => {
+                return self.new_tab();
+            }
+            UiAction::TextClick => {
+                let _ = self.click_at(x, y, false);
+                self.tabs[self.active_tab].select_word_at_cursor();
+                return AppResult::Redraw;
+            }
+            _ => return AppResult::Ok,
+        }
     }
 
     pub fn handle_triple_click(&mut self, x: f32, y: f32) -> AppResult {
-        let _ = self.click_at(x, y, false);
-        self.tabs[self.active_tab].select_line_at_cursor();
-        AppResult::Redraw
+        let tab_info: Vec<(&str, bool)> = self
+            .tabs
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (t.title(), i == self.active_tab))
+            .collect();
+        let total_lines = self.tabs[self.active_tab].total_lines();
+        let visible_lines = self.visible_lines();
+        let scroll_offset = self.tabs[self.active_tab].scroll_offset();
+        let ui_tree = UiTree::new(self.width, self.height, self.scale, self.state.tab_scroll_x, &tab_info);
+
+        match ui_tree.triple_click(x, y, total_lines, visible_lines, scroll_offset) {
+            UiAction::ActivateTab(i) => {
+                self.active_tab = i;
+                self.auto_scroll();
+                return AppResult::Redraw;
+            }
+            UiAction::NewTab => {
+                return self.new_tab();
+            }
+            UiAction::TextClick => {
+                let _ = self.click_at(x, y, false);
+                self.tabs[self.active_tab].select_line_at_cursor();
+                return AppResult::Redraw;
+            }
+            _ => return AppResult::Ok,
+        }
     }
 
     pub fn right_click_at(&mut self, x: f32, y: f32) -> AppResult {
-        println!("right_click_at: ({}, {}) scale={}", x, y, self.scale);
-        if y >= layout::TAB_HEIGHT * self.scale {
-            println!("Click below tab bar");
-            return AppResult::Ok;
-        }
-
         let tab_info: Vec<(&str, bool)> = self
             .tabs
             .iter()
@@ -381,16 +428,13 @@ impl App {
             .map(|(i, t)| (t.title(), i == self.active_tab))
             .collect();
 
-        match self.renderer.hit_test(x, y, &tab_info) {
-            Some(HitTestResult::Tab(i)) => {
-                println!("Hit tab {}", i);
+        let ui_tree = UiTree::new(self.width, self.height, self.scale, self.state.tab_scroll_x, &tab_info);
+        match ui_tree.hit_test(x, y) {
+            UiNode::Tab(i) => {
                 self.start_rename(i);
                 AppResult::Redraw
             }
-            r => {
-                println!("Hit test result: {:?}", r);
-                AppResult::Ok
-            }
+            _ => AppResult::Ok,
         }
     }
 
@@ -401,22 +445,22 @@ impl App {
             }
         }
         if self.state.is_dragging_scrollbar {
-            let start_y = layout::TAB_HEIGHT * self.scale;
-            let scroll_area_height = self.height - layout::TAB_HEIGHT * self.scale;
-
-            let relative_y = (y - start_y).clamp(0.0, scroll_area_height);
-            let scroll_ratio = relative_y / scroll_area_height;
-
             let total_lines = self.tabs[self.active_tab].total_lines();
             let visible_lines = self.visible_lines();
-
-            let max_scroll = total_lines.saturating_sub(visible_lines);
-            let scroll_offset = (scroll_ratio * max_scroll as f32).round() as usize;
-
-            if self.tabs[self.active_tab].set_scroll_offset(scroll_offset) {
-                return AppResult::Redraw;
+            let scroll_offset = self.tabs[self.active_tab].scroll_offset();
+            let ui_tree = UiTree::new(self.width, self.height, self.scale, self.state.tab_scroll_x, &self.tab_titles());
+            match ui_tree.drag_scrollbar(
+                y,
+                total_lines,
+                visible_lines,
+                scroll_offset,
+                self.state.scrollbar_drag_offset,
+            ) {
+                UiDragAction::ScrollbarDrag { ratio } => {
+                    return self.jump_scrollbar_to_ratio(ratio);
+                }
+                UiDragAction::None => return AppResult::Ok,
             }
-            return AppResult::Ok;
         }
 
         self.click_at(x, y, true)
@@ -425,6 +469,29 @@ impl App {
     pub fn end_drag(&mut self) {
         self.state.dragging_tab_index = None;
         self.state.is_dragging_scrollbar = false;
+        self.state.scrollbar_drag_offset = 0.0;
+    }
+
+    fn tab_titles(&self) -> Vec<(&str, bool)> {
+        self.tabs
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (t.title(), i == self.active_tab))
+            .collect()
+    }
+
+    fn jump_scrollbar_to_ratio(&mut self, ratio: f32) -> AppResult {
+        let total_lines = self.tabs[self.active_tab].total_lines();
+        let visible_lines = self.visible_lines();
+        if total_lines <= visible_lines {
+            return AppResult::Ok;
+        }
+        let max_scroll = total_lines.saturating_sub(visible_lines);
+        let scroll_offset = (ratio.clamp(0.0, 1.0) * max_scroll as f32).round() as usize;
+        if self.tabs[self.active_tab].set_scroll_offset(scroll_offset) {
+            return AppResult::Redraw;
+        }
+        AppResult::Ok
     }
 
     fn reorder_tab_at(&mut self, x: f32, y: f32, from_index: usize) -> AppResult {
@@ -439,7 +506,8 @@ impl App {
             .map(|(i, t)| (t.title(), i == self.active_tab))
             .collect();
 
-        if let Some(HitTestResult::Tab(to_index)) = self.renderer.hit_test(x, y, &tab_info) {
+        let ui_tree = UiTree::new(self.width, self.height, self.scale, self.state.tab_scroll_x, &tab_info);
+        if let UiNode::Tab(to_index) = ui_tree.hit_test(x, y) {
             if to_index != from_index && from_index < self.tabs.len() && to_index < self.tabs.len()
             {
                 let tab = self.tabs.remove(from_index);

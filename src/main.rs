@@ -13,6 +13,7 @@ mod renderer;
 mod tab;
 mod text_buffer;
 mod theme;
+mod ui;
 
 use app::App;
 use glutin::config::ConfigTemplateBuilder;

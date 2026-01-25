@@ -2,13 +2,8 @@
 
 use crate::tab::Tab;
 use crate::theme::Theme;
+use crate::ui::ScrollbarWidget;
 use femtovg::{Canvas, Color, FontId, Paint, Path, renderer::OpenGl};
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum HitTestResult {
-    Tab(usize),
-    NewTabButton,
-}
 
 pub struct Renderer {
     canvas: Canvas<OpenGl>,
@@ -131,6 +126,8 @@ impl Renderer {
         cursor_visible: bool,
         hovered_tab_index: Option<usize>,
         hovered_plus: bool,
+        hovered_scrollbar: bool,
+        dragging_scrollbar: bool,
         renaming_tab: Option<usize>,
     ) {
         let (width, height, _) = (self.width, self.height, self.scale);
@@ -150,50 +147,9 @@ impl Renderer {
         self.draw_tab_bar(tabs, hovered_tab_index, hovered_plus, renaming_tab);
 
         // Draw text content
-        self.draw_text_content(current_tab, cursor_visible);
+        self.draw_text_content(current_tab, cursor_visible, hovered_scrollbar, dragging_scrollbar);
 
         self.canvas.flush();
-    }
-
-    pub fn hit_test(&self, x: f32, y: f32, tabs: &[(&str, bool)]) -> Option<HitTestResult> {
-        let tab_height = 40.0 * self.scale;
-
-        if y > tab_height {
-            return None;
-        }
-
-        let mut current_x = -self.tab_scroll_x;
-        let tab_padding = 16.0 * self.scale;
-
-        // Check tabs
-        for (i, (title, _)) in tabs.iter().enumerate() {
-            let tab_width =
-                (title.len() as f32 * 9.0 * self.scale + tab_padding * 2.0).max(100.0 * self.scale);
-
-            // Optimization: check if relevant area
-            if current_x + tab_width > 0.0 && current_x < self.width {
-                if x >= current_x && x < current_x + tab_width {
-                    return Some(HitTestResult::Tab(i));
-                }
-            }
-
-            current_x += tab_width + 1.0;
-        }
-
-        // Check new tab button - flows with tabs
-        let new_tab_button_size = 28.0 * self.scale;
-        let button_x = current_x + 8.0 * self.scale;
-        let button_y = (tab_height - new_tab_button_size) / 2.0;
-
-        if x >= button_x
-            && x <= button_x + new_tab_button_size
-            && y >= button_y
-            && y <= button_y + new_tab_button_size
-        {
-            return Some(HitTestResult::NewTabButton);
-        }
-
-        None
     }
 
     fn draw_tab_bar(
@@ -375,7 +331,13 @@ impl Renderer {
         );
     }
 
-    fn draw_text_content(&mut self, tab: &Tab, cursor_visible: bool) {
+    fn draw_text_content(
+        &mut self,
+        tab: &Tab,
+        cursor_visible: bool,
+        hovered_scrollbar: bool,
+        dragging_scrollbar: bool,
+    ) {
         let tab_height = 40.0 * self.scale;
         let padding = 16.0 * self.scale;
         let line_height = 24.0 * self.scale;
@@ -543,50 +505,35 @@ impl Renderer {
 
         // Draw scrollbar
         let max_visible_lines = ((self.height - start_y - padding) / line_height).ceil() as usize;
-        let total_lines = lines.len().max(1);
+        let total_lines = tab.total_lines().max(1);
         if total_lines > max_visible_lines {
-            // Scrollbar logic
-            let scrollbar_width = 12.0 * self.scale;
-            let scroll_area_height = self.height - tab_height;
-            let start_y = tab_height;
+            let scrollbar = ScrollbarWidget::new(self.width, self.height, self.scale);
+            if let Some(metrics) = scrollbar.metrics(total_lines, max_visible_lines, scroll_offset) {
+                let mut path = Path::new();
+                path.rounded_rect(
+                    metrics.thumb.x,
+                    metrics.thumb.y,
+                    metrics.thumb.width,
+                    metrics.thumb.height,
+                    4.0,
+                );
 
-            // Calculate thumb height proportion
-            let view_ratio = max_visible_lines as f32 / total_lines as f32;
-            let thumb_height = (scroll_area_height * view_ratio).max(30.0 * self.scale); // Min thumb height 30px
-
-            // Calculate thumb position
-            // Max scrollable lines
-            let max_scroll = total_lines.saturating_sub(max_visible_lines);
-            let scroll_ratio = if max_scroll > 0 {
-                scroll_offset as f32 / max_scroll as f32
-            } else {
-                0.0
-            };
-
-            // Available track height for thumb movement
-            let track_height = scroll_area_height - thumb_height;
-            let thumb_y = start_y + (track_height * scroll_ratio);
-            let thumb_x = self.width - scrollbar_width;
-
-            // Draw track (optional)
-            // Draw thumb
-            let mut path = Path::new();
-            path.rounded_rect(
-                thumb_x - 4.0,
-                thumb_y,
-                scrollbar_width - 4.0,
-                thumb_height,
-                4.0,
-            );
-
-            // Semi-transparent thumb color based on theme FG
-            let thumb_color = Paint::color(Color::rgba(
-                (self.theme.fg.0 * 255.0) as u8,
-                (self.theme.fg.1 * 255.0) as u8,
-                (self.theme.fg.2 * 255.0) as u8,
-                50, // Alpha 50/255
-            ));
-            self.canvas.fill_path(&path, &thumb_color);
+                let thumb_alpha = if dragging_scrollbar {
+                    140
+                } else if hovered_scrollbar {
+                    90
+                } else {
+                    50
+                };
+                // Semi-transparent thumb color based on theme FG
+                let thumb_color = Paint::color(Color::rgba(
+                    (self.theme.fg.0 * 255.0) as u8,
+                    (self.theme.fg.1 * 255.0) as u8,
+                    (self.theme.fg.2 * 255.0) as u8,
+                    thumb_alpha,
+                ));
+                self.canvas.fill_path(&path, &thumb_color);
+            }
         }
     }
 
