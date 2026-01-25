@@ -302,10 +302,13 @@ impl<'a> TextContentRenderer<'a> {
             current_y += line_height;
         }
 
-        // Handle cursor if it's past the last line
+        // Handle cursor if it's past the last line (e.g., on empty line after trailing newline)
         if cursor_rect.is_none() && scroll_offset <= cursor_line_idx {
-            if cursor_line_idx >= lines.len() {
-                let cursor_y = start_y + (cursor_line_idx as f32 * line_height);
+            // cursor_line_idx is absolute; lines.len() is count after skip(scroll_offset)
+            // So cursor is past visible lines if cursor_line_idx >= scroll_offset + lines.len()
+            if cursor_line_idx >= scroll_offset + lines.len() {
+                let visual_line = cursor_line_idx - scroll_offset;
+                let cursor_y = start_y + (visual_line as f32 * line_height);
                 cursor_rect = Some((padding - scroll_x, cursor_y));
             } else if text.is_empty() {
                 cursor_rect = Some((padding - scroll_x, start_y));
