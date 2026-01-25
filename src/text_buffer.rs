@@ -436,7 +436,18 @@ impl TextBuffer {
 
         let line = self.rope.char_to_line(self.cursor);
         let line_len = self.rope.line(line).len_chars();
-        self.cursor = self.rope.line_to_char(line) + line_len.saturating_sub(1);
+
+        let line_start = self.rope.line_to_char(line);
+        let mut end = line_start + line_len;
+
+        if end > line_start {
+            let prev = end - 1;
+            if self.rope.char(prev) == '\n' {
+                end = prev;
+            }
+        }
+
+        self.cursor = end;
     }
 
     pub fn move_to_start(&mut self, selecting: bool) {

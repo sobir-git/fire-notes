@@ -16,7 +16,24 @@ impl App {
             }
             return AppResult::Ok;
         }
+        
+        // Get cursor position before inserting
+        let line = self.tabs[self.active_tab].cursor_line();
+        let col = self.tabs[self.active_tab].cursor_col();
+        
         self.tabs[self.active_tab].insert_char(ch);
+        
+        // Record typed character position for flame emission
+        if !ch.is_control() {
+            self.state.typing_flame_positions.push((line, col, std::time::Instant::now()));
+            
+            // Keep only recent positions (last 1.0 second)
+            let now = std::time::Instant::now();
+            self.state.typing_flame_positions.retain(|(_, _, timestamp)| {
+                now.duration_since(*timestamp).as_secs_f32() < 1.0
+            });
+        }
+        
         self.tabs[self.active_tab].auto_save();
         self.auto_scroll();
         AppResult::Redraw

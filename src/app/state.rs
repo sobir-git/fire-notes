@@ -33,6 +33,7 @@ pub struct EditorState {
     pub tab_scroll_x: f32,
     pub renaming_tab: Option<usize>,
     pub rename_buffer: String,
+    pub typing_flame_positions: Vec<(usize, usize, Instant)>, // (line, col, timestamp)
 }
 
 impl EditorState {
@@ -52,6 +53,7 @@ impl EditorState {
             tab_scroll_x: 0.0,
             renaming_tab: None,
             rename_buffer: String::new(),
+            typing_flame_positions: Vec::new(),
         }
     }
 

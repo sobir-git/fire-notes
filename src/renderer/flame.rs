@@ -38,7 +38,7 @@ impl FlameSystem {
         self.particles.clear();
     }
 
-    pub fn update(&mut self, char_positions: &[(f32, f32, f32)], scale: f32) {
+    pub fn update(&mut self, char_positions: &[(f32, f32, f32, f32)], scale: f32) {
         let dt = self.last_update.elapsed().as_secs_f32();
         self.last_update = Instant::now();
 
@@ -63,9 +63,12 @@ impl FlameSystem {
         });
 
         // Spawn dense particles with lower opacity
-        for &(char_x, char_y, line_bottom_y) in char_positions {
-            // High spawn rate for dense particle coverage
-            if rng.gen_range(0.0..1.0) > 0.4 {
+        for &(char_x, char_y, line_bottom_y, age) in char_positions {
+            // Decrease spawn rate based on age (0.0 = just typed, 1.0 = 1 second old)
+            let age_factor = 1.0 - age; // 1.0 when fresh, 0.0 when old
+            let base_spawn_rate = 0.4 * age_factor; // Decreases from 0.4 to 0.0
+            
+            if rng.gen_range(0.0..1.0) > base_spawn_rate {
                 continue;
             }
 
@@ -111,7 +114,7 @@ impl FlameSystem {
     pub fn draw_layer(
         &self,
         canvas: &mut Canvas<OpenGl>,
-        _char_positions: &[(f32, f32, f32)],
+        _char_positions: &[(f32, f32, f32, f32)],
         _scale: f32,
         behind_text: bool,
     ) {

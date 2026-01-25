@@ -73,6 +73,7 @@ impl Renderer {
         hovered_scrollbar: bool,
         dragging_scrollbar: bool,
         renaming_tab: Option<usize>,
+        typing_flame_positions: &[(usize, usize, Instant)],
     ) {
         let (width, height) = (self.width, self.height);
 
@@ -117,6 +118,7 @@ impl Renderer {
                 hovered_scrollbar,
                 dragging_scrollbar,
                 &mut self.flame_system,
+                typing_flame_positions,
             );
         }
 

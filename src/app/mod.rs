@@ -103,6 +103,18 @@ impl App {
             needs_redraw = true;
         }
 
+        // Clean up expired typing flame positions (older than 1 second)
+        let now = std::time::Instant::now();
+        let had_typing_flames = !self.state.typing_flame_positions.is_empty();
+        self.state.typing_flame_positions.retain(|(_, _, timestamp)| {
+            now.duration_since(*timestamp).as_secs_f32() < 1.0
+        });
+        
+        // Redraw if we have typing flames or just cleared them
+        if had_typing_flames {
+            needs_redraw = true;
+        }
+
         // Continuously redraw when flame particles are active
         if self.renderer.has_active_flames() {
             needs_redraw = true;
@@ -147,6 +159,7 @@ impl App {
             self.state.hovered_scrollbar,
             self.state.is_dragging_scrollbar,
             self.state.renaming_tab,
+            &self.state.typing_flame_positions,
         );
     }
 

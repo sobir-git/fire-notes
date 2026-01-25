@@ -52,6 +52,7 @@ impl<'a> TextContentRenderer<'a> {
         hovered_scrollbar: bool,
         dragging_scrollbar: bool,
         flame_system: &mut FlameSystem,
+        typing_flame_positions: &[(usize, usize, std::time::Instant)],
     ) {
         let tab_height = 40.0 * self.scale;
         let padding = 16.0 * self.scale;
@@ -74,8 +75,8 @@ impl<'a> TextContentRenderer<'a> {
         text_paint.set_font_size(16.0 * self.scale);
         let char_width = self.measure_char_width(&text_paint);
 
-        // Collect character positions for flame spawning (no selection rectangle)
-        let char_positions = self.collect_selection_positions(
+        // Collect character positions for flame spawning (selection + typing)
+        let mut char_positions = self.collect_selection_positions(
             tab,
             text,
             scroll_offset,
@@ -86,6 +87,27 @@ impl<'a> TextContentRenderer<'a> {
             padding,
             char_width,
         );
+        
+        // Add typing flame positions with age factor
+        let now = std::time::Instant::now();
+        for &(line, col, timestamp) in typing_flame_positions {
+            if line < scroll_offset {
+                continue;
+            }
+            let visible_idx = line - scroll_offset;
+            let y = start_y + (visible_idx as f32 * line_height);
+            if y > self.height {
+                continue;
+            }
+            
+            // Calculate age factor (0.0 = just typed, 1.0 = 1 second old)
+            let age = now.duration_since(timestamp).as_secs_f32().min(1.0);
+            
+            let line_bottom_y = y + line_height;
+            let char_x = padding - scroll_x + (col as f32 * char_width) + (char_width * 0.5);
+            let char_y = y + line_height * 0.5;
+            char_positions.push((char_x, char_y, line_bottom_y, age));
+        }
 
         // Update flame particles
         if !char_positions.is_empty() {
@@ -169,7 +191,7 @@ impl<'a> TextContentRenderer<'a> {
         line_height: f32,
         padding: f32,
         char_width: f32,
-    ) -> Vec<(f32, f32, f32)> {
+    ) -> Vec<(f32, f32, f32, f32)> {
         let mut char_positions = Vec::new();
 
         if !do_wrap {
@@ -203,12 +225,12 @@ impl<'a> TextContentRenderer<'a> {
                         line_content.chars().count()
                     };
 
-                    // Collect position for each selected character
+                    // Collect position for each selected character (age = 0.0 for selection)
                     for col in start_col_in_line..end_col_in_line {
                         let char_x =
                             padding - scroll_x + (col as f32 * char_width) + (char_width * 0.5);
                         let char_y = y + line_height * 0.5;
-                        char_positions.push((char_x, char_y, line_bottom_y));
+                        char_positions.push((char_x, char_y, line_bottom_y, 0.0));
                     }
                 }
             }
@@ -271,7 +293,7 @@ impl<'a> TextContentRenderer<'a> {
         padding: f32,
         char_width: f32,
         text_paint: &Paint,
-        char_positions: &[(f32, f32, f32)],
+        char_positions: &[(f32, f32, f32, f32)],
     ) {
         let lines: Vec<&str> = text.lines().skip(scroll_offset).collect();
         let mut current_y = start_y;
@@ -305,16 +327,48 @@ impl<'a> TextContentRenderer<'a> {
                         let text_x = snap_to_pixel(x_offset);
                         let text_y_snapped = snap_to_pixel(current_y + line_height * 0.75);
 
-                        // Check if this character is in the burning selection
-                        let is_burning = !char_positions.is_empty()
-                            && char_positions.iter().any(|&(cx, cy, _)| {
-                                let dx = (cx - (x_offset + char_width * 0.5)).abs();
-                                let dy = (cy - (current_y + line_height * 0.5)).abs();
-                                dx < char_width && dy < line_height * 0.5
-                            });
+                        // Check if this character is in the burning selection or recently typed
+                        let mut is_burning = false;
+                        let mut is_typing_flame = false;
+                        let mut typing_age = 1.0;
+                        
+                        for &(cx, cy, _, age) in char_positions {
+                            let dx = (cx - (x_offset + char_width * 0.5)).abs();
+                            let dy = (cy - (current_y + line_height * 0.5)).abs();
+                            if dx < char_width && dy < line_height * 0.5 {
+                                if age > 0.0 {
+                                    // This is a typing flame position
+                                    is_typing_flame = true;
+                                    typing_age = age;
+                                } else {
+                                    // This is a selection flame
+                                    is_burning = true;
+                                }
+                                break;
+                            }
+                        }
 
-                        // Apply animated burning color to selected characters
-                        let char_paint = if is_burning {
+                        // Apply color based on state
+                        let char_paint = if is_typing_flame {
+                            // Fade from burning red (age=0.0) to white (age=1.0)
+                            let fade = typing_age; // 0.0 = burning red, 1.0 = white
+                            // Start with deep burning red/orange
+                            let start_r = 1.0;
+                            let start_g = 0.3;
+                            let start_b = 0.0;
+                            // End with white
+                            let end_r = 1.0;
+                            let end_g = 1.0;
+                            let end_b = 1.0;
+                            
+                            let r = start_r * (1.0 - fade) + end_r * fade;
+                            let g = start_g * (1.0 - fade) + end_g * fade;
+                            let b = start_b * (1.0 - fade) + end_b * fade;
+                            let mut paint = Paint::color(Color::rgbf(r, g, b));
+                            paint.set_font(self.fonts);
+                            paint.set_font_size(16.0 * self.scale);
+                            paint
+                        } else if is_burning {
                             self.create_burning_paint(x_offset, current_y)
                         } else {
                             text_paint.clone()
