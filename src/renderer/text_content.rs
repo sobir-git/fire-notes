@@ -4,7 +4,16 @@ use crate::tab::Tab;
 use crate::theme::Theme;
 use crate::ui::ScrollbarWidget;
 use femtovg::{Canvas, Color, FontId, Paint, Path, renderer::OpenGl};
+use std::collections::HashMap;
 use std::time::Instant;
+
+/// Result of checking if a character position is in a flame zone
+#[derive(Clone, Copy)]
+enum FlameHit {
+    None,
+    Selection,
+    Typing(f32), // age factor
+}
 
 use super::flame::FlameSystem;
 
@@ -287,6 +296,38 @@ impl<'a> TextContentRenderer<'a> {
         Some((x, y))
     }
 
+    /// Build a spatial hash map for O(1) flame position lookups
+    fn build_flame_lookup(
+        char_positions: &[(f32, f32, f32, f32)],
+        char_width: f32,
+        line_height: f32,
+    ) -> HashMap<(i32, i32), FlameHit> {
+        let mut map = HashMap::with_capacity(char_positions.len());
+        let cell_w = char_width.max(1.0);
+        let cell_h = line_height.max(1.0);
+        
+        for &(cx, cy, _, age) in char_positions {
+            let grid_x = (cx / cell_w) as i32;
+            let grid_y = (cy / cell_h) as i32;
+            
+            let hit = if age > 0.0 {
+                FlameHit::Typing(age)
+            } else {
+                FlameHit::Selection
+            };
+            
+            // Insert into grid cell (typing flames take priority)
+            map.entry((grid_x, grid_y))
+                .and_modify(|existing| {
+                    if matches!(hit, FlameHit::Typing(_)) {
+                        *existing = hit;
+                    }
+                })
+                .or_insert(hit);
+        }
+        map
+    }
+
     /// Render text lines (text only, no cursor logic)
     fn draw_text_lines(
         &mut self,
@@ -301,6 +342,11 @@ impl<'a> TextContentRenderer<'a> {
         text_paint: &Paint,
         char_positions: &[(f32, f32, f32, f32)],
     ) {
+        // Build spatial lookup for O(1) flame checks
+        let flame_lookup = Self::build_flame_lookup(char_positions, char_width, line_height);
+        let cell_w = char_width.max(1.0);
+        let cell_h = line_height.max(1.0);
+        
         let lines: Vec<&str> = text.lines().skip(scroll_offset).collect();
         let mut current_y = start_y;
 
@@ -333,51 +379,29 @@ impl<'a> TextContentRenderer<'a> {
                         let text_x = snap_to_pixel(x_offset);
                         let text_y_snapped = snap_to_pixel(current_y + line_height * 0.75);
 
-                        // Check if this character is in the burning selection or recently typed
-                        let mut is_burning = false;
-                        let mut is_typing_flame = false;
-                        let mut typing_age = 1.0;
+                        // O(1) lookup for flame state
+                        let char_center_x = x_offset + char_width * 0.5;
+                        let char_center_y = current_y + line_height * 0.5;
+                        let grid_x = (char_center_x / cell_w) as i32;
+                        let grid_y = (char_center_y / cell_h) as i32;
                         
-                        for &(cx, cy, _, age) in char_positions {
-                            let dx = (cx - (x_offset + char_width * 0.5)).abs();
-                            let dy = (cy - (current_y + line_height * 0.5)).abs();
-                            if dx < char_width && dy < line_height * 0.5 {
-                                if age > 0.0 {
-                                    // This is a typing flame position
-                                    is_typing_flame = true;
-                                    typing_age = age;
-                                } else {
-                                    // This is a selection flame
-                                    is_burning = true;
-                                }
-                                break;
-                            }
-                        }
+                        let flame_hit = flame_lookup.get(&(grid_x, grid_y)).copied().unwrap_or(FlameHit::None);
 
                         // Apply color based on state
-                        let char_paint = if is_typing_flame {
-                            // Fade from burning red (age=0.0) to white (age=1.0)
-                            let fade = typing_age; // 0.0 = burning red, 1.0 = white
-                            // Start with deep burning red/orange
-                            let start_r = 1.0;
-                            let start_g = 0.3;
-                            let start_b = 0.0;
-                            // End with white
-                            let end_r = 1.0;
-                            let end_g = 1.0;
-                            let end_b = 1.0;
-                            
-                            let r = start_r * (1.0 - fade) + end_r * fade;
-                            let g = start_g * (1.0 - fade) + end_g * fade;
-                            let b = start_b * (1.0 - fade) + end_b * fade;
-                            let mut paint = Paint::color(Color::rgbf(r, g, b));
-                            paint.set_font(self.fonts);
-                            paint.set_font_size(16.0 * self.scale);
-                            paint
-                        } else if is_burning {
-                            self.create_burning_paint(x_offset, current_y)
-                        } else {
-                            text_paint.clone()
+                        let char_paint = match flame_hit {
+                            FlameHit::Typing(age) => {
+                                // Fade from burning red (age=0.0) to white (age=1.0)
+                                let fade = age;
+                                let r = 1.0;
+                                let g = 0.3 * (1.0 - fade) + 1.0 * fade;
+                                let b = 0.0 * (1.0 - fade) + 1.0 * fade;
+                                let mut paint = Paint::color(Color::rgbf(r, g, b));
+                                paint.set_font(self.fonts);
+                                paint.set_font_size(16.0 * self.scale);
+                                paint
+                            }
+                            FlameHit::Selection => self.create_burning_paint(x_offset, current_y),
+                            FlameHit::None => text_paint.clone(),
                         };
 
                         let mut buf = [0u8; 4];

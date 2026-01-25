@@ -206,6 +206,11 @@ impl App {
         self.state.hovered_resize_edge
     }
 
+    /// Check if any animations are currently active (flames, typing effects)
+    pub fn has_active_animations(&self) -> bool {
+        self.renderer.has_active_flames() || !self.state.typing_flame_positions.is_empty()
+    }
+
     /// Process a scroll event and apply it to the active tab
     /// Returns whether a redraw is needed
     pub fn handle_scroll_event(&mut self, input: ScrollInput) -> AppResult {

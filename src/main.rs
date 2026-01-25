@@ -27,7 +27,7 @@ use persistence::{WindowState, load_window_state, save_session_state, save_windo
 use raw_window_handle::HasWindowHandle;
 use std::ffi::CString;
 use std::num::NonZeroU32;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
@@ -575,7 +575,20 @@ impl ApplicationHandler for AppHandler {
             if state.app.tick().needs_redraw() {
                 state.window.request_redraw();
             }
+            
+            // Only poll when animations are active, otherwise wait efficiently
+            if state.app.has_active_animations() {
+                // Rate-limit animation polling to ~60 FPS
+                event_loop.set_control_flow(ControlFlow::WaitUntil(
+                    Instant::now() + Duration::from_millis(16)
+                ));
+            } else {
+                // Wait until next cursor blink (500ms) or event
+                let next_blink = Instant::now() + Duration::from_millis(500);
+                event_loop.set_control_flow(ControlFlow::WaitUntil(next_blink));
+            }
+        } else {
+            event_loop.set_control_flow(ControlFlow::Wait);
         }
-        event_loop.set_control_flow(ControlFlow::Poll);
     }
 }

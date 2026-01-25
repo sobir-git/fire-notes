@@ -20,13 +20,19 @@ pub struct FlameParticle {
 pub struct FlameSystem {
     particles: Vec<FlameParticle>,
     last_update: Instant,
+    last_spawn_update: Instant,
 }
+
+/// Minimum time between flame updates (~60 FPS)
+const MIN_UPDATE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(16);
 
 impl FlameSystem {
     pub fn new() -> Self {
+        let now = Instant::now();
         Self {
             particles: Vec::new(),
-            last_update: Instant::now(),
+            last_update: now,
+            last_spawn_update: now,
         }
     }
 
@@ -38,12 +44,37 @@ impl FlameSystem {
         self.particles.clear();
     }
 
+    /// Update only existing particle physics without spawning new ones
+    fn update_existing_particles(&mut self, dt: f32) {
+        let time = self.last_update.elapsed().as_secs_f32() * 2.0;
+        self.particles.retain_mut(|p| {
+            p.life -= dt;
+            let waft = (time * 3.0 + p.noise_offset).sin() * 8.0
+                + (time * 5.0 + p.noise_offset * 2.0).cos() * 4.0;
+            p.x += (p.velocity_x + waft) * dt;
+            p.y -= p.velocity_y * dt;
+            p.velocity_y += 15.0 * dt * (1.0 - p.life / p.max_life);
+            p.velocity_x *= 0.92;
+            p.life > 0.0
+        });
+    }
+
     pub fn update(&mut self, char_positions: &[(f32, f32, f32, f32)], scale: f32) {
+        let now = Instant::now();
         let dt = self.last_update.elapsed().as_secs_f32();
-        self.last_update = Instant::now();
+        
+        // Rate-limit updates to ~60 FPS
+        if now.duration_since(self.last_spawn_update) < MIN_UPDATE_INTERVAL {
+            // Still update existing particle physics, but skip spawning
+            self.update_existing_particles(dt);
+            self.last_update = now;
+            return;
+        }
+        self.last_spawn_update = now;
+        self.last_update = now;
 
         let mut rng = rand::thread_rng();
-        let time = self.last_update.elapsed().as_secs_f32() * 2.0;
+        let time = now.elapsed().as_secs_f32() * 2.0;
 
         // Update existing particles with realistic fire physics
         self.particles.retain_mut(|p| {
