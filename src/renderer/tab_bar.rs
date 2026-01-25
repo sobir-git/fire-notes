@@ -109,7 +109,7 @@ impl<'a> TabBarRenderer<'a> {
                 );
             }
 
-            // Tab title
+            // Tab title - center it properly within the tab
             let mut text_paint = Paint::color(Color::rgbf(
                 self.theme.fg.0,
                 self.theme.fg.1,
@@ -118,17 +118,19 @@ impl<'a> TabBarRenderer<'a> {
             text_paint.set_font(self.fonts);
             text_paint.set_font_size(14.0 * self.scale);
 
-            let text_x = snap_to_pixel(x + tab_padding);
+            // Measure text to center it properly
+            let text_width = if let Ok(metrics) = self.canvas.measure_text(0.0, 0.0, title, &text_paint) {
+                metrics.width()
+            } else {
+                title.len() as f32 * 9.0 * self.scale // fallback
+            };
+
+            let text_x = snap_to_pixel(x + (tab_width - text_width) / 2.0);
             let text_y = snap_to_pixel(tab_height / 2.0 + 5.0 * self.scale);
             let _ = self.canvas.fill_text(text_x, text_y, title, &text_paint);
 
             // Draw underline if this tab is being renamed
             if Some(i) == renaming_tab {
-                let metrics = self
-                    .canvas
-                    .measure_text(text_x, text_y, title, &text_paint)
-                    .unwrap_or_default();
-                let text_width = metrics.width();
                 let underline_y = text_y + 12.0 * self.scale;
                 let mut underline_path = Path::new();
                 underline_path.move_to(text_x, underline_y);
