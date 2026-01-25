@@ -99,10 +99,21 @@ impl<'a> TextContentRenderer<'a> {
             flame_system.draw_layer(self.canvas, &char_positions, self.scale, true);
         }
 
-        // Draw text and cursor
-        let cursor_rect = self.draw_text_lines(
+        // Calculate cursor position (single source of truth)
+        let cursor_rect = self.calculate_cursor_position(
             text,
             cursor_pos,
+            scroll_offset,
+            scroll_x,
+            start_y,
+            line_height,
+            padding,
+            char_width,
+        );
+
+        // Draw text (no cursor logic mixed in)
+        self.draw_text_lines(
+            text,
             scroll_offset,
             scroll_x,
             do_wrap,
@@ -206,10 +217,52 @@ impl<'a> TextContentRenderer<'a> {
         char_positions
     }
 
+    /// Calculate cursor screen position - single source of truth for cursor location
+    fn calculate_cursor_position(
+        &self,
+        text: &str,
+        cursor_pos: usize,
+        scroll_offset: usize,
+        scroll_x: f32,
+        start_y: f32,
+        line_height: f32,
+        padding: f32,
+        char_width: f32,
+    ) -> Option<(f32, f32)> {
+        let (cursor_line, cursor_col) = get_cursor_line_col(text, cursor_pos);
+
+        // Cursor is above visible area (scrolled past)
+        if cursor_line < scroll_offset {
+            return None;
+        }
+
+        let visual_line = cursor_line - scroll_offset;
+        let y = start_y + (visual_line as f32 * line_height);
+
+        // Cursor is below visible area
+        if y > self.height {
+            return None;
+        }
+
+        // Get line content for accurate x position (handles tabs)
+        let line_content = text.lines().nth(cursor_line).unwrap_or("");
+        let mut x = padding - scroll_x;
+
+        for (col, ch) in line_content.chars().enumerate() {
+            if col >= cursor_col {
+                break;
+            }
+            let advance = if ch == '\t' { 4 } else { 1 };
+            x += char_width * advance as f32;
+        }
+
+        Some((x, y))
+    }
+
+    /// Render text lines (text only, no cursor logic)
     fn draw_text_lines(
         &mut self,
         text: &str,
-        cursor_pos: usize,
         scroll_offset: usize,
         scroll_x: f32,
         do_wrap: bool,
@@ -219,14 +272,11 @@ impl<'a> TextContentRenderer<'a> {
         char_width: f32,
         text_paint: &Paint,
         char_positions: &[(f32, f32, f32)],
-    ) -> Option<(f32, f32)> {
+    ) {
         let lines: Vec<&str> = text.lines().skip(scroll_offset).collect();
         let mut current_y = start_y;
-        let (cursor_line_idx, cursor_col_idx) = get_cursor_line_col(text, cursor_pos);
-        let mut cursor_rect = None;
 
-        for (idx, line) in lines.iter().enumerate() {
-            let logical_line_idx = scroll_offset + idx;
+        for line in lines.iter() {
             if current_y > self.height {
                 break;
             }
@@ -236,17 +286,8 @@ impl<'a> TextContentRenderer<'a> {
             } else {
                 padding - scroll_x
             };
-            let line_has_cursor = logical_line_idx == cursor_line_idx;
 
-            // Check cursor at start of line (col 0)
-            if line_has_cursor && cursor_col_idx == 0 {
-                cursor_rect = Some((x_offset, current_y));
-            }
-
-            let mut current_col = 0;
-            let mut line_chars = line.chars();
-
-            while let Some(ch) = line_chars.next() {
+            for ch in line.chars() {
                 let advance = if ch == '\t' { 4 } else { 1 };
                 let char_w = char_width * advance as f32;
 
@@ -286,36 +327,10 @@ impl<'a> TextContentRenderer<'a> {
                 }
 
                 x_offset += char_w;
-                current_col += 1;
-
-                if line_has_cursor && current_col == cursor_col_idx {
-                    cursor_rect = Some((x_offset, current_y));
-                }
             }
 
-            // Check if cursor is at end of line (after last character)
-            if line_has_cursor && cursor_col_idx == current_col && cursor_rect.is_none() {
-                cursor_rect = Some((x_offset, current_y));
-            }
-
-            // Move to next line
             current_y += line_height;
         }
-
-        // Handle cursor if it's past the last line (e.g., on empty line after trailing newline)
-        if cursor_rect.is_none() && scroll_offset <= cursor_line_idx {
-            // cursor_line_idx is absolute; lines.len() is count after skip(scroll_offset)
-            // So cursor is past visible lines if cursor_line_idx >= scroll_offset + lines.len()
-            if cursor_line_idx >= scroll_offset + lines.len() {
-                let visual_line = cursor_line_idx - scroll_offset;
-                let cursor_y = start_y + (visual_line as f32 * line_height);
-                cursor_rect = Some((padding - scroll_x, cursor_y));
-            } else if text.is_empty() {
-                cursor_rect = Some((padding - scroll_x, start_y));
-            }
-        }
-
-        cursor_rect
     }
 
     fn create_burning_paint(&self, x_offset: f32, current_y: f32) -> Paint {
