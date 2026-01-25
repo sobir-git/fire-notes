@@ -143,13 +143,25 @@ impl App {
     // =========================================================================
 
     pub fn tick(&mut self) -> AppResult {
+        let mut needs_redraw = false;
+
         if self.state.last_cursor_blink.elapsed() >= Duration::from_millis(timing::CURSOR_BLINK_MS)
         {
             self.state.cursor_visible = !self.state.cursor_visible;
             self.state.last_cursor_blink = Instant::now();
-            return AppResult::Redraw;
+            needs_redraw = true;
         }
-        AppResult::Ok
+
+        // Continuously redraw when flame particles are active
+        if self.renderer.has_active_flames() {
+            needs_redraw = true;
+        }
+
+        if needs_redraw {
+            AppResult::Redraw
+        } else {
+            AppResult::Ok
+        }
     }
 
     pub fn resize(&mut self, width: f32, height: f32, scale: f32) {

@@ -4,6 +4,21 @@ use crate::tab::Tab;
 use crate::theme::Theme;
 use crate::ui::ScrollbarWidget;
 use femtovg::{Canvas, Color, FontId, Paint, Path, renderer::OpenGl};
+use std::time::Instant;
+use rand::Rng;
+
+#[derive(Clone)]
+struct FlameParticle {
+    x: f32,
+    y: f32,
+    velocity_y: f32,
+    velocity_x: f32,
+    life: f32,
+    max_life: f32,
+    size: f32,
+    noise_offset: f32,
+    behind_text: bool, // true = render behind text, false = render in front
+}
 
 pub struct Renderer {
     canvas: Canvas<OpenGl>,
@@ -13,7 +28,9 @@ pub struct Renderer {
     height: f32,
     scale: f32,
     tab_scroll_x: f32,
-    // (x, y, width, height)
+    flame_particles: Vec<FlameParticle>,
+    last_flame_update: Instant,
+    animation_start: Instant,
 }
 
 impl Renderer {
@@ -32,6 +49,7 @@ impl Renderer {
 
         let theme = Theme::dark();
 
+        let now = Instant::now();
         Self {
             canvas,
             fonts,
@@ -40,6 +58,9 @@ impl Renderer {
             height,
             scale,
             tab_scroll_x: 0.0,
+            flame_particles: Vec::new(),
+            last_flame_update: now,
+            animation_start: now,
         }
     }
 
@@ -115,8 +136,158 @@ impl Renderer {
         self.scale = scale;
     }
 
+    fn update_flame_particles(&mut self, char_positions: &[(f32, f32, f32)]) {
+        let dt = self.last_flame_update.elapsed().as_secs_f32();
+        self.last_flame_update = Instant::now();
+
+        let mut rng = rand::thread_rng();
+        let time = self.last_flame_update.elapsed().as_secs_f32() * 2.0;
+
+        // Update existing particles with realistic fire physics
+        self.flame_particles.retain_mut(|p| {
+            p.life -= dt;
+            
+            // Rising with turbulent waft - realistic fire behavior
+            let waft = (time * 3.0 + p.noise_offset).sin() * 8.0 + (time * 5.0 + p.noise_offset * 2.0).cos() * 4.0;
+            p.x += (p.velocity_x + waft) * dt;
+            p.y -= p.velocity_y * dt;
+            
+            // Buoyancy increases as particle rises (hot air rises faster)
+            p.velocity_y += 15.0 * dt * (1.0 - p.life / p.max_life);
+            p.velocity_x *= 0.92; // Air resistance
+            
+            p.life > 0.0
+        });
+
+        // Spawn dense particles with lower opacity
+        for &(char_x, char_y, line_bottom_y) in char_positions {
+            // High spawn rate for dense particle coverage
+            if rng.gen_range(0.0..1.0) > 0.4 {
+                continue;
+            }
+
+            // Determine if this is near the bottom of selection
+            let is_bottom_edge = (char_y - line_bottom_y).abs() < 2.0;
+            
+            // Bottom edges have much less activity but bigger particles
+            let (spawn_chance, size_mult, velocity_mult, life_mult) = if is_bottom_edge {
+                (0.15, 1.5, 0.6, 0.7) // Bottom: fewer but larger flames
+            } else {
+                (1.0, 1.0, 1.0, 1.0)
+            };
+
+            if rng.gen_range(0.0..1.0) > spawn_chance {
+                continue;
+            }
+
+            // Spawn from character position with more horizontal spread
+            let offset_x = rng.gen_range(-4.0..4.0) * self.scale; // Increased horizontal variance
+            // Allow spawning from bottom of character (line_bottom_y) as well as middle
+            let spawn_from_bottom = rng.gen_range(0.0..1.0) < 0.3;
+            let base_y = if spawn_from_bottom { line_bottom_y } else { char_y };
+            let offset_y = rng.gen_range(-1.5..1.5) * self.scale;
+            
+            self.flame_particles.push(FlameParticle {
+                x: char_x + offset_x,
+                y: base_y + offset_y,
+                velocity_y: rng.gen_range(25.0..45.0) * self.scale * velocity_mult,
+                velocity_x: rng.gen_range(-15.0..15.0) * self.scale, // More horizontal velocity variance
+                life: rng.gen_range(0.3..0.6) * life_mult,
+                max_life: 0.6,
+                size: rng.gen_range(2.5..4.5) * self.scale * size_mult, // Larger particles
+                noise_offset: rng.gen_range(0.0..std::f32::consts::TAU),
+                behind_text: rng.gen_range(0.0..1.0) < 0.7, // 70% behind, 30% in front
+            });
+        }
+
+        // Higher particle limit for dense flames
+        if self.flame_particles.len() > 700 {
+            let to_remove = self.flame_particles.len() - 700;
+            self.flame_particles.drain(0..to_remove);
+        }
+    }
+
+    fn draw_flame_particles_layer(&mut self, char_positions: &[(f32, f32, f32)], behind_text: bool) {
+        self.canvas.save();
+        
+        for particle in &self.flame_particles {
+            // Only draw particles for this layer
+            if particle.behind_text != behind_text {
+                continue;
+            }
+
+            let life_ratio = (particle.life / particle.max_life).clamp(0.0, 1.0);
+            
+            // Find nearest line bottom for boundary constraint
+            let mut nearest_bottom = f32::MAX;
+            for &(_, _, line_bottom) in char_positions {
+                let dist = (particle.y - line_bottom).abs();
+                if dist < nearest_bottom {
+                    nearest_bottom = line_bottom;
+                }
+            }
+            
+            // Constrain particle bottom with threshold
+            let threshold = 4.0 * self.scale;
+            let constrained_y = if particle.y > nearest_bottom - threshold {
+                nearest_bottom - threshold
+            } else {
+                particle.y
+            };
+            
+            // Realistic fire palette: starts bright, fades to deep red embers
+            let (r, g, b) = if life_ratio > 0.7 {
+                // Bright yellow-orange core (less white for realism)
+                (1.0, 0.75, 0.15)
+            } else if life_ratio > 0.4 {
+                // Orange flames
+                (0.95, 0.45, 0.05)
+            } else if life_ratio > 0.15 {
+                // Deep red
+                (0.7, 0.15, 0.0)
+            } else {
+                // Dark embers
+                (0.3, 0.05, 0.0)
+            };
+
+            // Lower opacity for subtle, numerous flames
+            let alpha = (life_ratio * 0.3 * 255.0) as u8;
+            let size = particle.size * (0.6 + life_ratio * 0.4);
+
+            // Draw core
+            let mut path = Path::new();
+            path.circle(particle.x, constrained_y, size);
+            let paint = Paint::color(Color::rgba(
+                (r * 255.0) as u8,
+                (g * 255.0) as u8,
+                (b * 255.0) as u8,
+                alpha,
+            ));
+            self.canvas.fill_path(&path, &paint);
+
+            // Subtle glow only for brighter particles
+            if life_ratio > 0.5 {
+                let mut glow_path = Path::new();
+                glow_path.circle(particle.x, constrained_y, size * 2.0);
+                let glow_paint = Paint::color(Color::rgba(
+                    (r * 255.0) as u8,
+                    (g * 0.4 * 255.0) as u8,
+                    0,
+                    alpha / 6,
+                ));
+                self.canvas.fill_path(&glow_path, &glow_paint);
+            }
+        }
+        
+        self.canvas.restore();
+    }
+
     pub fn set_tab_scroll_x(&mut self, scroll: f32) {
         self.tab_scroll_x = scroll;
+    }
+
+    pub fn has_active_flames(&self) -> bool {
+        !self.flame_particles.is_empty()
     }
 
     pub fn render(
@@ -359,16 +530,13 @@ impl Renderer {
         text_paint.set_font_size(16.0 * self.scale);
         let char_width = self.measure_char_width(&text_paint);
 
-        // Draw selection (Limited support for wrapping currently)
+        // Collect character positions for flame spawning (no selection rectangle)
+        let mut char_positions = Vec::new();
         if !do_wrap {
             if let Some(((start_line, start_col), (end_line, end_col))) =
                 tab.selection_range_line_col()
             {
-                let selection_color = Paint::color(Color::rgbf(
-                    self.theme.selection.0,
-                    self.theme.selection.1,
-                    self.theme.selection.2,
-                ));
+                let text_lines: Vec<&str> = text.lines().collect();
 
                 for line_idx in start_line..=end_line {
                     if line_idx < scroll_offset {
@@ -380,32 +548,41 @@ impl Renderer {
                         break;
                     }
 
-                    let start_x = if line_idx == start_line {
-                        padding - scroll_x + (start_col as f32 * char_width)
+                    let line_bottom_y = y + line_height;
+
+                    // Get the actual line content
+                    if line_idx >= text_lines.len() {
+                        continue;
+                    }
+                    let line_content = text_lines[line_idx];
+
+                    let start_col_in_line = if line_idx == start_line { start_col } else { 0 };
+                    let end_col_in_line = if line_idx == end_line {
+                        end_col.min(line_content.chars().count())
                     } else {
-                        padding - scroll_x
+                        line_content.chars().count()
                     };
 
-                    let end_x = if line_idx == end_line {
-                        padding - scroll_x + (end_col as f32 * char_width)
-                    } else {
-                        // For full line selection, approximate width
-                        let lines: Vec<&str> = text.lines().collect();
-                        let line_len = if line_idx < lines.len() {
-                            lines[line_idx].chars().count()
-                        } else {
-                            0
-                        };
-                        padding - scroll_x + ((line_len as f32 + 0.5) * char_width)
-                    };
-
-                    if end_x > start_x {
-                        let mut path = Path::new();
-                        path.rect(start_x, y, end_x - start_x, line_height);
-                        self.canvas.fill_path(&path, &selection_color);
+                    // Collect position for each selected character
+                    for col in start_col_in_line..end_col_in_line {
+                        let char_x = padding - scroll_x + (col as f32 * char_width) + (char_width * 0.5);
+                        let char_y = y + line_height * 0.5;
+                        char_positions.push((char_x, char_y, line_bottom_y));
                     }
                 }
             }
+        }
+
+        // Update flame particles
+        if !char_positions.is_empty() {
+            self.update_flame_particles(&char_positions);
+        } else {
+            self.flame_particles.clear();
+        }
+
+        // Draw background flame layer (behind text)
+        if !char_positions.is_empty() {
+            self.draw_flame_particles_layer(&char_positions, true);
         }
 
         // Draw text and cursor
@@ -448,11 +625,41 @@ impl Renderer {
                     if !ch.is_control() && ch != ' ' {
                         let text_x = Self::snap_to_pixel(x_offset);
                         let text_y_snapped = Self::snap_to_pixel(current_y + line_height * 0.75);
+                        
+                        // Check if this character is in the burning selection
+                        let is_burning = !char_positions.is_empty() && char_positions.iter().any(|&(cx, cy, _)| {
+                            let dx = (cx - (x_offset + char_width * 0.5)).abs();
+                            let dy = (cy - (current_y + line_height * 0.5)).abs();
+                            dx < char_width && dy < line_height * 0.5
+                        });
+
+                        // Apply animated burning color to selected characters
+                        let char_paint = if is_burning {
+                            // Use character position as random seed for phase offset
+                            let phase_offset = (x_offset * 0.1 + current_y * 0.07) % std::f32::consts::TAU;
+                            let time = self.animation_start.elapsed().as_secs_f32() * 2.5;
+                            
+                            // Subtle oscillation - stays reddish-orange
+                            let cycle = (time + phase_offset).sin() * 0.5 + 0.5; // 0.0 to 1.0
+                            
+                            // Deep Red (0.9, 0.15, 0.0) -> Burning Orange (1.0, 0.4, 0.05)
+                            let r = 0.9 + cycle * 0.1; // 0.9 to 1.0
+                            let g = 0.15 + cycle * 0.25; // 0.15 to 0.4
+                            let b = cycle * 0.05; // 0.0 to 0.05
+                            
+                            let mut burning_paint = Paint::color(Color::rgbf(r, g, b));
+                            burning_paint.set_font(&self.fonts);
+                            burning_paint.set_font_size(16.0 * self.scale);
+                            burning_paint
+                        } else {
+                            text_paint.clone()
+                        };
+
                         let mut buf = [0u8; 4];
                         let s = ch.encode_utf8(&mut buf);
                         let _ = self
                             .canvas
-                            .fill_text(text_x, text_y_snapped, s, &text_paint);
+                            .fill_text(text_x, text_y_snapped, s, &char_paint);
                     }
                 }
 
@@ -501,6 +708,11 @@ impl Renderer {
                     )),
                 );
             }
+        }
+
+        // Draw foreground flame layer (in front of text)
+        if !char_positions.is_empty() {
+            self.draw_flame_particles_layer(&char_positions, false);
         }
 
         // Draw scrollbar

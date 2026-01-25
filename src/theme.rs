@@ -23,8 +23,6 @@ pub struct Theme {
     pub border: (f32, f32, f32),
     /// Cursor color
     pub cursor: (f32, f32, f32),
-    /// Selection color
-    pub selection: (f32, f32, f32, f32), // RGBA
 }
 
 impl Theme {
@@ -42,7 +40,6 @@ impl Theme {
             button_fg: (1.0, 0.6, 0.0),         // Flame yellow-orange
             border: (0.2, 0.05, 0.05),          // Deep ember border
             cursor: (1.0, 0.8, 0.0),            // Bright yellow flame
-            selection: (1.0, 0.3, 0.0, 0.3),    // Transparent orange fire
         }
     }
 
@@ -61,7 +58,6 @@ impl Theme {
             button_fg: (0.2, 0.4, 0.8), // Blue accent
             border: (0.85, 0.85, 0.85),
             cursor: (0.2, 0.4, 0.8),         // Blue
-            selection: (0.3, 0.5, 0.8, 0.3), // Blue with alpha
         }
     }
 }
