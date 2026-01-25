@@ -4,6 +4,7 @@ mod flame;
 mod fonts;
 mod tab_bar;
 mod text_content;
+pub mod viewport;
 
 use crate::tab::Tab;
 use crate::theme::Theme;

@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use arboard::Clipboard;
 
-use crate::config::{layout, timing};
+use crate::config::{self, layout, timing};
 use crate::persistence;
 use crate::renderer::Renderer;
 use crate::tab::Tab;
@@ -107,11 +107,11 @@ impl App {
             needs_redraw = true;
         }
 
-        // Clean up expired typing flame positions (older than 1 second)
+        // Clean up expired typing flame positions
         let now = std::time::Instant::now();
         let had_typing_flames = !self.state.typing_flame_positions.is_empty();
         self.state.typing_flame_positions.retain(|(_, _, timestamp)| {
-            now.duration_since(*timestamp).as_secs_f32() < 1.0
+            now.duration_since(*timestamp).as_secs_f32() < config::flame::TYPING_FLAME_EXPIRY
         });
         
         // Redraw if we have typing flames or just cleared them

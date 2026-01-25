@@ -129,14 +129,14 @@ impl<'a> TextContentRenderer<'a> {
 
         // Update flame particles
         if !char_positions.is_empty() {
-            flame_system.update(&char_positions, self.scale);
+            flame_system.update_legacy(&char_positions, self.scale);
         } else {
             flame_system.clear();
         }
 
         // Draw background flame layer (behind text)
         if !char_positions.is_empty() {
-            flame_system.draw_layer(self.canvas, &char_positions, self.scale, true);
+            flame_system.draw_layer(self.canvas, true);
         }
 
         // Calculate cursor position (single source of truth)
@@ -183,7 +183,7 @@ impl<'a> TextContentRenderer<'a> {
 
         // Draw foreground flame layer (in front of text)
         if !char_positions.is_empty() {
-            flame_system.draw_layer(self.canvas, &char_positions, self.scale, false);
+            flame_system.draw_layer(self.canvas, false);
         }
 
         // Draw scrollbar
@@ -210,31 +210,32 @@ impl<'a> TextContentRenderer<'a> {
         padding: f32,
         char_width: f32,
     ) -> Vec<(f32, f32, f32, f32)> {
+        // FlameSystem handles budget management - we only collect visible positions
         let mut char_positions = Vec::new();
 
         if !do_wrap {
             if let Some(((start_line, start_col), (end_line, end_col))) =
                 tab.selection_range_line_col()
             {
-                let text_lines: Vec<&str> = text.lines().collect();
-
-                for line_idx in start_line..=end_line {
-                    if line_idx < scroll_offset {
-                        continue;
-                    }
-                    let visible_idx = line_idx - scroll_offset;
+                // Calculate visible line range - only process lines that are both selected AND visible
+                let visible_start = scroll_offset.max(start_line);
+                let visible_end = end_line;
+                
+                // enumerate() BEFORE skip() to preserve original line indices
+                for (line_idx, line_content) in text.lines()
+                    .enumerate()
+                    .skip(visible_start)
+                    .take_while(|(idx, _)| *idx <= visible_end)
+                {
+                    let visible_idx = line_idx.saturating_sub(scroll_offset);
                     let y = start_y + (visible_idx as f32 * line_height);
+                    
+                    // Stop if below visible area
                     if y > self.height {
                         break;
                     }
 
                     let line_bottom_y = y + line_height;
-
-                    // Get the actual line content
-                    if line_idx >= text_lines.len() {
-                        continue;
-                    }
-                    let line_content = text_lines[line_idx];
 
                     let start_col_in_line = if line_idx == start_line { start_col } else { 0 };
                     let end_col_in_line = if line_idx == end_line {
@@ -251,6 +252,12 @@ impl<'a> TextContentRenderer<'a> {
                             padding - scroll_x,
                             char_width,
                         );
+                        
+                        // Skip horizontally off-screen characters
+                        if char_x < -char_width || char_x > self.width + char_width {
+                            continue;
+                        }
+                        
                         let char_y = y + line_height * 0.5;
                         char_positions.push((char_x, char_y, line_bottom_y, 0.0));
                     }
@@ -347,10 +354,10 @@ impl<'a> TextContentRenderer<'a> {
         let cell_w = char_width.max(1.0);
         let cell_h = line_height.max(1.0);
         
-        let lines: Vec<&str> = text.lines().skip(scroll_offset).collect();
+        // Use iterator directly to avoid allocation
         let mut current_y = start_y;
 
-        for line in lines.iter() {
+        for line in text.lines().skip(scroll_offset) {
             if current_y > self.height {
                 break;
             }
@@ -387,8 +394,11 @@ impl<'a> TextContentRenderer<'a> {
                         
                         let flame_hit = flame_lookup.get(&(grid_x, grid_y)).copied().unwrap_or(FlameHit::None);
 
-                        // Apply color based on state
-                        let char_paint = match flame_hit {
+                        let mut buf = [0u8; 4];
+                        let s = ch.encode_utf8(&mut buf);
+                        
+                        // Apply color based on state - avoid cloning for normal text
+                        match flame_hit {
                             FlameHit::Typing(age) => {
                                 // Fade from burning red (age=0.0) to white (age=1.0)
                                 let fade = age;
@@ -398,15 +408,17 @@ impl<'a> TextContentRenderer<'a> {
                                 let mut paint = Paint::color(Color::rgbf(r, g, b));
                                 paint.set_font(self.fonts);
                                 paint.set_font_size(16.0 * self.scale);
-                                paint
+                                let _ = self.canvas.fill_text(text_x, text_y_snapped, s, &paint);
                             }
-                            FlameHit::Selection => self.create_burning_paint(x_offset, current_y),
-                            FlameHit::None => text_paint.clone(),
+                            FlameHit::Selection => {
+                                let paint = self.create_burning_paint(x_offset, current_y);
+                                let _ = self.canvas.fill_text(text_x, text_y_snapped, s, &paint);
+                            }
+                            FlameHit::None => {
+                                // Use reference directly - no clone needed
+                                let _ = self.canvas.fill_text(text_x, text_y_snapped, s, text_paint);
+                            }
                         };
-
-                        let mut buf = [0u8; 4];
-                        let s = ch.encode_utf8(&mut buf);
-                        let _ = self.canvas.fill_text(text_x, text_y_snapped, s, &char_paint);
                     }
                 }
 

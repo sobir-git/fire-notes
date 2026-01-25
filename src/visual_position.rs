@@ -114,20 +114,26 @@ pub fn char_col_to_visual_col(line_content: &str, char_col: usize) -> usize {
 /// * `visual_col` - The visual column position (0-based)
 /// 
 /// # Returns
-/// The character column position that corresponds to the visual column
+/// The character column position that contains the visual column.
+/// For example, if a tab spans visual columns 0-3, clicking at visual column 2
+/// will return char column 0 (the tab character).
 pub fn visual_col_to_char_col(line_content: &str, visual_col: usize) -> usize {
     let mut char_col = 0;
     let mut current_visual_col = 0;
     
     for ch in line_content.chars() {
-        if current_visual_col >= visual_col {
-            break;
+        let char_width = get_char_visual_width(ch);
+        
+        // Check if visual_col falls within this character's visual span
+        if visual_col < current_visual_col + char_width {
+            return char_col;
         }
         
-        current_visual_col += get_char_visual_width(ch);
+        current_visual_col += char_width;
         char_col += 1;
     }
     
+    // If past end, return the character count
     char_col
 }
 
