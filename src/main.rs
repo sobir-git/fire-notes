@@ -336,8 +336,8 @@ impl ApplicationHandler for AppHandler {
                             }
                         }
                         Key::Named(NamedKey::Space) => state.app.handle_char(' '),
-                        Key::Named(NamedKey::PageUp) => state.app.scroll_up(),
-                        Key::Named(NamedKey::PageDown) => state.app.scroll_down(),
+                        Key::Named(NamedKey::PageUp) => state.app.page_up(shift),
+                        Key::Named(NamedKey::PageDown) => state.app.page_down(shift),
                         Key::Named(NamedKey::Home) => {
                             if ctrl {
                                 state.app.move_cursor_to_start(shift)
@@ -362,23 +362,38 @@ impl ApplicationHandler for AppHandler {
             }
 
             WindowEvent::MouseWheel { delta, .. } => {
-                let scroll_lines = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => -y as i32,
-                    MouseScrollDelta::PixelDelta(pos) => -(pos.y / 24.0) as i32,
+                // LineDelta: discrete wheel notches (y typically ±1.0 to ±3.0)
+                // PixelDelta: smooth scrolling (touchpads, high-res wheels)
+                let scroll_amount = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => {
+                        // Each notch = 1 scroll action, ensure at least 1 if any movement
+                        let amt = -y as i32;
+                        if amt == 0 && y != 0.0 {
+                            -y.signum() as i32
+                        } else {
+                            amt
+                        }
+                    }
+                    MouseScrollDelta::PixelDelta(pos) => {
+                        // More sensitive: ~15px per scroll unit
+                        let amt = -(pos.y / 15.0) as i32;
+                        if amt == 0 && pos.y != 0.0 {
+                            -pos.y.signum() as i32
+                        } else {
+                            amt
+                        }
+                    }
                 };
 
                 let mut redraw = false;
-                if scroll_lines > 0 {
-                    for _ in 0..scroll_lines {
-                        if state.app.scroll_down().needs_redraw() {
-                            redraw = true;
-                        }
-                    }
-                } else {
-                    for _ in 0..(-scroll_lines) {
-                        if state.app.scroll_up().needs_redraw() {
-                            redraw = true;
-                        }
+                for _ in 0..scroll_amount.abs() {
+                    let result = if scroll_amount > 0 {
+                        state.app.scroll_down()
+                    } else {
+                        state.app.scroll_up()
+                    };
+                    if result.needs_redraw() {
+                        redraw = true;
                     }
                 }
 

@@ -83,24 +83,18 @@ impl FlameSystem {
                 continue;
             }
 
-            // Spawn from character position with more horizontal spread
+            // Spawn from character position with horizontal spread
             let offset_x = rng.gen_range(-4.0..4.0) * scale;
-            // Allow spawning from bottom of character (line_bottom_y) as well as middle
-            let spawn_from_bottom = rng.gen_range(0.0..1.0) < 0.3;
-            let base_y = if spawn_from_bottom {
-                line_bottom_y
-            } else {
-                char_y
-            };
-            let offset_y = rng.gen_range(-1.5..1.5) * scale;
+            // Start flames at text level and below
+            let offset_y = rng.gen_range(0.0..5.0) * scale;
 
             self.particles.push(FlameParticle {
                 x: char_x + offset_x,
-                y: base_y + offset_y,
-                velocity_y: rng.gen_range(25.0..45.0) * scale * velocity_mult,
-                velocity_x: rng.gen_range(-15.0..15.0) * scale,
-                life: rng.gen_range(0.3..0.6) * life_mult,
-                max_life: 0.6,
+                y: char_y + offset_y,
+                velocity_y: rng.gen_range(30.0..55.0) * scale * velocity_mult,  // Moderate upward
+                velocity_x: rng.gen_range(-12.0..12.0) * scale,
+                life: rng.gen_range(0.4..0.7) * life_mult,  // Slightly longer life
+                max_life: 0.7,
                 size: rng.gen_range(2.5..4.5) * scale * size_mult,
                 noise_offset: rng.gen_range(0.0..std::f32::consts::TAU),
                 behind_text: rng.gen_range(0.0..1.0) < 0.7, // 70% behind, 30% in front
@@ -117,8 +111,8 @@ impl FlameSystem {
     pub fn draw_layer(
         &self,
         canvas: &mut Canvas<OpenGl>,
-        char_positions: &[(f32, f32, f32)],
-        scale: f32,
+        _char_positions: &[(f32, f32, f32)],
+        _scale: f32,
         behind_text: bool,
     ) {
         canvas.save();
@@ -131,22 +125,8 @@ impl FlameSystem {
 
             let life_ratio = (particle.life / particle.max_life).clamp(0.0, 1.0);
 
-            // Find nearest line bottom for boundary constraint
-            let mut nearest_bottom = f32::MAX;
-            for &(_, _, line_bottom) in char_positions {
-                let dist = (particle.y - line_bottom).abs();
-                if dist < nearest_bottom {
-                    nearest_bottom = line_bottom;
-                }
-            }
-
-            // Constrain particle bottom with threshold
-            let threshold = 4.0 * scale;
-            let constrained_y = if particle.y > nearest_bottom - threshold {
-                nearest_bottom - threshold
-            } else {
-                particle.y
-            };
+            // Allow flames to rise high above text (no constraint)
+            let constrained_y = particle.y;
 
             // Realistic fire palette: starts bright, fades to deep red embers
             let (r, g, b) = if life_ratio > 0.7 {
@@ -164,7 +144,7 @@ impl FlameSystem {
             };
 
             // Lower opacity for subtle, numerous flames
-            let alpha = (life_ratio * 0.3 * 255.0) as u8;
+            let alpha = (life_ratio * 0.18 * 255.0) as u8;
             let size = particle.size * (0.6 + life_ratio * 0.4);
 
             // Draw core
