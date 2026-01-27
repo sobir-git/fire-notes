@@ -256,6 +256,49 @@ impl TextBuffer {
         }
     }
 
+    pub fn delete_word_right(&mut self) {
+        if self.has_selection() {
+            self.delete_selection();
+            return;
+        }
+
+        let len = self.rope.len_chars();
+        if self.cursor >= len {
+            return;
+        }
+
+        let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
+        let is_whitespace = |c: char| c.is_whitespace();
+        let category_check = |c: char| -> u8 {
+            if is_word_char(c) {
+                1
+            } else if is_whitespace(c) {
+                2
+            } else {
+                3
+            }
+        };
+
+        let mut end = self.cursor;
+
+        // Skip current word/category (don't include trailing whitespace)
+        if end < len {
+            let category = category_check(self.rope.char(end));
+            while end < len && category_check(self.rope.char(end)) == category {
+                end += 1;
+            }
+        }
+
+        if end > self.cursor {
+            let removed_text = self.rope.slice(self.cursor..end).to_string();
+            self.record_action(Action::Delete {
+                start: self.cursor,
+                text: removed_text,
+            });
+            self.rope.remove(self.cursor..end);
+        }
+    }
+
     pub fn move_left(&mut self, selecting: bool) {
         if selecting {
             self.start_selection();

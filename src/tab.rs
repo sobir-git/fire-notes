@@ -152,6 +152,11 @@ impl Tab {
         self.modified = true;
     }
 
+    pub fn delete_word_right(&mut self) {
+        self.buffer.delete_word_right();
+        self.modified = true;
+    }
+
     pub fn delete(&mut self) {
         self.buffer.delete();
         self.modified = true;

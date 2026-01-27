@@ -80,6 +80,41 @@ impl TextInput {
         self.cursor = start;
     }
 
+    pub fn delete_word_right(&mut self) {
+        if self.delete_selection() {
+            return;
+        }
+        if self.cursor >= self.text.len() {
+            return;
+        }
+        // Find end of current word (don't include trailing whitespace)
+        let text = &self.text[self.cursor..];
+        let mut end = self.cursor;
+        let mut chars = text.chars().peekable();
+        
+        // Skip current word characters
+        while let Some(&ch) = chars.peek() {
+            if ch.is_whitespace() {
+                break;
+            }
+            end += ch.len_utf8();
+            chars.next();
+        }
+        
+        // If we started on whitespace, delete just the whitespace
+        if end == self.cursor {
+            while let Some(&ch) = chars.peek() {
+                if !ch.is_whitespace() {
+                    break;
+                }
+                end += ch.len_utf8();
+                chars.next();
+            }
+        }
+        
+        self.text.drain(self.cursor..end);
+    }
+
     fn find_word_boundary_left(&self) -> usize {
         let text = &self.text[..self.cursor];
         let mut chars = text.char_indices().rev().peekable();

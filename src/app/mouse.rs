@@ -1,17 +1,18 @@
 //! Mouse event handling
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::config::{layout, timing};
 use crate::ui::{UiAction, UiDragAction, UiNode, UiTree};
 
-use super::state::{AppResult, MouseInteraction};
+use super::state::AppResult;
+use super::ui_state::MouseInteraction;
 use super::App;
 
 impl App {
     pub fn handle_mouse_move(&mut self, x: f32, y: f32) -> AppResult {
-        self.state.last_mouse_x = x;
-        self.state.last_mouse_y = y;
+        self.ui_state.last_mouse_x = x;
+        self.ui_state.last_mouse_y = y;
 
         let tab_info: Vec<(&str, bool)> = self
             .tabs
@@ -20,13 +21,13 @@ impl App {
             .map(|(i, t)| (t.title(), i == self.active_tab))
             .collect();
 
-        let prev_hovered_tab_index = self.state.hovered_tab_index;
-        let prev_hovered_plus = self.state.hovered_plus;
-        let prev_hovered_scrollbar = self.state.hovered_scrollbar;
-        let prev_hovered_minimize = self.state.hovered_window_minimize;
-        let prev_hovered_maximize = self.state.hovered_window_maximize;
-        let prev_hovered_close = self.state.hovered_window_close;
-        let prev_hovered_resize_edge = self.state.hovered_resize_edge;
+        let prev_hovered_tab_index = self.ui_state.hovered_tab_index;
+        let prev_hovered_plus = self.ui_state.hovered_plus;
+        let prev_hovered_scrollbar = self.ui_state.hovered_scrollbar;
+        let prev_hovered_minimize = self.ui_state.hovered_window_minimize;
+        let prev_hovered_maximize = self.ui_state.hovered_window_maximize;
+        let prev_hovered_close = self.ui_state.hovered_window_close;
+        let prev_hovered_resize_edge = self.ui_state.hovered_resize_edge;
 
         let total_lines = self.tabs[self.active_tab].total_lines();
         let visible_lines = self.visible_lines();
@@ -35,25 +36,25 @@ impl App {
             self.width,
             self.height,
             self.scale,
-            self.state.tab_scroll_x,
+            self.ui_state.tab_scroll_x,
             &tab_info,
         );
         let hover = ui_tree.hover(x, y, total_lines, visible_lines, scroll_offset);
-        self.state.hovered_tab_index = hover.tab_index;
-        self.state.hovered_plus = hover.plus;
-        self.state.hovered_scrollbar = hover.scrollbar;
-        self.state.hovered_window_minimize = hover.window_minimize;
-        self.state.hovered_window_maximize = hover.window_maximize;
-        self.state.hovered_window_close = hover.window_close;
-        self.state.hovered_resize_edge = hover.resize_edge;
+        self.ui_state.hovered_tab_index = hover.tab_index;
+        self.ui_state.hovered_plus = hover.plus;
+        self.ui_state.hovered_scrollbar = hover.scrollbar;
+        self.ui_state.hovered_window_minimize = hover.window_minimize;
+        self.ui_state.hovered_window_maximize = hover.window_maximize;
+        self.ui_state.hovered_window_close = hover.window_close;
+        self.ui_state.hovered_resize_edge = hover.resize_edge;
 
-        if prev_hovered_tab_index != self.state.hovered_tab_index
-            || prev_hovered_plus != self.state.hovered_plus
-            || prev_hovered_scrollbar != self.state.hovered_scrollbar
-            || prev_hovered_minimize != self.state.hovered_window_minimize
-            || prev_hovered_maximize != self.state.hovered_window_maximize
-            || prev_hovered_close != self.state.hovered_window_close
-            || prev_hovered_resize_edge != self.state.hovered_resize_edge
+        if prev_hovered_tab_index != self.ui_state.hovered_tab_index
+            || prev_hovered_plus != self.ui_state.hovered_plus
+            || prev_hovered_scrollbar != self.ui_state.hovered_scrollbar
+            || prev_hovered_minimize != self.ui_state.hovered_window_minimize
+            || prev_hovered_maximize != self.ui_state.hovered_window_maximize
+            || prev_hovered_close != self.ui_state.hovered_window_close
+            || prev_hovered_resize_edge != self.ui_state.hovered_resize_edge
         {
             AppResult::Redraw
         } else {
@@ -75,7 +76,7 @@ impl App {
             self.width,
             self.height,
             self.scale,
-            self.state.tab_scroll_x,
+            self.ui_state.tab_scroll_x,
             &tab_info,
         );
 
@@ -83,18 +84,18 @@ impl App {
             UiAction::ActivateTab(i) => {
                 self.active_tab = i;
                 self.auto_scroll();
-                self.state.mouse_interaction = MouseInteraction::TabDrag { tab_index: i };
+                self.ui_state.mouse_interaction = MouseInteraction::TabDrag { tab_index: i };
                 return AppResult::Redraw;
             }
             UiAction::NewTab => {
                 return self.new_tab();
             }
             UiAction::StartScrollbarDrag { drag_offset } => {
-                self.state.mouse_interaction = MouseInteraction::ScrollbarDrag { drag_offset };
+                self.ui_state.mouse_interaction = MouseInteraction::ScrollbarDrag { drag_offset };
                 return AppResult::Ok;
             }
             UiAction::ScrollbarJump { ratio } => {
-                self.state.mouse_interaction = MouseInteraction::None;
+                self.ui_state.mouse_interaction = MouseInteraction::None;
                 return self.jump_scrollbar_to_ratio(ratio);
             }
             UiAction::WindowMinimize => {
@@ -107,18 +108,18 @@ impl App {
                 return AppResult::WindowClose;
             }
             UiAction::WindowDrag => {
-                self.state.mouse_interaction = MouseInteraction::WindowDrag;
+                self.ui_state.mouse_interaction = MouseInteraction::WindowDrag;
                 return AppResult::WindowDrag;
             }
             UiAction::WindowResize(edge) => {
-                self.state.mouse_interaction = MouseInteraction::WindowResize(edge);
+                self.ui_state.mouse_interaction = MouseInteraction::WindowResize(edge);
                 return AppResult::WindowResize(edge);
             }
             UiAction::None => {
                 return AppResult::Ok;
             }
             UiAction::TextClick => {
-                self.state.mouse_interaction = MouseInteraction::TextSelection;
+                self.ui_state.mouse_interaction = MouseInteraction::TextSelection;
             }
         }
 
@@ -136,12 +137,12 @@ impl App {
 
         if selecting {
             if clicked_visual_line < 0 || clicked_visual_line >= height {
-                if self.state.last_drag_scroll.elapsed()
+                if self.ui_state.last_drag_scroll.elapsed()
                     < Duration::from_millis(timing::DRAG_SCROLL_THROTTLE_MS)
                 {
                     return AppResult::Ok;
                 }
-                self.state.last_drag_scroll = Instant::now();
+                self.ui_state.last_drag_scroll = Instant::now();
 
                 if clicked_visual_line < 0 {
                     clicked_visual_line = -1;
@@ -168,7 +169,7 @@ impl App {
             self.auto_scroll();
         }
 
-        self.state.reset_cursor_blink();
+        self.ui_state.reset_cursor_blink();
         AppResult::Redraw
     }
 
@@ -186,7 +187,7 @@ impl App {
             self.width,
             self.height,
             self.scale,
-            self.state.tab_scroll_x,
+            self.ui_state.tab_scroll_x,
             &tab_info,
         );
 
@@ -222,7 +223,7 @@ impl App {
             self.width,
             self.height,
             self.scale,
-            self.state.tab_scroll_x,
+            self.ui_state.tab_scroll_x,
             &tab_info,
         );
 
@@ -256,7 +257,7 @@ impl App {
             self.width,
             self.height,
             self.scale,
-            self.state.tab_scroll_x,
+            self.ui_state.tab_scroll_x,
             &tab_info,
         );
         match ui_tree.hit_test(x, y) {
@@ -270,7 +271,7 @@ impl App {
 
     pub fn drag_at(&mut self, x: f32, y: f32) -> AppResult {
         // Handle drag based on current mouse interaction state
-        match self.state.mouse_interaction {
+        match self.ui_state.mouse_interaction {
             MouseInteraction::None => {
                 // No active interaction, nothing to do
                 AppResult::Ok
@@ -294,7 +295,7 @@ impl App {
                     self.width,
                     self.height,
                     self.scale,
-                    self.state.tab_scroll_x,
+                    self.ui_state.tab_scroll_x,
                     &self.tab_titles(),
                 );
                 match ui_tree.drag_scrollbar(
@@ -322,12 +323,12 @@ impl App {
             (relative_y / (layout::LINE_HEIGHT * self.scale)).floor() as isize;
 
         if clicked_visual_line < 0 || clicked_visual_line >= height {
-            if self.state.last_drag_scroll.elapsed()
+            if self.ui_state.last_drag_scroll.elapsed()
                 < Duration::from_millis(timing::DRAG_SCROLL_THROTTLE_MS)
             {
                 return AppResult::Ok;
             }
-            self.state.last_drag_scroll = Instant::now();
+            self.ui_state.last_drag_scroll = Instant::now();
 
             if clicked_visual_line < 0 {
                 clicked_visual_line = -1;
@@ -349,16 +350,16 @@ impl App {
 
         self.tabs[self.active_tab].set_cursor_position(clicked_line, clicked_col, true);
         self.auto_scroll();
-        self.state.reset_cursor_blink();
+        self.ui_state.reset_cursor_blink();
         AppResult::Redraw
     }
 
     pub fn end_drag(&mut self) {
-        self.state.mouse_interaction = MouseInteraction::None;
+        self.ui_state.mouse_interaction = MouseInteraction::None;
     }
 
     pub(super) fn reorder_tab_at(&mut self, x: f32, y: f32, from_index: usize) -> AppResult {
-        if self.state.renaming_tab.is_some() {
+        if self.focus.is_renaming() {
             return AppResult::Ok;
         }
 
@@ -373,7 +374,7 @@ impl App {
             self.width,
             self.height,
             self.scale,
-            self.state.tab_scroll_x,
+            self.ui_state.tab_scroll_x,
             &tab_info,
         );
         if let UiNode::Tab(to_index) = ui_tree.hit_test(x, y) {
@@ -390,19 +391,10 @@ impl App {
                     self.active_tab = (self.active_tab + 1).min(self.tabs.len() - 1);
                 }
 
-                if let Some(rename_index) = self.state.renaming_tab {
-                    self.state.renaming_tab = if rename_index == from_index {
-                        Some(to_index)
-                    } else if from_index < rename_index && to_index >= rename_index {
-                        Some(rename_index - 1)
-                    } else if from_index > rename_index && to_index <= rename_index {
-                        Some(rename_index + 1)
-                    } else {
-                        Some(rename_index)
-                    };
-                }
+                // Note: Tab reordering while renaming is blocked above,
+                // so we don't need to update focus.renaming_tab_index here
 
-                self.state.mouse_interaction = MouseInteraction::TabDrag { tab_index: to_index };
+                self.ui_state.mouse_interaction = MouseInteraction::TabDrag { tab_index: to_index };
                 return AppResult::Redraw;
             }
         }
@@ -424,5 +416,3 @@ impl App {
         AppResult::Ok
     }
 }
-
-use std::time::Instant;

@@ -283,6 +283,9 @@ impl ApplicationHandler for AppHandler {
                             state.app.handle_delete_word_left()
                         }
                         Key::Named(NamedKey::Backspace) => state.app.handle_backspace(),
+                        Key::Named(NamedKey::Delete) if ctrl => {
+                            state.app.handle_delete_word_right()
+                        }
                         Key::Named(NamedKey::Delete) => state.app.handle_delete(),
                         Key::Named(NamedKey::Enter) => {
                             let result = state.app.confirm_rename();
