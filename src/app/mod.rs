@@ -252,6 +252,11 @@ impl App {
         self.ui_state.last_mouse_y < layout::TAB_HEIGHT * self.scale
     }
 
+    /// Get UI state reference for hover checks
+    pub fn ui_state(&self) -> &UiState {
+        &self.ui_state
+    }
+
     /// Scroll the tab bar horizontally
     pub fn scroll_tab_bar(&mut self, delta: f32) -> AppResult {
         if delta > 0.0 {

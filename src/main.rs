@@ -16,7 +16,7 @@ mod theme;
 mod ui;
 mod visual_position;
 
-use app::App;
+use app::{App, AppResult};
 use glutin::config::ConfigTemplateBuilder;
 use glutin::context::{ContextApi, ContextAttributesBuilder, PossiblyCurrentContext};
 use glutin::display::GetGlDisplay;
@@ -246,8 +246,8 @@ impl ApplicationHandler for AppHandler {
                                 state.window.request_redraw();
                                 return;
                             }
-                            event_loop.exit();
-                            return;
+                            // Don't exit the app on Escape - just ignore it
+                            AppResult::Ok
                         }
                         Key::Character(c)
                             if ctrl
@@ -408,20 +408,60 @@ impl ApplicationHandler for AppHandler {
                     .handle_mouse_move(self.mouse_position.0 as f32, self.mouse_position.1 as f32)
                     .needs_redraw();
 
-                // Update cursor based on hovered resize edge
+                // Update cursor based on hover position
                 use winit::window::CursorIcon;
-                let cursor = match state.app.hovered_resize_edge() {
-                    Some(crate::ui::ResizeEdge::North) | Some(crate::ui::ResizeEdge::South) => {
-                        CursorIcon::NsResize
+                let cursor = if let Some(edge) = state.app.hovered_resize_edge() {
+                    match edge {
+                        crate::ui::ResizeEdge::North | crate::ui::ResizeEdge::South => {
+                            CursorIcon::NsResize
+                        }
+                        crate::ui::ResizeEdge::East | crate::ui::ResizeEdge::West => {
+                            CursorIcon::EwResize
+                        }
+                        crate::ui::ResizeEdge::NorthEast
+                        | crate::ui::ResizeEdge::SouthWest => CursorIcon::NeswResize,
+                        crate::ui::ResizeEdge::NorthWest
+                        | crate::ui::ResizeEdge::SouthEast => CursorIcon::NwseResize,
                     }
-                    Some(crate::ui::ResizeEdge::East) | Some(crate::ui::ResizeEdge::West) => {
-                        CursorIcon::EwResize
+                } else if state.app.is_mouse_in_tab_bar() {
+                    // Check if hovering over window controls
+                    if state.app.ui_state().hovered_window_close {
+                        CursorIcon::Pointer
+                    } else if state.app.ui_state().hovered_window_maximize {
+                        CursorIcon::Pointer
+                    } else if state.app.ui_state().hovered_window_minimize {
+                        CursorIcon::Pointer
+                    } else if state.app.ui_state().hovered_plus {
+                        CursorIcon::Pointer
+                    } else if state.app.ui_state().hovered_tab_index.is_some() {
+                        CursorIcon::Pointer
+                    } else {
+                        CursorIcon::Default
                     }
-                    Some(crate::ui::ResizeEdge::NorthEast)
-                    | Some(crate::ui::ResizeEdge::SouthWest) => CursorIcon::NeswResize,
-                    Some(crate::ui::ResizeEdge::NorthWest)
-                    | Some(crate::ui::ResizeEdge::SouthEast) => CursorIcon::NwseResize,
-                    None => CursorIcon::Default,
+                } else {
+                    // Editor area - use configurable cursor
+                    // Change EDITOR_CURSOR_TYPE in config.rs to customize
+                    match crate::config::cursor::EDITOR_CURSOR_TYPE {
+                        "Text" => CursorIcon::Text,
+                        "Help" => CursorIcon::Help,
+                        "Crosshair" => CursorIcon::Crosshair,
+                        "Cell" => CursorIcon::Cell,
+                        "VerticalText" => CursorIcon::VerticalText,
+                        "Alias" => CursorIcon::Alias,
+                        "Copy" => CursorIcon::Copy,
+                        "Move" => CursorIcon::Move,
+                        "NoDrop" => CursorIcon::NoDrop,
+                        "NotAllowed" => CursorIcon::NotAllowed,
+                        "Grab" => CursorIcon::Grab,
+                        "Grabbing" => CursorIcon::Grabbing,
+                        "Progress" => CursorIcon::Progress,
+                        "Wait" => CursorIcon::Wait,
+                        "ContextMenu" => CursorIcon::ContextMenu,
+                        "ZoomIn" => CursorIcon::ZoomIn,
+                        "ZoomOut" => CursorIcon::ZoomOut,
+                        "AllScroll" => CursorIcon::AllScroll,
+                        _ => CursorIcon::Text, // Default to Text if unknown
+                    }
                 };
                 state.window.set_cursor(cursor);
 
