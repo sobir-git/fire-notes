@@ -1,6 +1,7 @@
 //! Tab management operations
 
 use crate::tab::Tab;
+use crate::ui::TextInput;
 
 use super::state::AppResult;
 use super::App;
@@ -60,23 +61,26 @@ impl App {
         println!("start_rename: tab_index={}", tab_index);
         if let Some(tab) = self.tabs.get(tab_index) {
             self.state.renaming_tab = Some(tab_index);
-            self.state.rename_buffer = tab.title().to_string();
+            let mut input = TextInput::new(tab.title().to_string());
+            input.select_all();
+            self.state.rename_input = Some(input);
             println!(
-                "renaming_tab set to {:?}, buffer='{}'",
-                self.state.renaming_tab, self.state.rename_buffer
+                "renaming_tab set to {:?}",
+                self.state.renaming_tab
             );
         }
     }
 
     pub fn confirm_rename(&mut self) -> AppResult {
         if let Some(tab_index) = self.state.renaming_tab.take() {
-            let title = self.state.rename_buffer.trim();
-            if !title.is_empty() {
-                if let Some(tab) = self.tabs.get_mut(tab_index) {
-                    tab.set_title(title.to_string());
+            if let Some(input) = self.state.rename_input.take() {
+                let title = input.text().trim();
+                if !title.is_empty() {
+                    if let Some(tab) = self.tabs.get_mut(tab_index) {
+                        tab.set_title(title.to_string());
+                    }
                 }
             }
-            self.state.rename_buffer.clear();
             return AppResult::Redraw;
         }
         AppResult::Ok
@@ -84,7 +88,7 @@ impl App {
 
     pub fn cancel_rename(&mut self) -> AppResult {
         if self.state.renaming_tab.take().is_some() {
-            self.state.rename_buffer.clear();
+            self.state.rename_input = None;
             return AppResult::Redraw;
         }
         AppResult::Ok

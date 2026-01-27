@@ -8,6 +8,7 @@ pub mod viewport;
 
 use crate::tab::Tab;
 use crate::theme::Theme;
+use crate::ui::TextInput;
 use femtovg::{Canvas, Color, FontId, Paint, renderer::OpenGl};
 use std::time::Instant;
 
@@ -74,6 +75,7 @@ impl Renderer {
         hovered_scrollbar: bool,
         dragging_scrollbar: bool,
         renaming_tab: Option<usize>,
+        rename_input: Option<&TextInput>,
         typing_flame_positions: &[(usize, usize, Instant)],
         hovered_window_minimize: bool,
         hovered_window_maximize: bool,
@@ -107,6 +109,8 @@ impl Renderer {
                 hovered_tab_index,
                 hovered_plus,
                 renaming_tab,
+                rename_input,
+                cursor_visible,
                 hovered_window_minimize,
                 hovered_window_maximize,
                 hovered_window_close,

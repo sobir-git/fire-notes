@@ -145,7 +145,11 @@ impl App {
             .enumerate()
             .map(|(i, t)| {
                 if Some(i) == self.state.renaming_tab {
-                    (self.state.rename_buffer.as_str(), i == self.active_tab)
+                    if let Some(ref input) = self.state.rename_input {
+                        (input.text(), i == self.active_tab)
+                    } else {
+                        (t.title(), i == self.active_tab)
+                    }
                 } else {
                     (t.title(), i == self.active_tab)
                 }
@@ -163,6 +167,7 @@ impl App {
             self.state.hovered_scrollbar,
             matches!(self.state.mouse_interaction, crate::app::state::MouseInteraction::ScrollbarDrag { .. }),
             self.state.renaming_tab,
+            self.state.rename_input.as_ref(),
             &self.state.typing_flame_positions,
             self.state.hovered_window_minimize,
             self.state.hovered_window_maximize,

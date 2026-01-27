@@ -9,12 +9,10 @@ impl App {
     // =========================================================================
 
     pub fn handle_char(&mut self, ch: char) -> AppResult {
-        if self.state.renaming_tab.is_some() {
-            if !ch.is_control() {
-                self.state.rename_buffer.push(ch);
-                return AppResult::Redraw;
-            }
-            return AppResult::Ok;
+        if let Some(ref mut input) = self.state.rename_input {
+            input.insert_char(ch);
+            self.state.reset_cursor_blink();
+            return AppResult::Redraw;
         }
         
         // Get cursor position before inserting
@@ -40,8 +38,9 @@ impl App {
     }
 
     pub fn handle_backspace(&mut self) -> AppResult {
-        if self.state.renaming_tab.is_some() {
-            self.state.rename_buffer.pop();
+        if let Some(ref mut input) = self.state.rename_input {
+            input.backspace();
+            self.state.reset_cursor_blink();
             return AppResult::Redraw;
         }
         self.tabs[self.active_tab].backspace();
@@ -51,8 +50,9 @@ impl App {
     }
 
     pub fn handle_delete_word_left(&mut self) -> AppResult {
-        if self.state.renaming_tab.is_some() {
-            self.state.rename_buffer.clear();
+        if let Some(ref mut input) = self.state.rename_input {
+            input.delete_word_left();
+            self.state.reset_cursor_blink();
             return AppResult::Redraw;
         }
         self.tabs[self.active_tab].delete_word_left();
@@ -62,8 +62,9 @@ impl App {
     }
 
     pub fn handle_delete(&mut self) -> AppResult {
-        if self.state.renaming_tab.is_some() {
-            self.state.rename_buffer.clear();
+        if let Some(ref mut input) = self.state.rename_input {
+            input.delete();
+            self.state.reset_cursor_blink();
             return AppResult::Redraw;
         }
         self.tabs[self.active_tab].delete();
@@ -76,8 +77,10 @@ impl App {
     // =========================================================================
 
     pub fn move_cursor_left(&mut self, selecting: bool) -> AppResult {
-        if self.state.renaming_tab.is_some() {
-            return AppResult::Ok;
+        if let Some(ref mut input) = self.state.rename_input {
+            input.move_left(selecting);
+            self.state.reset_cursor_blink();
+            return AppResult::Redraw;
         }
         self.tabs[self.active_tab].move_left(selecting);
         self.auto_scroll();
@@ -85,8 +88,10 @@ impl App {
     }
 
     pub fn move_cursor_right(&mut self, selecting: bool) -> AppResult {
-        if self.state.renaming_tab.is_some() {
-            return AppResult::Ok;
+        if let Some(ref mut input) = self.state.rename_input {
+            input.move_right(selecting);
+            self.state.reset_cursor_blink();
+            return AppResult::Redraw;
         }
         self.tabs[self.active_tab].move_right(selecting);
         self.auto_scroll();
@@ -94,8 +99,10 @@ impl App {
     }
 
     pub fn move_cursor_word_left(&mut self, selecting: bool) -> AppResult {
-        if self.state.renaming_tab.is_some() {
-            return AppResult::Ok;
+        if let Some(ref mut input) = self.state.rename_input {
+            input.move_word_left(selecting);
+            self.state.reset_cursor_blink();
+            return AppResult::Redraw;
         }
         self.tabs[self.active_tab].move_word_left(selecting);
         self.auto_scroll();
@@ -103,8 +110,10 @@ impl App {
     }
 
     pub fn move_cursor_word_right(&mut self, selecting: bool) -> AppResult {
-        if self.state.renaming_tab.is_some() {
-            return AppResult::Ok;
+        if let Some(ref mut input) = self.state.rename_input {
+            input.move_word_right(selecting);
+            self.state.reset_cursor_blink();
+            return AppResult::Redraw;
         }
         self.tabs[self.active_tab].move_word_right(selecting);
         self.auto_scroll();
@@ -130,8 +139,10 @@ impl App {
     }
 
     pub fn move_cursor_to_line_start(&mut self, selecting: bool) -> AppResult {
-        if self.state.renaming_tab.is_some() {
-            return AppResult::Ok;
+        if let Some(ref mut input) = self.state.rename_input {
+            input.move_to_start(selecting);
+            self.state.reset_cursor_blink();
+            return AppResult::Redraw;
         }
         self.tabs[self.active_tab].move_to_line_start(selecting);
         self.auto_scroll();
@@ -139,8 +150,10 @@ impl App {
     }
 
     pub fn move_cursor_to_line_end(&mut self, selecting: bool) -> AppResult {
-        if self.state.renaming_tab.is_some() {
-            return AppResult::Ok;
+        if let Some(ref mut input) = self.state.rename_input {
+            input.move_to_end(selecting);
+            self.state.reset_cursor_blink();
+            return AppResult::Redraw;
         }
         self.tabs[self.active_tab].move_to_line_end(selecting);
         self.auto_scroll();
@@ -239,8 +252,10 @@ impl App {
     // =========================================================================
 
     pub fn handle_select_all(&mut self) -> AppResult {
-        if self.state.renaming_tab.is_some() {
-            return AppResult::Ok;
+        if let Some(ref mut input) = self.state.rename_input {
+            input.select_all();
+            self.state.reset_cursor_blink();
+            return AppResult::Redraw;
         }
         self.tabs[self.active_tab].select_all();
         AppResult::Redraw

@@ -1,6 +1,7 @@
 //! Tab bar rendering
 
 use crate::theme::Theme;
+use crate::ui::TextInput;
 use femtovg::{Canvas, Color, FontId, Paint, Path, renderer::OpenGl};
 
 /// Snap a coordinate to the pixel grid to prevent blurry text rendering.
@@ -43,6 +44,8 @@ impl<'a> TabBarRenderer<'a> {
         hovered_tab_index: Option<usize>,
         hovered_plus: bool,
         renaming_tab: Option<usize>,
+        rename_input: Option<&TextInput>,
+        cursor_visible: bool,
         hovered_minimize: bool,
         hovered_maximize: bool,
         hovered_close: bool,
@@ -129,9 +132,61 @@ impl<'a> TabBarRenderer<'a> {
             let text_y = snap_to_pixel(tab_height / 2.0 + 5.0 * self.scale);
             let _ = self.canvas.fill_text(text_x, text_y, title, &text_paint);
 
-            // Draw underline if this tab is being renamed
+            // Draw text input cursor and selection if this tab is being renamed
             if Some(i) == renaming_tab {
-                let underline_y = text_y + 12.0 * self.scale;
+                if let Some(input) = rename_input {
+                    // Draw selection highlight if any
+                    if let Some((sel_start, sel_end)) = input.selection_range() {
+                        let sel_start_chars = input.text()[..sel_start].chars().count();
+                        let sel_end_chars = input.text()[..sel_end].chars().count();
+                        
+                        // Measure character width
+                        let char_width = if let Ok(m) = self.canvas.measure_text(0.0, 0.0, "M", &text_paint) {
+                            m.width()
+                        } else {
+                            9.0 * self.scale
+                        };
+                        
+                        let sel_x = text_x + sel_start_chars as f32 * char_width;
+                        let sel_width = (sel_end_chars - sel_start_chars) as f32 * char_width;
+                        
+                        let mut sel_path = Path::new();
+                        sel_path.rect(sel_x, text_y - 14.0 * self.scale, sel_width, 18.0 * self.scale);
+                        self.canvas.fill_path(
+                            &sel_path,
+                            &Paint::color(Color::rgba(100, 150, 255, 100)),
+                        );
+                    }
+                    
+                    // Draw cursor if visible
+                    if cursor_visible {
+                        let cursor_chars = input.text()[..input.cursor()].chars().count();
+                        let char_width = if let Ok(m) = self.canvas.measure_text(0.0, 0.0, "M", &text_paint) {
+                            m.width()
+                        } else {
+                            9.0 * self.scale
+                        };
+                        
+                        let cursor_x = snap_to_pixel(text_x + cursor_chars as f32 * char_width);
+                        let cursor_y1 = text_y - 14.0 * self.scale;
+                        let cursor_y2 = text_y + 4.0 * self.scale;
+                        
+                        let mut cursor_path = Path::new();
+                        cursor_path.move_to(cursor_x, cursor_y1);
+                        cursor_path.line_to(cursor_x, cursor_y2);
+                        
+                        let mut cursor_paint = Paint::color(Color::rgbf(
+                            self.theme.fg.0,
+                            self.theme.fg.1,
+                            self.theme.fg.2,
+                        ));
+                        cursor_paint.set_line_width(2.0 * self.scale);
+                        self.canvas.stroke_path(&cursor_path, &cursor_paint);
+                    }
+                }
+                
+                // Draw underline
+                let underline_y = text_y + 4.0 * self.scale;
                 let mut underline_path = Path::new();
                 underline_path.move_to(text_x, underline_y);
                 underline_path.line_to(text_x + text_width, underline_y);

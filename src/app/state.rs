@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use crate::ui::ResizeEdge;
+use crate::ui::{ResizeEdge, TextInput};
 
 /// Represents the current mouse interaction state.
 /// Only one interaction can be active at a time, preventing event leaking.
@@ -67,7 +67,7 @@ pub struct EditorState {
     pub last_mouse_y: f32,
     pub tab_scroll_x: f32,
     pub renaming_tab: Option<usize>,
-    pub rename_buffer: String,
+    pub rename_input: Option<TextInput>,
     pub typing_flame_positions: Vec<(usize, usize, Instant)>, // (line, col, timestamp)
 }
 
@@ -89,7 +89,7 @@ impl EditorState {
             last_mouse_y: 0.0,
             tab_scroll_x: 0.0,
             renaming_tab: None,
-            rename_buffer: String::new(),
+            rename_input: None,
             typing_flame_positions: Vec::new(),
         }
     }
