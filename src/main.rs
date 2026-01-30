@@ -16,7 +16,7 @@ mod theme;
 mod ui;
 mod visual_position;
 
-use app::{App, AppResult};
+use app::{App, Key as AppKey, KeyEvent, Modifiers, resolve_keybinding};
 use glutin::config::ConfigTemplateBuilder;
 use glutin::context::{ContextApi, ContextAttributesBuilder, PossiblyCurrentContext};
 use glutin::display::GetGlDisplay;
@@ -86,6 +86,39 @@ impl AppHandler {
             click_count: 0,
         }
     }
+}
+
+/// Convert winit Key to our KeyEvent (free function to avoid borrow issues)
+fn convert_winit_key(key: &Key, modifiers: &ModifiersState) -> Option<KeyEvent> {
+    let mods = Modifiers {
+        ctrl: modifiers.control_key(),
+        shift: modifiers.shift_key(),
+        alt: modifiers.alt_key(),
+    };
+
+    let app_key = match key {
+        Key::Named(NamedKey::Escape) => AppKey::Escape,
+        Key::Named(NamedKey::Enter) => AppKey::Enter,
+        Key::Named(NamedKey::Tab) => AppKey::Tab,
+        Key::Named(NamedKey::Backspace) => AppKey::Backspace,
+        Key::Named(NamedKey::Delete) => AppKey::Delete,
+        Key::Named(NamedKey::ArrowLeft) => AppKey::ArrowLeft,
+        Key::Named(NamedKey::ArrowRight) => AppKey::ArrowRight,
+        Key::Named(NamedKey::ArrowUp) => AppKey::ArrowUp,
+        Key::Named(NamedKey::ArrowDown) => AppKey::ArrowDown,
+        Key::Named(NamedKey::Home) => AppKey::Home,
+        Key::Named(NamedKey::End) => AppKey::End,
+        Key::Named(NamedKey::PageUp) => AppKey::PageUp,
+        Key::Named(NamedKey::PageDown) => AppKey::PageDown,
+        Key::Named(NamedKey::Space) => AppKey::Space,
+        Key::Character(c) => {
+            let ch = c.chars().next()?;
+            AppKey::Char(ch)
+        }
+        _ => return None,
+    };
+
+    Some(KeyEvent::new(app_key, mods))
 }
 
 impl ApplicationHandler for AppHandler {
@@ -235,141 +268,17 @@ impl ApplicationHandler for AppHandler {
                 }
                 
                 if event.state == ElementState::Pressed {
-                    let ctrl = self.modifiers.control_key();
-                    let shift = self.modifiers.shift_key();
-                    let alt = self.modifiers.alt_key();
-
-                    let result = match &event.logical_key {
-                        Key::Named(NamedKey::Escape) => {
-                            let result = state.app.cancel_rename();
+                    // Convert winit key event to our KeyEvent
+                    // Extract modifiers before borrowing state
+                    let key_event = convert_winit_key(&event.logical_key, &self.modifiers);
+                    if let Some(key_event) = key_event {
+                        // Resolve to action and execute
+                        if let Some(action) = resolve_keybinding(&key_event) {
+                            let result = state.app.execute(action);
                             if result.needs_redraw() {
                                 state.window.request_redraw();
-                                return;
-                            }
-                            // Don't exit the app on Escape - just ignore it
-                            AppResult::Ok
-                        }
-                        Key::Character(c)
-                            if ctrl
-                                && c.as_str().len() == 1
-                                && c.as_str().chars().next().unwrap().is_ascii_digit() =>
-                        {
-                            let digit = c.as_str().chars().next().unwrap();
-                            if digit == '0' {
-                                crate::app::AppResult::Ok
-                            } else {
-                                let index = digit.to_digit(10).unwrap() as usize - 1;
-                                state.app.go_to_tab(index)
                             }
                         }
-                        Key::Character(c) if ctrl && c.as_str() == "n" => state.app.new_tab(),
-                        Key::Character(c) if ctrl && c.as_str() == "w" => {
-                            state.app.close_current_tab()
-                        }
-                        Key::Character(c) if ctrl && c.as_str() == "s" => state.app.save_current(),
-                        Key::Character(c) if ctrl && c.as_str() == "o" => state.app.open_file(),
-                        Key::Character(c) if ctrl && c.as_str().eq_ignore_ascii_case("r") => {
-                            state.app.rename_current()
-                        }
-                        Key::Character(c) if ctrl && c.as_str() == "c" => state.app.handle_copy(),
-                        Key::Character(c) if ctrl && c.as_str() == "x" => state.app.handle_cut(),
-                        Key::Character(c) if ctrl && c.as_str() == "v" => state.app.handle_paste(),
-                        Key::Character(c) if ctrl && c.as_str() == "a" => {
-                            state.app.handle_select_all()
-                        }
-                        Key::Named(NamedKey::Tab) if ctrl && shift => state.app.previous_tab(),
-                        Key::Named(NamedKey::Tab) if ctrl => state.app.next_tab(),
-                        Key::Named(NamedKey::Backspace) if ctrl => {
-                            state.app.handle_delete_word_left()
-                        }
-                        Key::Named(NamedKey::Backspace) => state.app.handle_backspace(),
-                        Key::Named(NamedKey::Delete) if ctrl => {
-                            state.app.handle_delete_word_right()
-                        }
-                        Key::Named(NamedKey::Delete) => state.app.handle_delete(),
-                        Key::Named(NamedKey::Enter) => {
-                            let result = state.app.confirm_rename();
-                            if result.needs_redraw() {
-                                result
-                            } else {
-                                state.app.handle_char('\n')
-                            }
-                        }
-                        Key::Named(NamedKey::ArrowLeft) => {
-                            if ctrl {
-                                state.app.move_cursor_word_left(shift)
-                            } else {
-                                state.app.move_cursor_left(shift)
-                            }
-                        }
-                        Key::Named(NamedKey::ArrowRight) => {
-                            if ctrl {
-                                state.app.move_cursor_word_right(shift)
-                            } else {
-                                state.app.move_cursor_right(shift)
-                            }
-                        }
-                        Key::Named(NamedKey::ArrowUp) => {
-                            if alt {
-                                state.app.handle_move_lines_up()
-                            } else {
-                                state.app.move_cursor_up(shift)
-                            }
-                        }
-                        Key::Named(NamedKey::ArrowDown) => {
-                            if alt {
-                                state.app.handle_move_lines_down()
-                            } else {
-                                state.app.move_cursor_down(shift)
-                            }
-                        }
-                        Key::Character(c) => {
-                            let char_lower = c
-                                .to_lowercase()
-                                .chars()
-                                .next()
-                                .unwrap_or(c.chars().next().unwrap_or('\0'));
-                            match char_lower {
-                                'a' if ctrl => state.app.handle_select_all(),
-                                'c' if ctrl => state.app.handle_copy(),
-                                'x' if ctrl => state.app.handle_cut(),
-                                'v' if ctrl => state.app.handle_paste(),
-                                'z' if ctrl => state.app.handle_undo(),
-                                'z' if alt => state.app.toggle_word_wrap(),
-                                'y' if ctrl => state.app.handle_redo(),
-                                _ => {
-                                    // Regular typing
-                                    if !ctrl && !alt {
-                                        state.app.handle_char(c.chars().next().unwrap_or('\0'))
-                                    } else {
-                                        crate::app::AppResult::Ok
-                                    }
-                                }
-                            }
-                        }
-                        Key::Named(NamedKey::Tab) => state.app.handle_char('\t'),
-                        Key::Named(NamedKey::Space) => state.app.handle_char(' '),
-                        Key::Named(NamedKey::PageUp) => state.app.page_up(shift),
-                        Key::Named(NamedKey::PageDown) => state.app.page_down(shift),
-                        Key::Named(NamedKey::Home) => {
-                            if ctrl {
-                                state.app.move_cursor_to_start(shift)
-                            } else {
-                                state.app.move_cursor_to_line_start(shift)
-                            }
-                        }
-                        Key::Named(NamedKey::End) => {
-                            if ctrl {
-                                state.app.move_cursor_to_end(shift)
-                            } else {
-                                state.app.move_cursor_to_line_end(shift)
-                            }
-                        }
-                        _ => crate::app::AppResult::Ok,
-                    };
-
-                    if result.needs_redraw() {
-                        state.window.request_redraw();
                     }
                 }
             }

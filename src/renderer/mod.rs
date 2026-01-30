@@ -2,17 +2,20 @@
 
 mod flame;
 mod fonts;
+mod notes_picker;
 mod tab_bar;
 mod text_content;
 pub mod viewport;
 
+use crate::app::NoteEntry;
 use crate::tab::Tab;
 use crate::theme::Theme;
-use crate::ui::TextInput;
+use crate::ui::{ListWidget, TextInput};
 use femtovg::{Canvas, Color, FontId, Paint, renderer::OpenGl};
 use std::time::Instant;
 
 use flame::FlameSystem;
+use notes_picker::NotesPickerRenderer;
 use tab_bar::TabBarRenderer;
 use text_content::TextContentRenderer;
 
@@ -80,6 +83,7 @@ impl Renderer {
         hovered_window_minimize: bool,
         hovered_window_maximize: bool,
         hovered_window_close: bool,
+        notes_picker_state: Option<(&TextInput, &ListWidget<NoteEntry>)>,
     ) {
         let (width, height) = (self.width, self.height);
 
@@ -136,6 +140,19 @@ impl Renderer {
                 &mut self.flame_system,
                 typing_flame_positions,
             );
+        }
+
+        // Draw notes picker overlay if active
+        if let Some((input, list)) = notes_picker_state {
+            let mut picker = NotesPickerRenderer::new(
+                &mut self.canvas,
+                &self.fonts,
+                &self.theme,
+                self.width,
+                self.height,
+                self.scale,
+            );
+            picker.draw(input, list, cursor_visible);
         }
 
         self.canvas.flush();

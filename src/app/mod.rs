@@ -5,10 +5,14 @@
 //! - `UiState` - transient UI state (hover, cursor blink, mouse)
 //! - `App` - coordinates between components, owns tabs and renderer
 
+mod action;
 mod file;
 mod focus;
 mod input;
+mod input_handler;
+mod keybindings;
 mod mouse;
+mod notes_picker;
 mod scroll;
 mod scroll_state;
 mod state;
@@ -22,7 +26,8 @@ use crate::persistence;
 use crate::renderer::Renderer;
 use crate::tab::Tab;
 
-pub use focus::Focus;
+pub use focus::{Focus, NoteEntry};
+pub use keybindings::{Key, KeyEvent, Modifiers, resolve as resolve_keybinding};
 pub use scroll_state::{ScrollDirection, ScrollInput, ScrollState};
 pub use state::AppResult;
 pub use ui_state::{MouseInteraction, UiState};
@@ -146,6 +151,7 @@ impl App {
     pub fn render(&mut self) {
         let renaming_tab_index = self.focus.renaming_tab_index();
         let rename_input = self.focus.rename_input();
+        let notes_picker_state = self.focus.notes_picker_state();
 
         let tab_info: Vec<(&str, bool)> = self
             .tabs
@@ -180,6 +186,7 @@ impl App {
             self.ui_state.hovered_window_minimize,
             self.ui_state.hovered_window_maximize,
             self.ui_state.hovered_window_close,
+            notes_picker_state,
         );
     }
 

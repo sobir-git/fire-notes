@@ -1,18 +1,21 @@
 //! Unified input handling through the Focus system
 //!
-//! This module consolidates all text input operations. Instead of checking
-//! focus state in every handler, we route through a single entry point.
+//! This module uses trait-based dispatch: all input first goes to Focus's
+//! InputHandler implementation. If Focus returns NotHandled (meaning the
+//! editor should handle it), we fall through to the editor. This eliminates
+//! manual focus checks - adding a new widget only requires updating Focus.
 
+use super::input_handler::InputHandler;
 use super::state::AppResult;
 use super::App;
 
 impl App {
     /// Handle character input - routes to focused component
     pub fn handle_char(&mut self, ch: char) -> AppResult {
-        if let Some(input) = self.focus.rename_input_mut() {
-            input.insert_char(ch);
+        let result = self.focus.handle_char(ch);
+        if result.was_handled() {
             self.ui_state.reset_cursor_blink();
-            return AppResult::Redraw;
+            return result.into();
         }
 
         // Editor mode - delegate to active tab
@@ -41,10 +44,10 @@ impl App {
 
     /// Handle backspace - routes to focused component
     pub fn handle_backspace(&mut self) -> AppResult {
-        if let Some(input) = self.focus.rename_input_mut() {
-            input.backspace();
+        let result = self.focus.handle_backspace();
+        if result.was_handled() {
             self.ui_state.reset_cursor_blink();
-            return AppResult::Redraw;
+            return result.into();
         }
 
         self.tabs[self.active_tab].backspace();
@@ -55,10 +58,10 @@ impl App {
 
     /// Handle delete word left (Ctrl+Backspace)
     pub fn handle_delete_word_left(&mut self) -> AppResult {
-        if let Some(input) = self.focus.rename_input_mut() {
-            input.delete_word_left();
+        let result = self.focus.handle_delete_word_left();
+        if result.was_handled() {
             self.ui_state.reset_cursor_blink();
-            return AppResult::Redraw;
+            return result.into();
         }
 
         self.tabs[self.active_tab].delete_word_left();
@@ -69,10 +72,10 @@ impl App {
 
     /// Handle delete key
     pub fn handle_delete(&mut self) -> AppResult {
-        if let Some(input) = self.focus.rename_input_mut() {
-            input.delete();
+        let result = self.focus.handle_delete();
+        if result.was_handled() {
             self.ui_state.reset_cursor_blink();
-            return AppResult::Redraw;
+            return result.into();
         }
 
         self.tabs[self.active_tab].delete();
@@ -82,10 +85,10 @@ impl App {
 
     /// Handle delete word right (Ctrl+Delete)
     pub fn handle_delete_word_right(&mut self) -> AppResult {
-        if let Some(input) = self.focus.rename_input_mut() {
-            input.delete_word_right();
+        let result = self.focus.handle_delete_word_right();
+        if result.was_handled() {
             self.ui_state.reset_cursor_blink();
-            return AppResult::Redraw;
+            return result.into();
         }
 
         self.tabs[self.active_tab].delete_word_right();
@@ -96,10 +99,10 @@ impl App {
 
     /// Handle select all (Ctrl+A)
     pub fn handle_select_all(&mut self) -> AppResult {
-        if let Some(input) = self.focus.rename_input_mut() {
-            input.select_all();
+        let result = self.focus.handle_select_all();
+        if result.was_handled() {
             self.ui_state.reset_cursor_blink();
-            return AppResult::Redraw;
+            return result.into();
         }
 
         self.tabs[self.active_tab].select_all();
@@ -111,10 +114,10 @@ impl App {
     // =========================================================================
 
     pub fn move_cursor_left(&mut self, selecting: bool) -> AppResult {
-        if let Some(input) = self.focus.rename_input_mut() {
-            input.move_left(selecting);
+        let result = self.focus.move_left(selecting);
+        if result.was_handled() {
             self.ui_state.reset_cursor_blink();
-            return AppResult::Redraw;
+            return result.into();
         }
 
         self.tabs[self.active_tab].move_left(selecting);
@@ -123,10 +126,10 @@ impl App {
     }
 
     pub fn move_cursor_right(&mut self, selecting: bool) -> AppResult {
-        if let Some(input) = self.focus.rename_input_mut() {
-            input.move_right(selecting);
+        let result = self.focus.move_right(selecting);
+        if result.was_handled() {
             self.ui_state.reset_cursor_blink();
-            return AppResult::Redraw;
+            return result.into();
         }
 
         self.tabs[self.active_tab].move_right(selecting);
@@ -135,10 +138,10 @@ impl App {
     }
 
     pub fn move_cursor_word_left(&mut self, selecting: bool) -> AppResult {
-        if let Some(input) = self.focus.rename_input_mut() {
-            input.move_word_left(selecting);
+        let result = self.focus.move_word_left(selecting);
+        if result.was_handled() {
             self.ui_state.reset_cursor_blink();
-            return AppResult::Redraw;
+            return result.into();
         }
 
         self.tabs[self.active_tab].move_word_left(selecting);
@@ -147,10 +150,10 @@ impl App {
     }
 
     pub fn move_cursor_word_right(&mut self, selecting: bool) -> AppResult {
-        if let Some(input) = self.focus.rename_input_mut() {
-            input.move_word_right(selecting);
+        let result = self.focus.move_word_right(selecting);
+        if result.was_handled() {
             self.ui_state.reset_cursor_blink();
-            return AppResult::Redraw;
+            return result.into();
         }
 
         self.tabs[self.active_tab].move_word_right(selecting);
@@ -159,8 +162,9 @@ impl App {
     }
 
     pub fn move_cursor_up(&mut self, selecting: bool) -> AppResult {
-        if self.focus.is_renaming() {
-            return AppResult::Ok;
+        let result = self.focus.move_up(selecting);
+        if result.was_handled() {
+            return result.into();
         }
 
         self.tabs[self.active_tab].move_up(selecting);
@@ -169,8 +173,9 @@ impl App {
     }
 
     pub fn move_cursor_down(&mut self, selecting: bool) -> AppResult {
-        if self.focus.is_renaming() {
-            return AppResult::Ok;
+        let result = self.focus.move_down(selecting);
+        if result.was_handled() {
+            return result.into();
         }
 
         self.tabs[self.active_tab].move_down(selecting);
@@ -179,10 +184,10 @@ impl App {
     }
 
     pub fn move_cursor_to_line_start(&mut self, selecting: bool) -> AppResult {
-        if let Some(input) = self.focus.rename_input_mut() {
-            input.move_to_start(selecting);
+        let result = self.focus.move_to_line_start(selecting);
+        if result.was_handled() {
             self.ui_state.reset_cursor_blink();
-            return AppResult::Redraw;
+            return result.into();
         }
 
         self.tabs[self.active_tab].move_to_line_start(selecting);
@@ -191,10 +196,10 @@ impl App {
     }
 
     pub fn move_cursor_to_line_end(&mut self, selecting: bool) -> AppResult {
-        if let Some(input) = self.focus.rename_input_mut() {
-            input.move_to_end(selecting);
+        let result = self.focus.move_to_line_end(selecting);
+        if result.was_handled() {
             self.ui_state.reset_cursor_blink();
-            return AppResult::Redraw;
+            return result.into();
         }
 
         self.tabs[self.active_tab].move_to_line_end(selecting);
@@ -203,8 +208,9 @@ impl App {
     }
 
     pub fn move_cursor_to_start(&mut self, selecting: bool) -> AppResult {
-        if self.focus.is_renaming() {
-            return AppResult::Ok;
+        let result = self.focus.move_to_start(selecting);
+        if result.was_handled() {
+            return result.into();
         }
 
         self.tabs[self.active_tab].move_to_start(selecting);
@@ -213,8 +219,9 @@ impl App {
     }
 
     pub fn move_cursor_to_end(&mut self, selecting: bool) -> AppResult {
-        if self.focus.is_renaming() {
-            return AppResult::Ok;
+        let result = self.focus.move_to_end(selecting);
+        if result.was_handled() {
+            return result.into();
         }
 
         self.tabs[self.active_tab].move_to_end(selecting);
@@ -223,11 +230,11 @@ impl App {
     }
 
     // =========================================================================
-    // Line operations (editor only)
+    // Line operations (editor only - no widget handles these)
     // =========================================================================
 
     pub fn handle_move_lines_up(&mut self) -> AppResult {
-        if self.focus.is_renaming() {
+        if !matches!(self.focus, super::focus::Focus::Editor) {
             return AppResult::Ok;
         }
 
@@ -240,7 +247,7 @@ impl App {
     }
 
     pub fn handle_move_lines_down(&mut self) -> AppResult {
-        if self.focus.is_renaming() {
+        if !matches!(self.focus, super::focus::Focus::Editor) {
             return AppResult::Ok;
         }
 
@@ -253,12 +260,13 @@ impl App {
     }
 
     // =========================================================================
-    // Undo/Redo (editor only)
+    // Undo/Redo
     // =========================================================================
 
     pub fn handle_undo(&mut self) -> AppResult {
-        if self.focus.is_renaming() {
-            return AppResult::Ok;
+        let result = self.focus.undo();
+        if result.was_handled() {
+            return result.into();
         }
 
         if self.tabs[self.active_tab].undo() {
@@ -270,8 +278,9 @@ impl App {
     }
 
     pub fn handle_redo(&mut self) -> AppResult {
-        if self.focus.is_renaming() {
-            return AppResult::Ok;
+        let result = self.focus.redo();
+        if result.was_handled() {
+            return result.into();
         }
 
         if self.tabs[self.active_tab].redo() {
@@ -283,11 +292,11 @@ impl App {
     }
 
     // =========================================================================
-    // View settings
+    // View settings (editor only)
     // =========================================================================
 
     pub fn toggle_word_wrap(&mut self) -> AppResult {
-        if self.focus.is_renaming() {
+        if !matches!(self.focus, super::focus::Focus::Editor) {
             return AppResult::Ok;
         }
 
@@ -301,12 +310,15 @@ impl App {
     // =========================================================================
 
     pub fn handle_copy(&mut self) -> AppResult {
-        if let Some(input) = self.focus.rename_input() {
-            if let Some(text) = input.copy() {
-                if let Some(clipboard) = &mut self.clipboard {
-                    let _ = clipboard.set_text(text);
-                }
+        if let Some(text) = self.focus.copy() {
+            if let Some(clipboard) = &mut self.clipboard {
+                let _ = clipboard.set_text(text);
             }
+            return AppResult::Ok;
+        }
+
+        // Only allow editor copy when in editor focus
+        if !matches!(self.focus, super::focus::Focus::Editor) {
             return AppResult::Ok;
         }
 
@@ -319,14 +331,16 @@ impl App {
     }
 
     pub fn handle_cut(&mut self) -> AppResult {
-        if let Some(input) = self.focus.rename_input_mut() {
-            if let Some(text) = input.cut() {
-                if let Some(clipboard) = &mut self.clipboard {
-                    let _ = clipboard.set_text(text);
-                }
-                self.ui_state.reset_cursor_blink();
-                return AppResult::Redraw;
+        if let Some(text) = self.focus.cut() {
+            if let Some(clipboard) = &mut self.clipboard {
+                let _ = clipboard.set_text(text);
             }
+            self.ui_state.reset_cursor_blink();
+            return AppResult::Redraw;
+        }
+
+        // Only allow editor cut when in editor focus
+        if !matches!(self.focus, super::focus::Focus::Editor) {
             return AppResult::Ok;
         }
 
@@ -341,23 +355,21 @@ impl App {
     }
 
     pub fn handle_paste(&mut self) -> AppResult {
-        if let Some(input) = self.focus.rename_input_mut() {
-            if let Some(clipboard) = &mut self.clipboard {
-                if let Ok(text) = clipboard.get_text() {
-                    input.paste(&text);
-                    self.ui_state.reset_cursor_blink();
-                    return AppResult::Redraw;
-                }
-            }
-            return AppResult::Ok;
-        }
-
         if let Some(clipboard) = &mut self.clipboard {
             if let Ok(text) = clipboard.get_text() {
-                self.tabs[self.active_tab].paste_text(&text);
-                self.tabs[self.active_tab].auto_save();
-                self.auto_scroll();
-                return AppResult::Redraw;
+                let result = self.focus.paste(&text);
+                if result.was_handled() {
+                    self.ui_state.reset_cursor_blink();
+                    return result.into();
+                }
+
+                // Only allow editor paste when in editor focus
+                if matches!(self.focus, super::focus::Focus::Editor) {
+                    self.tabs[self.active_tab].paste_text(&text);
+                    self.tabs[self.active_tab].auto_save();
+                    self.auto_scroll();
+                    return AppResult::Redraw;
+                }
             }
         }
         AppResult::Ok

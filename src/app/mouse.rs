@@ -63,6 +63,11 @@ impl App {
     }
 
     pub fn click_at(&mut self, x: f32, y: f32, selecting: bool) -> AppResult {
+        // Handle notes picker clicks first (modal takes priority)
+        if self.focus.is_notes_picker() {
+            return self.handle_notes_picker_click(x, y);
+        }
+
         let tab_info: Vec<(&str, bool)> = self
             .tabs
             .iter()
