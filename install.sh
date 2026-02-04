@@ -47,7 +47,13 @@ Terminal=false
 Categories=Utility;TextEditor;
 Keywords=markdown;editor;notes;
 Icon=$HOME/.local/share/icons/fire-notes.png
+StartupWMClass=fire-notes
 EOF
+
+# Refresh desktop database if possible
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database ~/.local/share/applications || true
+fi
 
 echo "✅ Done! You may need to log out and back in specifically if you use Wayland or some DEs."
 echo "You can launch it by typing 'fire-notes' in a new terminal or finding it in your app launcher."

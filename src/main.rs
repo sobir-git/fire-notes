@@ -131,6 +131,15 @@ impl ApplicationHandler for AppHandler {
         let mut window_attrs = WindowAttributes::default()
             .with_title("Fire Notes")
             .with_decorations(false);
+            
+        #[cfg(target_os = "linux")]
+        {
+            use winit::platform::wayland::WindowAttributesExtWayland;
+            use winit::platform::x11::WindowAttributesExtX11;
+            
+            window_attrs = WindowAttributesExtWayland::with_name(window_attrs, "fire-notes", "fire-notes");
+            window_attrs = WindowAttributesExtX11::with_name(window_attrs, "fire-notes", "fire-notes");
+        }
         if let Some(saved) = load_window_state() {
             window_attrs = window_attrs
                 .with_inner_size(PhysicalSize::new(saved.width, saved.height))
