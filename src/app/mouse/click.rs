@@ -25,6 +25,8 @@ impl App {
             UiAction::ActivateTab(i) => {
                 self.logic.active_tab = i;
                 self.auto_scroll();
+                self.logic.ui_state.tab_scroll_x =
+                    ui_tree.tab_bar.scroll_x_to_reveal(i, self.logic.ui_state.tab_scroll_x);
                 self.logic.ui_state.mouse_interaction = MouseInteraction::TabDrag { tab_index: i };
                 return AppResult::Redraw;
             }
@@ -95,7 +97,13 @@ impl App {
         let ui_tree = self.logic.build_ui_tree(&tab_info);
 
         match ui_tree.double_click(x, y, total_lines, visible_lines, scroll_offset) {
-            UiAction::ActivateTab(i) => { self.logic.active_tab = i; self.auto_scroll(); AppResult::Redraw }
+            UiAction::ActivateTab(i) => {
+                self.logic.active_tab = i;
+                self.auto_scroll();
+                self.logic.ui_state.tab_scroll_x =
+                    ui_tree.tab_bar.scroll_x_to_reveal(i, self.logic.ui_state.tab_scroll_x);
+                AppResult::Redraw
+            }
             UiAction::NewTab => self.new_tab(),
             UiAction::TextClick => {
                 let _ = self.click_at(x, y, false);
@@ -114,7 +122,13 @@ impl App {
         let ui_tree = self.logic.build_ui_tree(&tab_info);
 
         match ui_tree.triple_click(x, y, total_lines, visible_lines, scroll_offset) {
-            UiAction::ActivateTab(i) => { self.logic.active_tab = i; self.auto_scroll(); AppResult::Redraw }
+            UiAction::ActivateTab(i) => {
+                self.logic.active_tab = i;
+                self.auto_scroll();
+                self.logic.ui_state.tab_scroll_x =
+                    ui_tree.tab_bar.scroll_x_to_reveal(i, self.logic.ui_state.tab_scroll_x);
+                AppResult::Redraw
+            }
             UiAction::NewTab => self.new_tab(),
             UiAction::TextClick => {
                 let _ = self.click_at(x, y, false);

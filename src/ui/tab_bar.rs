@@ -203,6 +203,25 @@ impl TabBar {
         }
     }
 
+    /// Return the `tab_scroll_x` value that ensures tab `tab_index` is fully
+    /// visible — not clipped by the left edge or the plus-button boundary.
+    /// Returns the current scroll unchanged if the tab is already fully visible.
+    pub fn scroll_x_to_reveal(&self, tab_index: usize, current_scroll_x: f32) -> f32 {
+        let Some(tab) = self.scroll_area.tabs.iter().find(|t| t.index == tab_index) else {
+            return current_scroll_x;
+        };
+        let left_bound  = self.rect.x;
+        let right_bound = self.tabs_clip_x;
+
+        if tab.rect.x < left_bound {
+            return current_scroll_x - (left_bound - tab.rect.x);
+        }
+        if tab.rect.x + tab.rect.width > right_bound {
+            return current_scroll_x + (tab.rect.x + tab.rect.width - right_bound);
+        }
+        current_scroll_x
+    }
+
     pub fn hit_test(&self, x: f32, y: f32) -> UiNode {
         if !self.rect.contains(x, y) {
             return UiNode::None;
