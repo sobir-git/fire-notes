@@ -40,6 +40,8 @@ pub struct UiState {
     pub last_drag_scroll: Instant,
     pub last_mouse_x: f32,
     pub last_mouse_y: f32,
+    /// Active picker scrollbar drag offset (within thumb). None when not dragging.
+    pub picker_sb_drag: Option<f32>,
 
     // Tab bar scroll
     pub tab_scroll_x: f32,
@@ -65,6 +67,7 @@ impl UiState {
             last_drag_scroll: Instant::now(),
             last_mouse_x: 0.0,
             last_mouse_y: 0.0,
+            picker_sb_drag: None,
             tab_scroll_x: 0.0,
             typing_flame_positions: Vec::new(),
         }

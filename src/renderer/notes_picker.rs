@@ -149,6 +149,7 @@ impl<'a> NotesPickerRenderer<'a> {
                 let _ = self.canvas.fill_text(text_x, base, &note.title, &title_paint);
 
                 if note.is_open {
+                    let dot_y = layout.list.item_center_y(display_idx);
                     let mut ind_paint = Paint::color(Color::rgbf(
                         self.theme.tab_active_border.0,
                         self.theme.tab_active_border.1,
@@ -156,7 +157,7 @@ impl<'a> NotesPickerRenderer<'a> {
                     ));
                     ind_paint.set_font(self.fonts);
                     ind_paint.set_font_size(font_size * 0.8);
-                    let _ = self.canvas.fill_text(layout.indicator_x, base, "●", &ind_paint);
+                    let _ = self.canvas.fill_text(layout.indicator_x, dot_y, "●", &ind_paint);
                 }
             }
         }

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use crate::persistence;
 use crate::tab::Tab;
+use crate::ui::ScrollbarAction;
 
 use super::focus::{Focus, NoteEntry};
 use super::state::AppResult;
@@ -123,8 +124,9 @@ impl App {
         AppResult::Ok
     }
 
-    /// Handle mouse click in notes picker
-    pub fn handle_notes_picker_click(&mut self, x: f32, y: f32) -> AppResult {
+    /// Handle mouse click in notes picker.
+    /// Returns `Some(drag_offset)` when the user starts dragging the scrollbar thumb.
+    pub fn handle_notes_picker_click(&mut self, x: f32, y: f32) -> PickerClickResult {
         let list_len = self.logic.focus.notes_picker_state()
             .map(|(_, list)| list.len())
             .unwrap_or(0);
@@ -134,7 +136,28 @@ impl App {
 
         // Click outside overlay → cancel
         if !layout.overlay_rect.contains(x, y) {
-            return self.cancel_notes_picker();
+            return PickerClickResult::App(self.cancel_notes_picker());
+        }
+
+        // Click on scrollbar → start drag or jump
+        if layout.list.scrollbar.hit_test(x, y) {
+            let scroll_offset = self.logic.focus.notes_picker_state()
+                .map(|(_, list)| list.scroll_offset()).unwrap_or(0);
+            match layout.list.scrollbar_click(x, y, list_len, scroll_offset) {
+                ScrollbarAction::StartDrag { drag_offset } => {
+                    return PickerClickResult::StartScrollbarDrag(drag_offset);
+                }
+                ScrollbarAction::JumpTo { ratio } => {
+                    let visible = layout.list.visible_count(list_len);
+                    let max_scroll = list_len.saturating_sub(visible);
+                    let target = (ratio * max_scroll as f32).round() as usize;
+                    if let Some(list) = self.logic.focus.notes_picker_list_mut() {
+                        list.scroll_to(target);
+                    }
+                    return PickerClickResult::App(AppResult::Redraw);
+                }
+                ScrollbarAction::None => {}
+            }
         }
 
         // Click in list area → select or confirm
@@ -145,13 +168,41 @@ impl App {
                 let was_already_selected = list.selected_index() == clicked_idx;
                 if list.select_index(clicked_idx) {
                     if was_already_selected {
-                        return self.confirm_notes_picker();
+                        return PickerClickResult::App(self.confirm_notes_picker());
                     }
-                    return AppResult::Redraw;
+                    return PickerClickResult::App(AppResult::Redraw);
                 }
             }
         }
 
+        PickerClickResult::App(AppResult::Ok)
+    }
+
+    /// Continue dragging the picker list scrollbar thumb.
+    pub fn drag_picker_scrollbar(&mut self, y: f32, drag_offset: f32) -> AppResult {
+        let list_len = self.logic.focus.notes_picker_state()
+            .map(|(_, list)| list.len())
+            .unwrap_or(0);
+        let scroll_offset = self.logic.focus.notes_picker_state()
+            .map(|(_, list)| list.scroll_offset()).unwrap_or(0);
+        let layout = crate::ui::NotesPicker::new(
+            self.logic.width, self.logic.height, self.logic.scale, list_len,
+        );
+        let visible = layout.list.visible_count(list_len);
+        let max_scroll = list_len.saturating_sub(visible);
+        if let Some(ratio) = layout.list.scrollbar_drag_ratio(y, list_len, scroll_offset, drag_offset) {
+            let target = (ratio * max_scroll as f32).round() as usize;
+            if let Some(list) = self.logic.focus.notes_picker_list_mut() {
+                list.scroll_to(target);
+                return AppResult::Redraw;
+            }
+        }
         AppResult::Ok
     }
+}
+
+/// Result of a picker click — either a normal app result or the start of a scrollbar drag.
+pub enum PickerClickResult {
+    App(AppResult),
+    StartScrollbarDrag(f32),
 }

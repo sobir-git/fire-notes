@@ -5,6 +5,8 @@ use std::time::Duration;
 use crate::config::timing;
 use crate::ui::{UiAction, UiNode};
 
+use crate::app::notes_picker::PickerClickResult;
+
 use super::super::state::AppResult;
 use super::super::ui_state::MouseInteraction;
 use super::super::App;
@@ -12,7 +14,13 @@ use super::super::App;
 impl App {
     pub fn click_at(&mut self, x: f32, y: f32, selecting: bool) -> AppResult {
         if self.logic.focus.is_notes_picker() {
-            return self.handle_notes_picker_click(x, y);
+            match self.handle_notes_picker_click(x, y) {
+                PickerClickResult::App(r) => return r,
+                PickerClickResult::StartScrollbarDrag(drag_offset) => {
+                    self.logic.ui_state.picker_sb_drag = Some(drag_offset);
+                    return AppResult::Ok;
+                }
+            }
         }
 
         let tab_info = self.tab_titles();

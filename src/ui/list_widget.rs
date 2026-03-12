@@ -112,6 +112,12 @@ impl<T> ListWidget<T> {
         self.select_index(clicked_index)
     }
 
+    /// Directly set scroll offset (clamp to valid range). Used by scrollbar drag.
+    pub fn scroll_to(&mut self, offset: usize) {
+        let max = self.filtered_indices.len().saturating_sub(1);
+        self.scroll_offset = offset.min(max);
+    }
+
     /// Ensure the selected item is visible
     fn ensure_visible(&mut self) {
         if self.selected_index < self.scroll_offset {

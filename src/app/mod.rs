@@ -184,6 +184,10 @@ impl App {
         self.logic.ui_state()
     }
 
+    pub fn ui_state_mut(&mut self) -> &mut UiState {
+        self.logic.ui_state_mut()
+    }
+
     pub fn scroll_tab_bar(&mut self, delta: f32) -> AppResult {
         self.logic.scroll_tab_bar(delta)
     }

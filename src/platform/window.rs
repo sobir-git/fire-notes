@@ -25,9 +25,11 @@ pub struct AppState {
 }
 
 pub fn capture_window_state(window: &Window) -> Option<WindowState> {
-    let position = window.outer_position().ok()?;
     let size = window.inner_size();
     if size.width == 0 || size.height == 0 { return None; }
+    // On Wayland outer_position() is unsupported — use 0,0 as a fallback.
+    // The position field is optional on restore (see build_app_state).
+    let position = window.outer_position().unwrap_or_default();
     Some(WindowState { x: position.x, y: position.y, width: size.width, height: size.height })
 }
 
@@ -46,8 +48,13 @@ pub fn build_app_state(event_loop: &ActiveEventLoop) -> AppState {
 
     if let Some(saved) = load_window_state() {
         window_attrs = window_attrs
-            .with_inner_size(PhysicalSize::new(saved.width, saved.height))
-            .with_position(PhysicalPosition::new(saved.x, saved.y));
+            .with_inner_size(PhysicalSize::new(saved.width, saved.height));
+        // Only restore position on platforms that support it (not Wayland).
+        // A saved position of (0,0) is likely a Wayland fallback — skip it.
+        if saved.x != 0 || saved.y != 0 {
+            window_attrs = window_attrs
+                .with_position(PhysicalPosition::new(saved.x, saved.y));
+        }
     } else {
         window_attrs = window_attrs.with_inner_size(LogicalSize::new(600.0, 400.0));
     }

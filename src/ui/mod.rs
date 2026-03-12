@@ -22,7 +22,7 @@ pub use notes_picker::{NotesPicker, MAX_VISIBLE_ITEMS};
 #[allow(unused_imports)]
 pub use list_view::ListViewWidget;
 pub use list_widget::ListWidget;
-pub use scrollbar::ScrollbarWidget;
+pub use scrollbar::{ScrollbarAction, ScrollbarWidget};
 pub use tab_bar::TabBar;
 #[allow(unused_imports)]
 pub use text_area::TextArea;

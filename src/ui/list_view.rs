@@ -86,6 +86,11 @@ impl ListViewWidget {
         r.y + self.item_height / 2.0 + font_size * 0.35
     }
 
+    /// Visual center Y of a row — use this for icons/dots, not text baseline.
+    pub fn item_center_y(&self, display_idx: usize) -> f32 {
+        self.list_rect.y + (display_idx as f32 + 0.5) * self.item_height
+    }
+
     /// Hit-test: returns the `display_idx` of the row under (x, y), if any.
     /// `scroll_offset` and `total_items` are from the paired `ListWidget`.
     pub fn hit_test_item(&self, x: f32, y: f32, total_items: usize) -> Option<usize> {

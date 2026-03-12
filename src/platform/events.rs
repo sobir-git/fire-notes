@@ -129,31 +129,40 @@ impl ApplicationHandler for AppHandler {
                 self.mouse_position = (position.x, position.y);
                 let x = self.mouse_position.0 as f32;
                 let y = self.mouse_position.1 as f32;
-                let needs_redraw_on_hover = if state.app.is_notes_picker_open() {
-                    state.app.hover_notes_picker(x, y).needs_redraw()
-                } else {
-                    state.app.handle_mouse_move(x, y).needs_redraw()
-                };
 
-                use winit::window::CursorIcon;
-                use crate::app::CursorShape;
-                let cursor = match state.app.ui_state().cursor_shape {
-                    CursorShape::Default   => CursorIcon::Default,
-                    CursorShape::Text      => CursorIcon::Text,
-                    CursorShape::Pointer   => CursorIcon::Pointer,
-                    CursorShape::NsResize  => CursorIcon::NsResize,
-                    CursorShape::EwResize  => CursorIcon::EwResize,
-                    CursorShape::NeswResize => CursorIcon::NeswResize,
-                    CursorShape::NwseResize => CursorIcon::NwseResize,
-                };
-                state.window.set_cursor(cursor);
-
-                if self.mouse_pressed {
-                    if state.app.drag_at(x, y).needs_redraw() {
+                // Picker scrollbar drag has priority over everything else.
+                let picker_drag = state.app.ui_state().picker_sb_drag;
+                if let Some(drag_offset) = picker_drag {
+                    if state.app.drag_picker_scrollbar(y, drag_offset).needs_redraw() {
                         state.window.request_redraw();
                     }
-                } else if needs_redraw_on_hover {
-                    state.window.request_redraw();
+                } else {
+                    let needs_redraw_on_hover = if state.app.is_notes_picker_open() {
+                        state.app.hover_notes_picker(x, y).needs_redraw()
+                    } else {
+                        state.app.handle_mouse_move(x, y).needs_redraw()
+                    };
+
+                    use winit::window::CursorIcon;
+                    use crate::app::CursorShape;
+                    let cursor = match state.app.ui_state().cursor_shape {
+                        CursorShape::Default   => CursorIcon::Default,
+                        CursorShape::Text      => CursorIcon::Text,
+                        CursorShape::Pointer   => CursorIcon::Pointer,
+                        CursorShape::NsResize  => CursorIcon::NsResize,
+                        CursorShape::EwResize  => CursorIcon::EwResize,
+                        CursorShape::NeswResize => CursorIcon::NeswResize,
+                        CursorShape::NwseResize => CursorIcon::NwseResize,
+                    };
+                    state.window.set_cursor(cursor);
+
+                    if self.mouse_pressed {
+                        if state.app.drag_at(x, y).needs_redraw() {
+                            state.window.request_redraw();
+                        }
+                    } else if needs_redraw_on_hover {
+                        state.window.request_redraw();
+                    }
                 }
             }
 
@@ -236,6 +245,7 @@ impl ApplicationHandler for AppHandler {
                             if result.needs_redraw() { state.window.request_redraw(); }
                         } else {
                             self.mouse_pressed = false;
+                            state.app.ui_state_mut().picker_sb_drag = None;
                             state.app.end_drag();
                             state.app.reset_scroll_state();
                         }
