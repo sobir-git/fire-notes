@@ -4,6 +4,7 @@
 //! `Rect` primitives. No inline arithmetic in renderers.
 
 use super::layout::Layout;
+use super::text_input::TextInputWidget;
 use super::types::{CursorShape, Rect};
 
 pub const MAX_VISIBLE_ITEMS: usize = 8;
@@ -23,12 +24,8 @@ pub struct NotesPicker {
     pub backdrop_rect: Rect,
     /// Floating panel rect.
     pub overlay_rect: Rect,
-    /// Search input box.
-    pub input_rect: Rect,
-    /// X where input text starts (left padding inside input).
-    pub input_text_x: f32,
-    /// Y baseline for input text.
-    pub input_text_baseline_y: f32,
+    /// Search input field widget — owns rect, text geometry, and cursor shape.
+    pub input: TextInputWidget,
     /// Y where the list area starts.
     pub list_y: f32,
     /// Height of one list row.
@@ -58,8 +55,8 @@ impl NotesPicker {
         let visible = list_len.min(MAX_VISIBLE_ITEMS);
         if visible == self.visible_items { return; }
         let list_height = visible as f32 * self.item_height;
-        let padding = self.scale * 8.0;
-        let input_height = self.scale * 36.0;
+        let padding     = self.scale * 8.0;
+        let input_height = self.input.rect.height;
         self.overlay_rect.height = input_height + list_height + 2.0 * padding;
         self.visible_items = visible;
     }
@@ -67,9 +64,9 @@ impl NotesPicker {
     /// Metrics for the `display_idx`-th visible row.
     pub fn item_metrics(&self, display_idx: usize) -> PickerItemMetrics {
         let row_rect = Rect {
-            x:      self.input_rect.x,
+            x:      self.input.rect.x,
             y:      self.list_y + display_idx as f32 * self.item_height,
-            width:  self.input_rect.width,
+            width:  self.input.rect.width,
             height: self.item_height - 2.0 * self.scale,
         };
         PickerItemMetrics {
@@ -86,13 +83,9 @@ impl NotesPicker {
     }
 
     /// Cursor shape appropriate for the area under (x, y).
-    /// Text cursor over the search input, Default everywhere else.
+    /// Delegates to the input widget for the Text-cursor region.
     pub fn cursor_shape_at(&self, x: f32, y: f32) -> CursorShape {
-        if self.input_rect.contains(x, y) {
-            CursorShape::Text
-        } else {
-            CursorShape::Default
-        }
+        self.input.cursor_shape_at(x, y)
     }
 }
 
@@ -113,8 +106,8 @@ impl Layout for NotesPicker {
         let overlay_rect   = below_top.centered_in(overlay_w, overlay_h);
 
         // Input box: overlay inset by padding, input_height tall.
-        let (input_strip, _) = overlay_rect.inset(padding).cut_top(input_height - 4.0 * scale);
-        let input_rect = input_strip;
+        let (input_rect, _) = overlay_rect.inset(padding).cut_top(input_height - 4.0 * scale);
+        let input = TextInputWidget::layout(input_rect, scale);
 
         // Indicator dot: right edge of overlay, offset inward.
         let (ind_strip, _) = overlay_rect.cut_right(2.0 * padding + 4.0 * scale);
@@ -123,9 +116,7 @@ impl Layout for NotesPicker {
         Self {
             backdrop_rect: window,
             overlay_rect,
-            input_rect,
-            input_text_x: input_rect.x + padding,
-            input_text_baseline_y: input_rect.y + input_rect.height / 2.0 + font_size * 0.35,
+            input,
             list_y: input_rect.y + input_height + 4.0 * scale,
             item_height,
             font_size,

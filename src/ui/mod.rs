@@ -23,5 +23,6 @@ pub use scrollbar::ScrollbarWidget;
 pub use tab_bar::TabBar;
 #[allow(unused_imports)]
 pub use text_area::TextArea;
-pub use text_input::TextInput;
+#[allow(unused_imports)]
+pub use text_input::{TextInput, TextInputWidget};
 pub use tree::UiTree;

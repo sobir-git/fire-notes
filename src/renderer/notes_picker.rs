@@ -66,7 +66,7 @@ impl<'a> NotesPickerRenderer<'a> {
         );
 
         // ── Search input ──────────────────────────────────────────────────
-        let ir = &layout.input_rect;
+        let ir = &layout.input.rect;
         let mut input_bg = Path::new();
         input_bg.rounded_rect(ir.x, ir.y, ir.width, ir.height, 4.0 * scale);
         self.canvas.fill_path(
@@ -78,8 +78,8 @@ impl<'a> NotesPickerRenderer<'a> {
         text_paint.set_font(self.fonts);
         text_paint.set_font_size(font_size);
 
-        let text_x = layout.input_text_x;
-        let text_y = layout.input_text_baseline_y;
+        let text_x = layout.input.text_x;
+        let text_y = layout.input.text_baseline_y;
 
         if input.text().is_empty() {
             let mut ph = Paint::color(Color::rgba(150, 150, 150, 180));
