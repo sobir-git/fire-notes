@@ -110,6 +110,15 @@ impl Tab {
     pub fn move_down(&mut self, s: bool) { self.buffer.move_down(s); }
     pub fn move_to_line_start(&mut self, s: bool) { self.buffer.move_to_line_start(s); }
     pub fn move_to_line_end(&mut self, s: bool) { self.buffer.move_to_line_end(s); }
+    /// Character count of `line` excluding any trailing newline.
+    pub fn line_char_len(&self, line: usize) -> usize {
+        self.content()
+            .lines()
+            .nth(line)
+            .map(|l| l.chars().count())
+            .unwrap_or(0)
+    }
+
     pub fn move_to_start(&mut self, s: bool) { self.buffer.move_to_start(s); }
     pub fn move_to_end(&mut self, s: bool) { self.buffer.move_to_end(s); }
     pub fn move_lines_up(&mut self) -> bool { self.buffer.move_lines_up(); true }

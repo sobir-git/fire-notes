@@ -63,29 +63,7 @@ impl TextArea {
         (self.rect.height / self.line_height).floor().max(1.0) as usize
     }
 
-    /// Convert a screen position to (line, col) in the document.
-    ///
-    /// Returns `None` if the point is above the text area (below is clamped to last visible line).
-    /// `scroll_x` is the horizontal scroll offset in pixels. `char_width` must be provided
-    /// by the caller since `TextArea` stores it as 0.0 until font measurement is available.
-    pub fn hit_to_position(
-        &self,
-        x: f32,
-        y: f32,
-        scroll_offset: usize,
-        scroll_x: f32,
-        char_width: f32,
-    ) -> Option<(usize, usize)> {
-        let rel_y = y - self.rect.y;
-        if rel_y < 0.0 { return None; }
-        let visual_line = (rel_y / self.line_height).floor() as usize;
-        let line = scroll_offset + visual_line;
-        let rel_x = (x - self.rect.x - self.text_padding + scroll_x).max(0.0);
-        let col = (rel_x / char_width.max(1.0)).round() as usize;
-        Some((line, col))
-    }
-
-    /// Same as `hit_to_position` but clamps out-of-bounds Y to a signed visual line index,
+    /// Clamps out-of-bounds Y to a signed visual line index,
     /// useful for selection dragging that extends above/below the viewport.
     pub fn hit_to_visual_line_clamped(
         &self,
@@ -93,6 +71,33 @@ impl TextArea {
     ) -> isize {
         let rel_y = y - self.rect.y;
         (rel_y / self.line_height).floor() as isize
+    }
+
+    /// Convert a mouse position to a document `(line, col)`, handling all edge cases:
+    /// - Clamps `visual_line` to `[0, total_lines)` so clicks below the last line land there.
+    /// - When below the last line, returns `(last_line, line_char_len)` via the `below_last`
+    ///   flag so the caller can set col = end-of-line without knowing line lengths here.
+    /// - Uses `visual_col_to_char_col` indirection: returns the raw visual col; callers
+    ///   use `Tab::visual_col_to_char_col` to get the char col.
+    ///
+    /// Returns `(raw_line, visual_col, below_last_line)`.
+    pub fn hit_to_doc_position(
+        &self,
+        x: f32,
+        y: f32,
+        scroll_offset: usize,
+        scroll_x: f32,
+        char_width: f32,
+        total_lines: usize,
+    ) -> (usize, usize, bool) {
+        let rel_y = (y - self.rect.y).max(0.0);
+        let visual_line = (rel_y / self.line_height).floor() as usize;
+        let raw_line = scroll_offset + visual_line;
+        let below_last = raw_line >= total_lines;
+        let line = raw_line.min(total_lines.saturating_sub(1));
+        let rel_x = (x - self.rect.x - self.text_padding + scroll_x).max(0.0);
+        let visual_col = (rel_x / char_width.max(1.0)).round() as usize;
+        (line, visual_col, below_last)
     }
 
     /// Screen rect of the character at (`line`, `col`) given the current `scroll_offset`.

@@ -119,6 +119,22 @@ impl InputHandler for Focus {
         delegate!(self, move_to_line_end, selecting)
     }
 
+    fn move_to_start(&mut self, selecting: bool) -> InputResult {
+        delegate!(self, move_to_start, selecting)
+    }
+
+    fn move_to_end(&mut self, selecting: bool) -> InputResult {
+        delegate!(self, move_to_end, selecting)
+    }
+
+    fn undo(&mut self) -> InputResult {
+        delegate!(self, undo)
+    }
+
+    fn redo(&mut self) -> InputResult {
+        delegate!(self, redo)
+    }
+
     fn copy(&self) -> Option<String> {
         self.active_input().and_then(|i| i.copy())
     }

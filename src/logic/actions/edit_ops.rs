@@ -7,10 +7,24 @@ use crate::app::state::AppResult;
 use crate::logic::AppLogic;
 
 impl AppLogic {
+    /// Ensure the picker input cursor is scrolled into view.
+    /// Must be called after any keyboard edit that mutates the picker input.
+    fn scroll_picker_cursor_visible(&mut self) {
+        let list_len = self.focus.notes_picker_state()
+            .map(|(_, list)| list.len()).unwrap_or(0);
+        let layout = crate::ui::NotesPicker::new(self.width, self.height, self.scale, list_len);
+        if let Some(input) = self.focus.notes_picker_input_mut() {
+            layout.ensure_input_cursor_visible(input, self.char_width_hint);
+        }
+    }
+
     pub(crate) fn handle_char(&mut self, ch: char) -> AppResult {
         let result = self.focus.handle_char(ch);
         if result.was_handled() {
             self.ui_state.reset_cursor_blink();
+            if matches!(self.focus, Focus::NotesPicker { .. }) {
+                self.scroll_picker_cursor_visible();
+            }
             return result.into();
         }
         let line = self.tabs[self.active_tab].cursor_line();
@@ -32,6 +46,9 @@ impl AppLogic {
         let result = self.focus.handle_backspace();
         if result.was_handled() {
             self.ui_state.reset_cursor_blink();
+            if matches!(self.focus, Focus::NotesPicker { .. }) {
+                self.scroll_picker_cursor_visible();
+            }
             return result.into();
         }
         self.tabs[self.active_tab].backspace();
@@ -44,6 +61,9 @@ impl AppLogic {
         let result = self.focus.handle_delete();
         if result.was_handled() {
             self.ui_state.reset_cursor_blink();
+            if matches!(self.focus, Focus::NotesPicker { .. }) {
+                self.scroll_picker_cursor_visible();
+            }
             return result.into();
         }
         self.tabs[self.active_tab].delete();
@@ -55,6 +75,9 @@ impl AppLogic {
         let result = self.focus.handle_delete_word_left();
         if result.was_handled() {
             self.ui_state.reset_cursor_blink();
+            if matches!(self.focus, Focus::NotesPicker { .. }) {
+                self.scroll_picker_cursor_visible();
+            }
             return result.into();
         }
         self.tabs[self.active_tab].delete_word_left();
@@ -67,6 +90,9 @@ impl AppLogic {
         let result = self.focus.handle_delete_word_right();
         if result.was_handled() {
             self.ui_state.reset_cursor_blink();
+            if matches!(self.focus, Focus::NotesPicker { .. }) {
+                self.scroll_picker_cursor_visible();
+            }
             return result.into();
         }
         self.tabs[self.active_tab].delete_word_right();

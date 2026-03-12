@@ -18,11 +18,11 @@ pub use types::{CursorShape, Rect, WindowRect, ResizeEdge, UiAction, UiDragActio
 #[allow(unused_imports)]
 pub use layout::Layout;
 pub use content_area::ContentArea;
-pub use notes_picker::{NotesPicker, MAX_VISIBLE_ITEMS};
+pub use notes_picker::{NotesPicker, PickerClickOutcome, MAX_VISIBLE_ITEMS};
 #[allow(unused_imports)]
 pub use list_view::ListViewWidget;
 pub use list_widget::ListWidget;
-pub use scrollbar::{ScrollbarAction, ScrollbarWidget};
+pub use scrollbar::ScrollbarWidget;
 pub use tab_bar::TabBar;
 #[allow(unused_imports)]
 pub use text_area::TextArea;

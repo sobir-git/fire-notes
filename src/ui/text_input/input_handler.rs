@@ -68,6 +68,24 @@ impl InputHandler for TextInput {
         InputResult::Handled
     }
 
+    fn move_to_start(&mut self, selecting: bool) -> InputResult {
+        self.move_to_start(selecting);
+        InputResult::Handled
+    }
+
+    fn move_to_end(&mut self, selecting: bool) -> InputResult {
+        self.move_to_end(selecting);
+        InputResult::Handled
+    }
+
+    fn undo(&mut self) -> InputResult {
+        InputResult::NotHandled
+    }
+
+    fn redo(&mut self) -> InputResult {
+        InputResult::NotHandled
+    }
+
     fn copy(&self) -> Option<String> {
         self.copy()
     }

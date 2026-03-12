@@ -94,83 +94,65 @@ pub enum Action {
 }
 
 impl App {
-    /// Execute an action and return whether a redraw is needed
+    /// Execute an action and return whether a redraw is needed.
+    ///
+    /// Most actions delegate directly to `AppLogic::execute`.
+    /// The three clipboard actions (Copy/Cut/Paste) are handled here because
+    /// they need the OS clipboard which `AppLogic` cannot access.
+    /// `OpenNotesPicker` is handled here because it reads from persistence.
     pub fn execute(&mut self, action: Action) -> AppResult {
         match action {
-            // Tab operations
-            Action::NewTab => self.new_tab(),
-            Action::CloseTab => self.close_current_tab(),
-            Action::NextTab => self.next_tab(),
-            Action::PreviousTab => self.previous_tab(),
-            Action::GoToTab(index) => self.go_to_tab(index),
+            // Clipboard — App layer owns the OS clipboard.
+            Action::Copy => {
+                if let Some(text) = self.logic.copy_selection() {
+                    if let Some(cb) = &mut self.clipboard { let _ = cb.set_text(text); }
+                }
+                AppResult::Ok
+            }
+            Action::Cut => {
+                if let Some(text) = self.logic.cut_selection() {
+                    if let Some(cb) = &mut self.clipboard { let _ = cb.set_text(text); }
+                    self.logic.auto_scroll();
+                    return AppResult::Redraw;
+                }
+                AppResult::Ok
+            }
+            Action::Paste => {
+                if let Some(cb) = &mut self.clipboard {
+                    if let Ok(text) = cb.get_text() {
+                        if self.logic.insert_paste_text(&text).needs_redraw() {
+                            return AppResult::Redraw;
+                        }
+                    }
+                }
+                AppResult::Ok
+            }
 
-            // File operations
-            Action::Save => self.save_current(),
-            Action::OpenFile => self.open_file(),
-            Action::RenameTab => self.rename_current(),
-
-            // Notes picker
+            // OpenNotesPicker — needs persistence.
             Action::OpenNotesPicker => self.open_notes_picker(),
-            Action::ConfirmNotesPicker => self.confirm_notes_picker(),
-            Action::CancelNotesPicker => self.cancel_notes_picker(),
 
-            // Edit operations
-            Action::Undo => self.handle_undo(),
-            Action::Redo => self.handle_redo(),
-            Action::Copy => self.handle_copy(),
-            Action::Cut => self.handle_cut(),
-            Action::Paste => self.handle_paste(),
-            Action::SelectAll => self.handle_select_all(),
-            Action::DeleteWordLeft => self.handle_delete_word_left(),
-            Action::DeleteWordRight => self.handle_delete_word_right(),
-            Action::Delete => self.handle_delete(),
-            Action::Backspace => self.handle_backspace(),
-
-            // Cursor movement
-            Action::CursorLeft { selecting } => self.move_cursor_left(selecting),
-            Action::CursorRight { selecting } => self.move_cursor_right(selecting),
-            Action::CursorUp { selecting } => self.move_cursor_up(selecting),
-            Action::CursorDown { selecting } => self.move_cursor_down(selecting),
-            Action::CursorWordLeft { selecting } => self.move_cursor_word_left(selecting),
-            Action::CursorWordRight { selecting } => self.move_cursor_word_right(selecting),
-            Action::CursorLineStart { selecting } => self.move_cursor_to_line_start(selecting),
-            Action::CursorLineEnd { selecting } => self.move_cursor_to_line_end(selecting),
-            Action::CursorDocStart { selecting } => self.move_cursor_to_start(selecting),
-            Action::CursorDocEnd { selecting } => self.move_cursor_to_end(selecting),
-            Action::PageUp { selecting } => self.page_up(selecting),
-            Action::PageDown { selecting } => self.page_down(selecting),
-
-            // Line operations
-            Action::MoveLinesUp => self.handle_move_lines_up(),
-            Action::MoveLinesDown => self.handle_move_lines_down(),
-
-            // View
-            Action::ToggleWordWrap => self.toggle_word_wrap(),
-
-            // Modal operations
-            Action::Cancel => {
-                // Try canceling in order: notes picker, then rename
-                let result = self.cancel_notes_picker();
-                if result.needs_redraw() {
-                    return result;
-                }
-                self.cancel_rename()
+            // File ops — need filesystem/dialog access.
+            Action::Save => {
+                self.logic.tabs[self.logic.active_tab].save();
+                AppResult::Redraw
             }
-            Action::Confirm => {
-                // Try confirming in order: notes picker, rename, then insert newline
-                let result = self.confirm_notes_picker();
-                if result.needs_redraw() {
-                    return result;
+            Action::OpenFile => {
+                use crate::tab::Tab;
+                if let Some(tab) = Tab::open() {
+                    self.logic.tabs.push(tab);
+                    self.logic.activate_tab(self.logic.tabs.len() - 1);
+                    AppResult::Redraw
+                } else {
+                    AppResult::Ok
                 }
-                let result = self.confirm_rename();
-                if result.needs_redraw() {
-                    return result;
-                }
-                self.handle_char('\n')
+            }
+            Action::RenameTab => {
+                self.logic.start_rename(self.logic.active_tab);
+                AppResult::Redraw
             }
 
-            // Character input
-            Action::InsertChar(ch) => self.handle_char(ch),
+            // Everything else — pure logic, delegate directly.
+            other => self.logic.execute(other),
         }
     }
 }

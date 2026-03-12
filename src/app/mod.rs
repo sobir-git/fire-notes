@@ -6,9 +6,7 @@
 //! - `App` - coordinates between components, owns tabs and renderer
 
 pub(crate) mod action;
-mod file;
 pub(crate) mod focus;
-mod input;
 pub(crate) mod input_handler;
 pub(crate) mod keybindings;
 mod mouse;

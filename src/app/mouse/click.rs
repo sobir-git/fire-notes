@@ -1,8 +1,5 @@
 //! Mouse click handlers — single, double, triple, right-click.
 
-use std::time::Duration;
-
-use crate::config::timing;
 use crate::ui::{UiAction, UiNode};
 
 use crate::app::notes_picker::PickerClickResult;
@@ -65,28 +62,17 @@ impl App {
         if !selecting && !text_area.hit_test(x, y) && y >= text_area.rect.y { return AppResult::Ok; }
         if !selecting && y < text_area.rect.y { return AppResult::Ok; }
 
-        let height = self.visible_lines() as isize;
-        let mut clicked_visual_line = text_area.hit_to_visual_line_clamped(y);
-
-        if selecting && (clicked_visual_line < 0 || clicked_visual_line >= height) {
-            if self.logic.ui_state.last_drag_scroll.elapsed()
-                < Duration::from_millis(timing::DRAG_SCROLL_THROTTLE_MS)
-            {
-                return AppResult::Ok;
-            }
-            self.logic.ui_state.last_drag_scroll = std::time::Instant::now();
-            clicked_visual_line = if clicked_visual_line < 0 { -1 } else { height };
-        }
-
         let scroll_offset = self.logic.tabs[self.logic.active_tab].scroll_offset();
         let scroll_offset_x = self.logic.tabs[self.logic.active_tab].scroll_offset_x();
         let char_width = self.renderer.get_char_width();
-        let clicked_line = (scroll_offset as isize + clicked_visual_line).max(0) as usize;
-        let clicked_visual_col = text_area
-            .hit_to_position(x, y, 0, scroll_offset_x, char_width)
-            .map(|(_, col)| col)
-            .unwrap_or(0);
-        let clicked_col = self.logic.tabs[self.logic.active_tab].visual_col_to_char_col(clicked_line, clicked_visual_col);
+        let total_lines = self.logic.tabs[self.logic.active_tab].total_lines();
+        let (clicked_line, visual_col, below_last) =
+            text_area.hit_to_doc_position(x, y, scroll_offset, scroll_offset_x, char_width, total_lines);
+        let clicked_col = if below_last {
+            self.logic.tabs[self.logic.active_tab].line_char_len(clicked_line)
+        } else {
+            self.logic.tabs[self.logic.active_tab].visual_col_to_char_col(clicked_line, visual_col)
+        };
 
         self.logic.tabs[self.logic.active_tab].set_cursor_position(clicked_line, clicked_col, selecting);
         if selecting { self.auto_scroll(); }
