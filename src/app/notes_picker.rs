@@ -45,6 +45,7 @@ impl App {
         }
 
         self.logic.focus = Focus::start_notes_picker(notes);
+        self.logic.ui_state.cursor_shape = crate::ui::CursorShape::Default;
         AppResult::Redraw
     }
 
@@ -95,6 +96,7 @@ impl App {
 
     /// Hover over the picker — highlight item under cursor.
     pub fn hover_notes_picker(&mut self, x: f32, y: f32) -> AppResult {
+        self.logic.ui_state.cursor_shape = crate::ui::CursorShape::Default;
         let list_len = self.logic.focus.notes_picker_state()
             .map(|(_, list)| list.len())
             .unwrap_or(0);
