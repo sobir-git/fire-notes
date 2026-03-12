@@ -164,6 +164,13 @@ impl Renderer {
         self.canvas.flush();
     }
 
+    pub fn get_picker_char_width(&mut self) -> f32 {
+        let mut paint = Paint::color(Color::rgb(255, 255, 255));
+        paint.set_font(&self.fonts);
+        paint.set_font_size(14.0 * self.scale);
+        fonts::measure_char_width(&mut self.canvas, &paint, self.scale)
+    }
+
     pub fn get_char_width(&mut self) -> f32 {
         let mut text_paint = Paint::color(Color::rgb(255, 255, 255));
         text_paint.set_font(&self.fonts);

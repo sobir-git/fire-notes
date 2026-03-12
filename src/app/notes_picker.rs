@@ -95,6 +95,23 @@ impl App {
         AppResult::Ok
     }
 
+    /// Click on the picker input field to place the cursor.
+    /// Returns true if the click landed on the input.
+    pub(crate) fn click_picker_input(&mut self, x: f32, y: f32, selecting: bool) -> bool {
+        let list_len = self.logic.focus.notes_picker_state()
+            .map(|(_, list)| list.len()).unwrap_or(0);
+        let layout = crate::ui::NotesPicker::new(
+            self.logic.width, self.logic.height, self.logic.scale, list_len,
+        );
+        if !layout.input.rect.contains(x, y) { return false; }
+        let char_width = self.renderer.get_picker_char_width();
+        let relative_x = x - layout.input.text_x;
+        if let Some(input) = self.logic.focus.notes_picker_input_mut() {
+            input.set_cursor_from_x(relative_x, char_width, selecting);
+        }
+        true
+    }
+
     /// Hover over the picker — highlight item under cursor.
     pub fn hover_notes_picker(&mut self, x: f32, y: f32) -> AppResult {
         let list_len = self.logic.focus.notes_picker_state()
@@ -137,6 +154,13 @@ impl App {
         // Click outside overlay → cancel
         if !layout.overlay_rect.contains(x, y) {
             return PickerClickResult::App(self.cancel_notes_picker());
+        }
+
+        // Click on input field → place cursor
+        if layout.input.rect.contains(x, y) {
+            self.click_picker_input(x, y, false);
+            self.logic.ui_state.mouse_interaction = crate::app::ui_state::MouseInteraction::TextSelection;
+            return PickerClickResult::App(AppResult::Redraw);
         }
 
         // Click on scrollbar → start drag or jump

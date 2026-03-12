@@ -35,7 +35,16 @@ impl App {
             MouseInteraction::PickerScrollbarDrag { drag_offset } => {
                 self.drag_picker_scrollbar(y, drag_offset)
             }
-            MouseInteraction::TextSelection => self.handle_text_selection_drag(x, y),
+            MouseInteraction::TextSelection => {
+                if self.logic.focus.is_notes_picker() {
+                    if self.click_picker_input(x, y, true) {
+                        return AppResult::Redraw;
+                    }
+                    AppResult::Ok
+                } else {
+                    self.handle_text_selection_drag(x, y)
+                }
+            }
         }
     }
 

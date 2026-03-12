@@ -76,6 +76,10 @@ impl Focus {
         match self { Focus::NotesPicker { list, .. } => Some(list), _ => None }
     }
 
+    pub fn notes_picker_input_mut(&mut self) -> Option<&mut TextInput> {
+        match self { Focus::NotesPicker { input, .. } => Some(input), _ => None }
+    }
+
     pub fn update_notes_filter(&mut self) {
         if let Focus::NotesPicker { input, list } = self {
             let query = input.text().to_lowercase();
