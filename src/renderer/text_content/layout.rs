@@ -14,9 +14,8 @@ pub(super) enum FlameHit {
 pub fn get_cursor_line_col(text: &str, cursor_pos: usize) -> (usize, usize) {
     let mut line = 0;
     let mut col = 0;
-    let mut pos = 0;
 
-    for ch in text.chars() {
+    for (pos, ch) in text.chars().enumerate() {
         if pos >= cursor_pos {
             break;
         }
@@ -26,7 +25,6 @@ pub fn get_cursor_line_col(text: &str, cursor_pos: usize) -> (usize, usize) {
         } else {
             col += 1;
         }
-        pos += 1;
     }
 
     (line, col)

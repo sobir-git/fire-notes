@@ -12,6 +12,13 @@ use crate::ui::{ContentArea, ScrollbarWidget};
 use super::super::flame::FlameSystem;
 use super::text::{self as txt, DrawCtx};
 
+/// Scrollbar widget + per-frame interaction state.
+pub struct ScrollbarState<'a> {
+    pub widget:    &'a ScrollbarWidget,
+    pub hovered:   bool,
+    pub dragging:  bool,
+}
+
 pub struct TextContentRenderer<'a> {
     pub(super) canvas: &'a mut Canvas<OpenGl>,
     pub(super) fonts: &'a [FontId],
@@ -35,10 +42,8 @@ impl<'a> TextContentRenderer<'a> {
         &mut self,
         tab: &Tab,
         content_area: &ContentArea,
-        scrollbar: &ScrollbarWidget,
+        scrollbar: &ScrollbarState<'_>,
         cursor_visible: bool,
-        hovered_scrollbar: bool,
-        dragging_scrollbar: bool,
         flame_system: &mut FlameSystem,
         typing_flame_positions: &[(usize, usize, std::time::Instant)],
     ) {
@@ -69,7 +74,7 @@ impl<'a> TextContentRenderer<'a> {
 
         // ── Text lines ────────────────────────────────────────────────────
         txt::draw_text_lines(
-            self.canvas, self.fonts, self.theme,
+            self.canvas, self.fonts,
             self.scale, self.animation_start,
             &ctx, &text_paint, &char_positions,
         );
@@ -84,7 +89,7 @@ impl<'a> TextContentRenderer<'a> {
         if !char_positions.is_empty() { flame_system.draw_layer(self.canvas, false); }
 
         // ── Scrollbar ─────────────────────────────────────────────────────
-        self.draw_scrollbar(tab, content_area, scrollbar, tab.scroll_offset(), hovered_scrollbar, dragging_scrollbar);
+        self.draw_scrollbar(tab, content_area, scrollbar);
     }
 
 }
@@ -119,16 +124,13 @@ impl<'a> TextContentRenderer<'a> {
         &mut self,
         tab: &Tab,
         content_area: &ContentArea,
-        scrollbar: &ScrollbarWidget,
-        scroll_offset: usize,
-        hovered: bool,
-        dragging: bool,
+        scrollbar: &ScrollbarState<'_>,
     ) {
         let total_lines = tab.total_lines().max(1);
         let max_visible = content_area.visible_line_count();
-        if let Some(m) = scrollbar.thumb(total_lines, max_visible, scroll_offset) {
+        if let Some(m) = scrollbar.widget.thumb(total_lines, max_visible, tab.scroll_offset()) {
             let r = m.rect;
-            let alpha = if dragging { 140u8 } else if hovered { 90 } else { 50 };
+            let alpha = if scrollbar.dragging { 140u8 } else if scrollbar.hovered { 90 } else { 50 };
             let color = Paint::color(Color::rgba(
                 (self.theme.fg.0 * 255.0) as u8,
                 (self.theme.fg.1 * 255.0) as u8,

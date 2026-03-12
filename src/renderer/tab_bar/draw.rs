@@ -6,6 +6,19 @@ use crate::config::rendering;
 use crate::theme::Theme;
 use crate::ui::{TabBar, TextInput};
 
+/// Per-frame interaction state for the tab bar.
+/// Groups all hover/rename/cursor fields so `draw()` stays under the arg limit.
+pub struct TabBarInteraction<'a> {
+    pub hovered_tab_index: Option<usize>,
+    pub hovered_plus:      bool,
+    pub renaming_tab:      Option<usize>,
+    pub rename_input:      Option<&'a TextInput>,
+    pub cursor_visible:    bool,
+    pub hovered_minimize:  bool,
+    pub hovered_maximize:  bool,
+    pub hovered_close:     bool,
+}
+
 use super::super::fonts::{self, snap_to_pixel};
 
 pub struct TabBarRenderer<'a> {
@@ -32,14 +45,7 @@ impl<'a> TabBarRenderer<'a> {
         &mut self,
         layout: &TabBar,
         tabs: &[(&str, bool)],
-        hovered_tab_index: Option<usize>,
-        hovered_plus: bool,
-        renaming_tab: Option<usize>,
-        rename_input: Option<&TextInput>,
-        cursor_visible: bool,
-        hovered_minimize: bool,
-        hovered_maximize: bool,
-        hovered_close: bool,
+        ix: &TabBarInteraction<'_>,
     ) {
         let r = &layout.rect;
         // Clip scrolling tabs to the drag-gap boundary (left of drag zone + controls).
@@ -56,7 +62,7 @@ impl<'a> TabBarRenderer<'a> {
             path.rect(r.x, r.y, r.width, r.height);
             let color = if is_active {
                 Color::rgbf(self.theme.tab_active.0, self.theme.tab_active.1, self.theme.tab_active.2)
-            } else if Some(tab.index) == hovered_tab_index {
+            } else if Some(tab.index) == ix.hovered_tab_index {
                 Color::rgbf(self.theme.tab_hover.0, self.theme.tab_hover.1, self.theme.tab_hover.2)
             } else {
                 Color::rgbf(self.theme.tab_inactive.0, self.theme.tab_inactive.1, self.theme.tab_inactive.2)
@@ -89,15 +95,15 @@ impl<'a> TabBarRenderer<'a> {
             let text_y = snap_to_pixel(layout.rect.y + layout.rect.height / 2.0 + 5.0 * self.scale);
             let _ = self.canvas.fill_text(text_x, text_y, title, &text_paint);
 
-            if Some(tab.index) == renaming_tab {
-                self.draw_rename_overlay(rename_input, cursor_visible, &text_paint, text_x, text_y);
+            if Some(tab.index) == ix.renaming_tab {
+                self.draw_rename_overlay(ix.rename_input, ix.cursor_visible, &text_paint, text_x, text_y);
             }
         }
 
         self.canvas.restore();
         // Plus button is pinned at a fixed position — always draw it.
-        self.draw_new_tab_button(layout, hovered_plus);
-        self.draw_window_controls(layout, hovered_minimize, hovered_maximize, hovered_close);
+        self.draw_new_tab_button(layout, ix.hovered_plus);
+        self.draw_window_controls(layout, ix.hovered_minimize, ix.hovered_maximize, ix.hovered_close);
         self.draw_bottom_line(layout);
     }
 

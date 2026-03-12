@@ -21,8 +21,28 @@ use std::time::Instant;
 
 use flame::FlameSystem;
 use notes_picker::NotesPickerRenderer;
-use tab_bar::TabBarRenderer;
-use text_content::TextContentRenderer;
+use tab_bar::{TabBarRenderer, TabBarInteraction};
+use text_content::{TextContentRenderer, ScrollbarState};
+
+/// All per-frame state passed to `Renderer::render`.
+/// Groups the 15 previously-decomposed arguments into one struct.
+pub struct RenderFrame<'a> {
+    pub ui_tree:                &'a UiTree,
+    pub tabs:                   &'a [(&'a str, bool)],
+    pub current_tab:            &'a Tab,
+    pub cursor_visible:         bool,
+    pub hovered_tab_index:      Option<usize>,
+    pub hovered_plus:           bool,
+    pub hovered_scrollbar:      bool,
+    pub dragging_scrollbar:     bool,
+    pub renaming_tab:           Option<usize>,
+    pub rename_input:           Option<&'a TextInput>,
+    pub typing_flame_positions: &'a [(usize, usize, Instant)],
+    pub hovered_window_minimize: bool,
+    pub hovered_window_maximize: bool,
+    pub hovered_window_close:    bool,
+    pub notes_picker_state:     Option<(&'a TextInput, &'a ListWidget<NoteEntry>)>,
+}
 
 pub struct Renderer {
     canvas: Canvas<OpenGl>,
@@ -67,24 +87,15 @@ impl Renderer {
         self.flame_system.has_active_flames()
     }
 
-    pub fn render(
-        &mut self,
-        ui_tree: &UiTree,
-        tabs: &[(&str, bool)],
-        current_tab: &Tab,
-        cursor_visible: bool,
-        hovered_tab_index: Option<usize>,
-        hovered_plus: bool,
-        hovered_scrollbar: bool,
-        dragging_scrollbar: bool,
-        renaming_tab: Option<usize>,
-        rename_input: Option<&TextInput>,
-        typing_flame_positions: &[(usize, usize, Instant)],
-        hovered_window_minimize: bool,
-        hovered_window_maximize: bool,
-        hovered_window_close: bool,
-        notes_picker_state: Option<(&TextInput, &ListWidget<NoteEntry>)>,
-    ) {
+    pub fn render(&mut self, frame: &RenderFrame<'_>) {
+        let ui_tree                 = frame.ui_tree;
+        let tabs                    = frame.tabs;
+        let current_tab             = frame.current_tab;
+        let cursor_visible          = frame.cursor_visible;
+        let hovered_scrollbar       = frame.hovered_scrollbar;
+        let dragging_scrollbar      = frame.dragging_scrollbar;
+        let typing_flame_positions  = frame.typing_flame_positions;
+        let notes_picker_state      = frame.notes_picker_state;
         let (width, height) = (self.width, self.height);
 
         // Use DPI=1.0, but we compensate by using larger font sizes in physical pixels
@@ -109,14 +120,16 @@ impl Renderer {
             tab_bar_renderer.draw(
                 &ui_tree.tab_bar,
                 tabs,
-                hovered_tab_index,
-                hovered_plus,
-                renaming_tab,
-                rename_input,
-                cursor_visible,
-                hovered_window_minimize,
-                hovered_window_maximize,
-                hovered_window_close,
+                &TabBarInteraction {
+                    hovered_tab_index:  frame.hovered_tab_index,
+                    hovered_plus:       frame.hovered_plus,
+                    renaming_tab:       frame.renaming_tab,
+                    rename_input:       frame.rename_input,
+                    cursor_visible,
+                    hovered_minimize:   frame.hovered_window_minimize,
+                    hovered_maximize:   frame.hovered_window_maximize,
+                    hovered_close:      frame.hovered_window_close,
+                },
             );
         }
 
@@ -132,10 +145,12 @@ impl Renderer {
             text_content.draw(
                 current_tab,
                 &ui_tree.content_area,
-                &ui_tree.content_area.scrollbar,
+                &ScrollbarState {
+                    widget:   &ui_tree.content_area.scrollbar,
+                    hovered:  hovered_scrollbar,
+                    dragging: dragging_scrollbar,
+                },
                 cursor_visible,
-                hovered_scrollbar,
-                dragging_scrollbar,
                 &mut self.flame_system,
                 typing_flame_positions,
             );

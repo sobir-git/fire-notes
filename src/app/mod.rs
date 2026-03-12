@@ -126,23 +126,23 @@ impl App {
         let current_tab = &self.logic.tabs[self.logic.active_tab];
         let dragging_scrollbar = matches!(ui.mouse_interaction, MouseInteraction::ScrollbarDrag { .. });
 
-        self.renderer.render(
-            &ui_tree,
-            &tab_info,
+        self.renderer.render(&crate::renderer::RenderFrame {
+            ui_tree:                &ui_tree,
+            tabs:                   &tab_info,
             current_tab,
-            ui.cursor_visible,
-            ui.hovered_tab_index,
-            ui.hovered_plus,
-            ui.hovered_scrollbar,
+            cursor_visible:         ui.cursor_visible,
+            hovered_tab_index:      ui.hovered_tab_index,
+            hovered_plus:           ui.hovered_plus,
+            hovered_scrollbar:      ui.hovered_scrollbar,
             dragging_scrollbar,
-            renaming_tab_index,
+            renaming_tab:           renaming_tab_index,
             rename_input,
-            &ui.typing_flame_positions,
-            ui.hovered_window_minimize,
-            ui.hovered_window_maximize,
-            ui.hovered_window_close,
+            typing_flame_positions: &ui.typing_flame_positions,
+            hovered_window_minimize: ui.hovered_window_minimize,
+            hovered_window_maximize: ui.hovered_window_maximize,
+            hovered_window_close:    ui.hovered_window_close,
             notes_picker_state,
-        );
+        });
     }
 
     // =========================================================================

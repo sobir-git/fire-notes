@@ -3,4 +3,4 @@
 mod controls;
 mod draw;
 
-pub use draw::TabBarRenderer;
+pub use draw::{TabBarRenderer, TabBarInteraction};

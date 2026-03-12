@@ -116,7 +116,7 @@ impl TextInput {
             chars.next();
         }
         let mut last_idx = 0;
-        while let Some((idx, ch)) = chars.next() {
+        for (idx, ch) in chars {
             if ch.is_whitespace() {
                 last_idx = idx + ch.len_utf8();
                 break;

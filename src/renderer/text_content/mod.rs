@@ -4,4 +4,4 @@ mod draw;
 pub mod layout;
 pub(super) mod text;
 
-pub use draw::TextContentRenderer;
+pub use draw::{TextContentRenderer, ScrollbarState};

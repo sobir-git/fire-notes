@@ -41,23 +41,23 @@ fn render_frame(ctx: &HeadlessContext, renderer: &mut Renderer) -> Vec<u8> {
     let current_tab = &logic.tabs[logic.active_tab];
     let ui_tree = logic.build_ui_tree(&tab_info);
 
-    renderer.render(
-        &ui_tree,
-        &tab_info,
+    renderer.render(&super::RenderFrame {
+        ui_tree:                &ui_tree,
+        tabs:                   &tab_info,
         current_tab,
-        false, // cursor_visible
-        None,  // hovered_tab_index
-        false, // hovered_plus
-        false, // hovered_scrollbar
-        false, // dragging_scrollbar
-        None,  // renaming_tab
-        None,  // rename_input
-        &[],   // typing_flame_positions
-        false, // hovered_window_minimize
-        false, // hovered_window_maximize
-        false, // hovered_window_close
-        None,  // notes_picker_state
-    );
+        cursor_visible:         false,
+        hovered_tab_index:      None,
+        hovered_plus:           false,
+        hovered_scrollbar:      false,
+        dragging_scrollbar:     false,
+        renaming_tab:           None,
+        rename_input:           None,
+        typing_flame_positions: &[],
+        hovered_window_minimize: false,
+        hovered_window_maximize: false,
+        hovered_window_close:    false,
+        notes_picker_state:     None,
+    });
 
     ctx.read_pixels()
 }

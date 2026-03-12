@@ -23,7 +23,6 @@ use super::super::fonts::{self, snap_to_pixel};
 pub fn draw_text_lines(
     canvas: &mut Canvas<OpenGl>,
     fonts: &[FontId],
-    _theme: &Theme,
     scale: f32,
     animation_start: std::time::Instant,
     ctx: &DrawCtx<'_>,
