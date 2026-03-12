@@ -96,13 +96,17 @@ impl App {
 
     /// Hover over the picker — highlight item under cursor.
     pub fn hover_notes_picker(&mut self, x: f32, y: f32) -> AppResult {
-        self.logic.ui_state.cursor_shape = crate::ui::CursorShape::Default;
         let list_len = self.logic.focus.notes_picker_state()
             .map(|(_, list)| list.len())
             .unwrap_or(0);
         let layout = crate::ui::NotesPicker::new(
             self.logic.width, self.logic.height, self.logic.scale, list_len,
         );
+        self.logic.ui_state.cursor_shape = if layout.input_rect.contains(x, y) {
+            crate::ui::CursorShape::Text
+        } else {
+            crate::ui::CursorShape::Default
+        };
         if let Some(display_idx) = layout.item_hit_test(x, y, list_len.min(crate::ui::MAX_VISIBLE_ITEMS)) {
             if let Some(list) = self.logic.focus.notes_picker_list_mut() {
                 let target = list.scroll_offset() + display_idx;
