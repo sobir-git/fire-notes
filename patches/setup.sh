@@ -30,4 +30,12 @@ echo "Applying patches..."
 patch -p1 -d "$WINIT_DST" < "$PATCHES_DIR/winit-cursor-scale.patch"
 patch -p1 -d "$SCTK_DST"  < "$PATCHES_DIR/sctk-cursor-explicit-scale.patch"
 
+echo "Suppressing upstream warnings..."
+for lib in "$WINIT_DST/src/lib.rs" "$SCTK_DST/src/lib.rs"; do
+    if ! grep -q '#!\[allow(warnings)\]' "$lib"; then
+        tmp=$(mktemp)
+        echo '#![allow(warnings)]' | cat - "$lib" > "$tmp" && mv "$tmp" "$lib"
+    fi
+done
+
 echo "Done. Run 'cargo build' to verify."
