@@ -4,7 +4,7 @@
 //! `Rect` primitives. No inline arithmetic in renderers.
 
 use super::layout::Layout;
-use super::types::Rect;
+use super::types::{CursorShape, Rect};
 
 pub const MAX_VISIBLE_ITEMS: usize = 8;
 
@@ -80,10 +80,19 @@ impl NotesPicker {
     }
 
     /// Hit-test: returns display index of item under (x, y), if any.
-    #[allow(dead_code)]
     pub fn item_hit_test(&self, x: f32, y: f32, visible_count: usize) -> Option<usize> {
         if !self.overlay_rect.contains(x, y) { return None; }
         (0..visible_count).find(|&i| self.item_metrics(i).row_rect.contains(x, y))
+    }
+
+    /// Cursor shape appropriate for the area under (x, y).
+    /// Text cursor over the search input, Default everywhere else.
+    pub fn cursor_shape_at(&self, x: f32, y: f32) -> CursorShape {
+        if self.input_rect.contains(x, y) {
+            CursorShape::Text
+        } else {
+            CursorShape::Default
+        }
     }
 }
 

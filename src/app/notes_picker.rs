@@ -102,11 +102,7 @@ impl App {
         let layout = crate::ui::NotesPicker::new(
             self.logic.width, self.logic.height, self.logic.scale, list_len,
         );
-        self.logic.ui_state.cursor_shape = if layout.input_rect.contains(x, y) {
-            crate::ui::CursorShape::Text
-        } else {
-            crate::ui::CursorShape::Default
-        };
+        self.logic.ui_state.cursor_shape = layout.cursor_shape_at(x, y);
         if let Some(display_idx) = layout.item_hit_test(x, y, list_len.min(crate::ui::MAX_VISIBLE_ITEMS)) {
             if let Some(list) = self.logic.focus.notes_picker_list_mut() {
                 let target = list.scroll_offset() + display_idx;
