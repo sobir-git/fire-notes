@@ -268,6 +268,39 @@ All layout items are fully implemented. The framework is complete.
 12. **`UiTree::new` delegates to `Self::layout`** — no duplicated layout arithmetic across entry points.
 13. **Vertical gap removed** — content starts immediately below the tab bar border.
 
+### TextInputWidget — reusable text field primitive
+
+Two types live in `src/ui/text_input/`:
+
+- **`TextInput`** — pure editing state (text, cursor, selection, scroll_offset). No geometry. Used directly in `Focus` state.
+- **`TextInputWidget`** — `TextInput` + screen `Rect` via `Layout`. Owns all geometry and cursor logic.
+
+```rust
+pub struct TextInputWidget {
+    pub rect:             Rect,
+    pub font_size:        f32,
+    pub text_x:           f32,   // left-padded text origin
+    pub text_baseline_y:  f32,   // vertical text baseline
+    pub input:            TextInput,
+}
+
+impl Layout for TextInputWidget {
+    fn layout(rect: Rect, scale: f32) -> Self { ... }
+}
+
+impl TextInputWidget {
+    pub fn with_text(rect, scale, text) -> Self;
+    pub fn cursor_shape_at(&self, x, y) -> CursorShape;  // Text inside, Default outside
+    pub fn x_to_cursor(&self, x, char_width) -> usize;   // screen x → byte offset
+}
+```
+
+`NotesPicker` owns `input: TextInputWidget`. Its `cursor_shape_at(x, y)` delegates to `input.cursor_shape_at(x, y)`.
+
+Rule: any future text field in the UI uses `TextInputWidget` — never a bare `Rect` + manual geometry.
+
+---
+
 ### CursorShape — widget-local cursor logic
 
 `CursorShape` lives in `src/ui/types.rs` — a pure UI-layer enum with no platform dependency.
