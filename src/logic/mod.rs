@@ -224,7 +224,9 @@ impl AppLogic {
     // =========================================================================
 
     pub fn visible_line_count(&self) -> usize {
-        crate::ui::ContentArea::new(self.width, self.height, self.scale).visible_line_count()
+        use crate::ui::{Layout, Rect, UiTree};
+        let window = Rect { x: 0.0, y: 0.0, width: self.width, height: self.height };
+        UiTree::layout(window, self.scale).content_area.visible_line_count()
     }
 
     pub fn auto_scroll(&mut self) {

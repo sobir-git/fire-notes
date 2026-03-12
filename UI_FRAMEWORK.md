@@ -121,7 +121,7 @@ One file. Complete truth. `thumb()` returns a `Rect` in screen coords — the re
 ### TextArea
 
 ```rust
-pub struct TextArea { rect: Rect, line_height: f32, char_width: f32 }
+pub struct TextArea { rect: Rect, line_height: f32, char_width: f32, text_padding: f32 }
 
 impl Layout for TextArea {
     fn layout(rect: Rect, scale: f32) -> Self { ... }
@@ -131,11 +131,15 @@ impl TextArea {
     // Character geometry — feeds the flame system
     pub fn char_rect(&self, line: usize, col: usize, scroll: usize) -> Rect;
     pub fn visible_line_count(&self) -> usize;
-    pub fn hit_to_position(&self, x: f32, y: f32, scroll: usize) -> (usize, usize);
+
+    // Hit testing — converts screen (x, y) to document (line, col)
+    // Eliminates raw pixel math from click/drag handlers
+    pub fn hit_to_position(&self, x: f32, y: f32, scroll_offset: usize, scroll_x: f32, char_width: f32) -> Option<(usize, usize)>;
+    pub fn hit_to_visual_line_clamped(&self, y: f32) -> isize;  // for selection drag
 }
 ```
 
-`char_rect` is the key: the flame system asks `text_area.char_rect(line, col)` — no renderer-level re-measurement.
+`char_rect` feeds the flame system. `hit_to_position` owns all click-to-cursor logic — no raw pixel math in handlers.
 
 ### ContentArea
 
@@ -163,15 +167,27 @@ impl Layout for ContentArea {
 ```rust
 impl Layout for UiTree {
     fn layout(rect: Rect, scale: f32) -> Self {
-        let (tab_rect,  rest) = rect.cut_top(TAB_HEIGHT * scale);
-        let (_pad_rect, rest) = rest.cut_top(PADDING * scale);
+        let (tab_rect, content_rect) = rect.cut_top(TAB_HEIGHT * scale);
         UiTree {
-            tab_bar: TabBar::layout(tab_rect, scale),
-            content: ContentArea::layout(rest, scale),
+            tab_bar:      TabBar::layout(tab_rect, scale),
+            content_area: ContentArea::layout(content_rect, scale),
+            notes_picker: None,
         }
     }
 }
+
+// Convenience ctor — delegates to layout(), then patches in tab state
+impl UiTree {
+    pub fn new(width, height, scale, tab_scroll_x, tabs, picker_list_len) -> Self {
+        let mut tree = Self::layout(Rect { x:0, y:0, width, height }, scale);
+        tree.tab_bar = TabBar::new(width, scale, tab_scroll_x, tabs);
+        tree.notes_picker = picker_list_len.map(...);
+        tree
+    }
+}
 ```
+
+**Entry point rule:** `UiTree::new(w, h, s, ...)` is the *only* place that converts raw window dimensions into a layout tree. No other widget constructs from `(width, height)` — they all receive a `Rect` from their parent. `ContentArea::new` was deleted for this reason.
 
 ---
 
@@ -217,6 +233,9 @@ All layout items are fully implemented. The framework is complete.
 8. **`NotesPicker` migrated** — uses `cut_top`, `inset`, `centered_in`, `split_h`.
 9. **`renderer/text_content/draw.rs` split** — orchestrator (140 lines) + `text.rs` (text/cursor/selection, ~190 lines).
 10. **`renderer/fonts.rs`** — shared `measure_char_width` + `snap_to_pixel`. Single source of truth used by all renderers.
+11. **`TextArea::hit_to_position`** — click/drag handlers call this instead of duplicating raw pixel math. `content_start_y()` deleted. `ContentArea::new` deleted.
+12. **`UiTree::new` delegates to `Self::layout`** — no duplicated layout arithmetic across entry points.
+13. **Vertical gap removed** — content starts immediately below the tab bar border.
 
 ### Paint trait — deliberate decision
 `Paint` trait was not implemented. Reason: the `ui` module must not depend on `femtovg`.

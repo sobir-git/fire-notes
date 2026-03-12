@@ -51,16 +51,12 @@ impl UiTree {
         tabs: &[(&str, bool)],
         picker_list_len: Option<usize>,
     ) -> Self {
-        let notes_picker = picker_list_len
+        let window = Rect { x: 0.0, y: 0.0, width, height };
+        let mut tree = Self::layout(window, scale);
+        tree.tab_bar = TabBar::new(width, scale, tab_scroll_x, tabs);
+        tree.notes_picker = picker_list_len
             .map(|len| NotesPicker::new(width, height, scale, len));
-        Self {
-            tab_bar:      TabBar::new(width, scale, tab_scroll_x, tabs),
-            content_area: ContentArea::new(width, height, scale),
-            notes_picker,
-            width,
-            height,
-            scale,
-        }
+        tree
     }
 
     // ── Resize edge detection ─────────────────────────────────────────────

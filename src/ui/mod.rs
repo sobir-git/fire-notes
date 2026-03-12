@@ -13,7 +13,7 @@ mod tree;
 
 // Re-export public types used by other modules
 #[allow(unused_imports)]
-pub use types::{ResizeEdge, UiAction, UiDragAction, UiNode};
+pub use types::{Rect, ResizeEdge, UiAction, UiDragAction, UiHover, UiNode};
 #[allow(unused_imports)]
 pub use layout::Layout;
 pub use content_area::ContentArea;

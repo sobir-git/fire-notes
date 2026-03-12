@@ -21,7 +21,6 @@ pub(crate) mod ui_state;
 
 use arboard::Clipboard;
 
-use crate::config::layout;
 use crate::logic::AppLogic;
 use crate::persistence;
 use crate::renderer::Renderer;
@@ -152,10 +151,6 @@ impl App {
 
     pub(crate) fn visible_lines(&self) -> usize {
         self.logic.visible_line_count()
-    }
-
-    pub(crate) fn content_start_y(&self) -> f32 {
-        layout::TAB_HEIGHT * self.logic.scale
     }
 
     pub(crate) fn auto_scroll(&mut self) {

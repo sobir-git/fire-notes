@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::config::{layout, timing};
+use crate::config::timing;
 use crate::ui::{UiAction, UiNode};
 
 use super::super::state::AppResult;
@@ -54,12 +54,12 @@ impl App {
             }
         }
 
-        let content_start_y = self.content_start_y();
-        if !selecting && y < content_start_y { return AppResult::Ok; }
+        let text_area = &ui_tree.content_area.text;
+        if !selecting && !text_area.hit_test(x, y) && y >= text_area.rect.y { return AppResult::Ok; }
+        if !selecting && y < text_area.rect.y { return AppResult::Ok; }
 
         let height = self.visible_lines() as isize;
-        let relative_y = y - content_start_y;
-        let mut clicked_visual_line = (relative_y / (layout::LINE_HEIGHT * self.logic.scale)).floor() as isize;
+        let mut clicked_visual_line = text_area.hit_to_visual_line_clamped(y);
 
         if selecting && (clicked_visual_line < 0 || clicked_visual_line >= height) {
             if self.logic.ui_state.last_drag_scroll.elapsed()
@@ -72,11 +72,13 @@ impl App {
         }
 
         let scroll_offset = self.logic.tabs[self.logic.active_tab].scroll_offset();
-        let clicked_line = (scroll_offset as isize + clicked_visual_line).max(0) as usize;
-        let char_width = self.renderer.get_char_width();
         let scroll_offset_x = self.logic.tabs[self.logic.active_tab].scroll_offset_x();
-        let relative_x = (x - layout::PADDING * self.logic.scale + scroll_offset_x).max(0.0);
-        let clicked_visual_col = (relative_x / char_width).round() as usize;
+        let char_width = self.renderer.get_char_width();
+        let clicked_line = (scroll_offset as isize + clicked_visual_line).max(0) as usize;
+        let clicked_visual_col = text_area
+            .hit_to_position(x, y, 0, scroll_offset_x, char_width)
+            .map(|(_, col)| col)
+            .unwrap_or(0);
         let clicked_col = self.logic.tabs[self.logic.active_tab].visual_col_to_char_col(clicked_line, clicked_visual_col);
 
         self.logic.tabs[self.logic.active_tab].set_cursor_position(clicked_line, clicked_col, selecting);
