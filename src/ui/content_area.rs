@@ -47,9 +47,9 @@ impl ContentArea {
         (self.rect.height / self.line_height).floor().max(1.0) as usize
     }
 
-    /// Y coordinate where text rendering starts.
+    /// Y coordinate where line 0 renders (rect.y + doc top margin, scrolls away with content).
     pub fn start_y(&self) -> f32 {
-        self.rect.y
+        self.text.rect.y + self.text.doc_top_margin
     }
 
     /// Horizontal text padding (left margin).

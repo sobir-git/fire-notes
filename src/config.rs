@@ -13,6 +13,9 @@ pub mod layout {
     pub const TAB_HEIGHT: f32 = 40.0;
     /// General padding around content areas
     pub const PADDING: f32 = 16.0;
+    /// Top margin before the first line of text — part of the document, scrolls away with content.
+    /// When at scroll offset 0 the first line is indented by this amount; scroll down and it disappears.
+    pub const DOC_TOP_MARGIN: f32 = 8.0;
     /// Width of the scrollbar
     pub const SCROLLBAR_WIDTH: f32 = 12.0;
     /// Minimum scrollbar thumb height

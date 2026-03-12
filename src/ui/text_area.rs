@@ -15,6 +15,8 @@ pub struct TextArea {
     pub line_height: f32,
     pub char_width: f32,
     pub text_padding: f32,
+    /// Top margin before line 0 — part of the document, scrolls away with content.
+    pub doc_top_margin: f32,
 }
 
 #[allow(dead_code)]
@@ -24,9 +26,10 @@ impl Layout for TextArea {
     fn layout(rect: Rect, scale: f32) -> Self {
         Self {
             rect,
-            line_height:  layout::LINE_HEIGHT * scale,
-            char_width:   0.0,   // set after font measurement via set_char_width()
-            text_padding: layout::PADDING * scale,
+            line_height:    layout::LINE_HEIGHT    * scale,
+            char_width:     0.0,   // set after font measurement via set_char_width()
+            text_padding:   layout::PADDING        * scale,
+            doc_top_margin: layout::DOC_TOP_MARGIN * scale,
         }
     }
 }
@@ -94,7 +97,7 @@ impl TextArea {
     pub fn char_rect(&self, line: usize, col: usize, scroll_offset: usize) -> Rect {
         let visual_line = line.saturating_sub(scroll_offset);
         let x = self.rect.x + self.text_padding + col as f32 * self.char_width;
-        let y = self.rect.y + visual_line as f32 * self.line_height;
+        let y = self.rect.y + self.doc_top_margin + visual_line as f32 * self.line_height;
         Rect { x, y, width: self.char_width.max(1.0), height: self.line_height }
     }
 }
