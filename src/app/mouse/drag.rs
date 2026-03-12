@@ -86,7 +86,7 @@ impl App {
                 self.logic.tabs.insert(to_index, tab);
 
                 if self.logic.active_tab == from_index {
-                    self.logic.active_tab = to_index;
+                    self.logic.activate_tab(to_index);
                 } else if from_index < self.logic.active_tab && to_index >= self.logic.active_tab {
                     self.logic.active_tab = self.logic.active_tab.saturating_sub(1);
                 } else if from_index > self.logic.active_tab && to_index <= self.logic.active_tab {

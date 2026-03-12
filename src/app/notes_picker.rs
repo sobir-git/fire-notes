@@ -53,8 +53,7 @@ impl App {
         // Check if already open
         for (i, tab) in self.logic.tabs.iter().enumerate() {
             if tab.path() == Some(&path) {
-                self.logic.active_tab = i;
-                self.auto_scroll();
+                self.logic.activate_tab(i);
                 return AppResult::Redraw;
             }
         }
@@ -62,8 +61,7 @@ impl App {
         // Open as new tab
         if let Some(tab) = Tab::from_file(path) {
             self.logic.tabs.push(tab);
-            self.logic.active_tab = self.logic.tabs.len() - 1;
-            self.auto_scroll();
+            self.logic.activate_tab(self.logic.tabs.len() - 1);
             return AppResult::Redraw;
         }
 

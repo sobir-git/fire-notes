@@ -14,8 +14,7 @@ impl App {
     pub fn open_file(&mut self) -> AppResult {
         if let Some(tab) = Tab::open() {
             self.logic.tabs.push(tab);
-            self.logic.active_tab = self.logic.tabs.len() - 1;
-            self.auto_scroll();
+            self.logic.activate_tab(self.logic.tabs.len() - 1);
             AppResult::Redraw
         } else {
             AppResult::Ok
