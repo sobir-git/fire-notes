@@ -321,6 +321,7 @@ impl HeadlessContext {
     }
 
     /// Get RGBA pixel at (x, y) top-left origin (flips GL bottom-up).
+    #[allow(dead_code)]
     pub fn pixel_at(&self, x: u32, y: u32) -> [u8; 4] {
         let raw = self.read_pixels();
         let row = (self.height - 1 - y) as usize;

@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use femtovg::{Canvas, Color, FontId, Paint, Path, renderer::OpenGl};
 
+use crate::config::{layout, rendering};
 use crate::tab::Tab;
 use crate::theme::Theme;
 use crate::ui::ScrollbarWidget;
@@ -43,15 +44,16 @@ impl<'a> TextContentRenderer<'a> {
     pub fn draw(
         &mut self,
         tab: &Tab,
+        scrollbar: &ScrollbarWidget,
         cursor_visible: bool,
         hovered_scrollbar: bool,
         dragging_scrollbar: bool,
         flame_system: &mut FlameSystem,
         typing_flame_positions: &[(usize, usize, std::time::Instant)],
     ) {
-        let tab_height = 40.0 * self.scale;
-        let padding = 16.0 * self.scale;
-        let line_height = 24.0 * self.scale;
+        let tab_height = layout::TAB_HEIGHT * self.scale;
+        let padding = layout::PADDING * self.scale;
+        let line_height = layout::LINE_HEIGHT * self.scale;
         let start_y = tab_height + padding;
         let scroll_offset = tab.scroll_offset();
         let scroll_x = tab.scroll_offset_x();
@@ -61,7 +63,7 @@ impl<'a> TextContentRenderer<'a> {
 
         let mut text_paint = Paint::color(Color::rgbf(self.theme.fg.0, self.theme.fg.1, self.theme.fg.2));
         text_paint.set_font(self.fonts);
-        text_paint.set_font_size(16.0 * self.scale);
+        text_paint.set_font_size(rendering::CONTENT_FONT_SIZE * self.scale);
         let char_width = self.measure_char_width(&text_paint);
 
         let mut char_positions = self.collect_selection_positions(
@@ -124,7 +126,7 @@ impl<'a> TextContentRenderer<'a> {
             flame_system.draw_layer(self.canvas, false);
         }
 
-        self.draw_scrollbar(tab, start_y, padding, line_height, scroll_offset, hovered_scrollbar, dragging_scrollbar);
+        self.draw_scrollbar(tab, scrollbar, scroll_offset, hovered_scrollbar, dragging_scrollbar);
     }
 
     fn collect_selection_positions(
@@ -275,24 +277,24 @@ impl<'a> TextContentRenderer<'a> {
         let b = cycle * 0.05;
         let mut burning_paint = Paint::color(Color::rgbf(r, g, b));
         burning_paint.set_font(self.fonts);
-        burning_paint.set_font_size(16.0 * self.scale);
+        burning_paint.set_font_size(rendering::CONTENT_FONT_SIZE * self.scale);
         burning_paint
     }
 
     fn draw_scrollbar(
         &mut self,
         tab: &Tab,
-        start_y: f32,
-        padding: f32,
-        line_height: f32,
+        scrollbar: &ScrollbarWidget,
         scroll_offset: usize,
         hovered_scrollbar: bool,
         dragging_scrollbar: bool,
     ) {
+        let line_height = layout::LINE_HEIGHT * self.scale;
+        let padding = layout::PADDING * self.scale;
+        let start_y = layout::TAB_HEIGHT * self.scale + padding;
         let max_visible_lines = ((self.height - start_y - padding) / line_height).ceil() as usize;
         let total_lines = tab.total_lines().max(1);
         if total_lines > max_visible_lines {
-            let scrollbar = ScrollbarWidget::new(self.width, self.height, self.scale);
             if let Some(metrics) = scrollbar.metrics(total_lines, max_visible_lines, scroll_offset) {
                 let mut path = Path::new();
                 path.rounded_rect(metrics.thumb.x, metrics.thumb.y, metrics.thumb.width, metrics.thumb.height, 4.0);
@@ -308,11 +310,12 @@ impl<'a> TextContentRenderer<'a> {
         }
     }
 
+
     pub(super) fn measure_char_width(&self, paint: &Paint) -> f32 {
         if let Ok(metrics) = self.canvas.measure_text(0.0, 0.0, "M", paint) {
             metrics.width()
         } else {
-            9.6 * self.scale
+            rendering::FALLBACK_CHAR_WIDTH * self.scale
         }
     }
 }

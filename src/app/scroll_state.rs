@@ -172,7 +172,7 @@ mod tests {
 
         // Second scroll should work
         let result = state.process_scroll(ScrollInput::LineDelta(1.0));
-        assert_eq!(result, Some((ScrollDirection::Up, 1)));
+        assert_eq!(result, Some((ScrollDirection::Up, scroll::LINES_PER_WHEEL_TICK)));
 
         // Reset and test again
         state.reset();
@@ -190,6 +190,6 @@ mod tests {
 
         // First scroll should work immediately
         let result = state.process_scroll(ScrollInput::LineDelta(1.0));
-        assert_eq!(result, Some((ScrollDirection::Up, 1)));
+        assert_eq!(result, Some((ScrollDirection::Up, scroll::LINES_PER_WHEEL_TICK)));
     }
 }

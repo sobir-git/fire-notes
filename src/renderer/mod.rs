@@ -14,7 +14,8 @@ pub mod viewport;
 use crate::app::NoteEntry;
 use crate::tab::Tab;
 use crate::theme::Theme;
-use crate::ui::{ListWidget, TextInput};
+use crate::config::rendering;
+use crate::ui::{ListWidget, UiTree, TextInput};
 use femtovg::{Canvas, Color, FontId, Paint, renderer::OpenGl};
 use std::time::Instant;
 
@@ -30,7 +31,6 @@ pub struct Renderer {
     width: f32,
     height: f32,
     scale: f32,
-    tab_scroll_x: f32,
     flame_system: FlameSystem,
     animation_start: Instant,
 }
@@ -52,7 +52,6 @@ impl Renderer {
             width,
             height,
             scale,
-            tab_scroll_x: 0.0,
             flame_system: FlameSystem::new(),
             animation_start: now,
         }
@@ -64,16 +63,13 @@ impl Renderer {
         self.scale = scale;
     }
 
-    pub fn set_tab_scroll_x(&mut self, scroll: f32) {
-        self.tab_scroll_x = scroll;
-    }
-
     pub fn has_active_flames(&self) -> bool {
         self.flame_system.has_active_flames()
     }
 
     pub fn render(
         &mut self,
+        ui_tree: &UiTree,
         tabs: &[(&str, bool)],
         current_tab: &Tab,
         cursor_visible: bool,
@@ -104,15 +100,15 @@ impl Renderer {
 
         // Draw tab bar
         {
-            let mut tab_bar = TabBarRenderer::new(
+            let mut tab_bar_renderer = TabBarRenderer::new(
                 &mut self.canvas,
                 &self.fonts,
                 &self.theme,
                 self.width,
                 self.scale,
-                self.tab_scroll_x,
             );
-            tab_bar.draw(
+            tab_bar_renderer.draw(
+                &ui_tree.tab_bar,
                 tabs,
                 hovered_tab_index,
                 hovered_plus,
@@ -138,6 +134,7 @@ impl Renderer {
             );
             text_content.draw(
                 current_tab,
+                &ui_tree.scrollbar,
                 cursor_visible,
                 hovered_scrollbar,
                 dragging_scrollbar,
@@ -165,7 +162,7 @@ impl Renderer {
     pub fn get_char_width(&self) -> f32 {
         let mut text_paint = Paint::color(Color::rgb(255, 255, 255));
         text_paint.set_font(&self.fonts);
-        text_paint.set_font_size(16.0 * self.scale);
+        text_paint.set_font_size(rendering::CONTENT_FONT_SIZE * self.scale);
         self.measure_char_width(&text_paint)
     }
 
@@ -173,12 +170,13 @@ impl Renderer {
         if let Ok(metrics) = self.canvas.measure_text(0.0, 0.0, "M", paint) {
             metrics.width()
         } else {
-            9.6 * self.scale // Fallback approximate width
+            rendering::FALLBACK_CHAR_WIDTH * self.scale
         }
     }
 
     /// Expose the canvas for test-only pixel readback.
     #[cfg(test)]
+    #[allow(dead_code)]
     pub fn canvas_mut(&mut self) -> &mut femtovg::Canvas<femtovg::renderer::OpenGl> {
         &mut self.canvas
     }

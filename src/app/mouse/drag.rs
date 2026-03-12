@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use crate::config::{layout, timing};
-use crate::ui::{UiDragAction, UiNode, UiTree};
+use crate::ui::{UiDragAction, UiNode};
 
 use super::super::state::AppResult;
 use super::super::ui_state::MouseInteraction;
@@ -25,10 +25,8 @@ impl App {
                 let total_lines = self.logic.tabs[self.logic.active_tab].total_lines();
                 let visible_lines = self.visible_lines();
                 let scroll_offset = self.logic.tabs[self.logic.active_tab].scroll_offset();
-                let ui_tree = UiTree::new(
-                    self.logic.width, self.logic.height, self.logic.scale,
-                    self.logic.ui_state.tab_scroll_x, &self.tab_titles(),
-                );
+                let tab_info = self.tab_titles();
+                let ui_tree = self.logic.build_ui_tree(&tab_info);
                 match ui_tree.drag_scrollbar(y, total_lines, visible_lines, scroll_offset, drag_offset) {
                     UiDragAction::ScrollbarDrag { ratio } => self.jump_scrollbar_to_ratio(ratio),
                     UiDragAction::None => AppResult::Ok,
@@ -76,7 +74,7 @@ impl App {
         if self.logic.focus.is_renaming() { return AppResult::Ok; }
 
         let tab_info = self.tab_titles();
-        let ui_tree = UiTree::new(self.logic.width, self.logic.height, self.logic.scale, self.logic.ui_state.tab_scroll_x, &tab_info);
+        let ui_tree = self.logic.build_ui_tree(&tab_info);
 
         if let UiNode::Tab(to_index) = ui_tree.hit_test(x, y) {
             if to_index != from_index && from_index < self.logic.tabs.len() && to_index < self.logic.tabs.len() {

@@ -12,5 +12,7 @@ mod tree;
 pub use types::{ResizeEdge, UiAction, UiDragAction, UiNode};
 pub use list_widget::ListWidget;
 pub use scrollbar::ScrollbarWidget;
+pub use tab_bar::TabBar;
+pub use text_area::TextArea;
 pub use text_input::TextInput;
 pub use tree::UiTree;

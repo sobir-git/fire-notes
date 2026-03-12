@@ -67,7 +67,26 @@ pub struct Rect {
 }
 
 impl Rect {
+    pub const ZERO: Self = Self { x: 0.0, y: 0.0, width: 0.0, height: 0.0 };
+
     pub fn contains(&self, x: f32, y: f32) -> bool {
         x >= self.x && x <= self.x + self.width && y >= self.y && y <= self.y + self.height
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.width <= 0.0 || self.height <= 0.0
+    }
+
+    /// Returns the intersection of two rects, or `Rect::ZERO` if they do not overlap.
+    pub fn intersect(&self, other: &Rect) -> Rect {
+        let x = self.x.max(other.x);
+        let y = self.y.max(other.y);
+        let right = (self.x + self.width).min(other.x + other.width);
+        let bottom = (self.y + self.height).min(other.y + other.height);
+        if right > x && bottom > y {
+            Rect { x, y, width: right - x, height: bottom - y }
+        } else {
+            Rect::ZERO
+        }
     }
 }

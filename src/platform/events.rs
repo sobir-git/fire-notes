@@ -11,6 +11,7 @@ use winit::keyboard::ModifiersState;
 use winit::window::WindowId;
 
 use crate::app::{AppResult, ScrollInput};
+use crate::config::scroll;
 use crate::persistence::{save_session_state, save_window_state};
 
 use super::keys::convert_winit_key;
@@ -99,7 +100,7 @@ impl ApplicationHandler for AppHandler {
             WindowEvent::MouseWheel { delta, .. } => {
                 if state.app.is_mouse_in_tab_bar() {
                     let scroll_delta = match delta {
-                        MouseScrollDelta::LineDelta(_, y) => y * 30.0,
+                        MouseScrollDelta::LineDelta(_, y) => y * scroll::TAB_SCROLL_PIXELS,
                         MouseScrollDelta::PixelDelta(pos) => pos.y as f32 / 2.0,
                     };
                     if state.app.scroll_tab_bar(scroll_delta).needs_redraw() {

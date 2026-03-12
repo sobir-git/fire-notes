@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use crate::config::{layout, timing};
-use crate::ui::{UiAction, UiNode, UiTree};
+use crate::ui::{UiAction, UiNode};
 
 use super::super::state::AppResult;
 use super::super::ui_state::MouseInteraction;
@@ -19,7 +19,7 @@ impl App {
         let total_lines = self.logic.tabs[self.logic.active_tab].total_lines();
         let visible_lines = self.visible_lines();
         let scroll_offset = self.logic.tabs[self.logic.active_tab].scroll_offset();
-        let ui_tree = UiTree::new(self.logic.width, self.logic.height, self.logic.scale, self.logic.ui_state.tab_scroll_x, &tab_info);
+        let ui_tree = self.logic.build_ui_tree(&tab_info);
 
         match ui_tree.click(x, y, total_lines, visible_lines, scroll_offset, selecting) {
             UiAction::ActivateTab(i) => {
@@ -90,7 +90,7 @@ impl App {
         let total_lines = self.logic.tabs[self.logic.active_tab].total_lines();
         let visible_lines = self.visible_lines();
         let scroll_offset = self.logic.tabs[self.logic.active_tab].scroll_offset();
-        let ui_tree = UiTree::new(self.logic.width, self.logic.height, self.logic.scale, self.logic.ui_state.tab_scroll_x, &tab_info);
+        let ui_tree = self.logic.build_ui_tree(&tab_info);
 
         match ui_tree.double_click(x, y, total_lines, visible_lines, scroll_offset) {
             UiAction::ActivateTab(i) => { self.logic.active_tab = i; self.auto_scroll(); AppResult::Redraw }
@@ -109,7 +109,7 @@ impl App {
         let total_lines = self.logic.tabs[self.logic.active_tab].total_lines();
         let visible_lines = self.visible_lines();
         let scroll_offset = self.logic.tabs[self.logic.active_tab].scroll_offset();
-        let ui_tree = UiTree::new(self.logic.width, self.logic.height, self.logic.scale, self.logic.ui_state.tab_scroll_x, &tab_info);
+        let ui_tree = self.logic.build_ui_tree(&tab_info);
 
         match ui_tree.triple_click(x, y, total_lines, visible_lines, scroll_offset) {
             UiAction::ActivateTab(i) => { self.logic.active_tab = i; self.auto_scroll(); AppResult::Redraw }
@@ -125,7 +125,7 @@ impl App {
 
     pub fn right_click_at(&mut self, x: f32, y: f32) -> AppResult {
         let tab_info = self.tab_titles();
-        let ui_tree = UiTree::new(self.logic.width, self.logic.height, self.logic.scale, self.logic.ui_state.tab_scroll_x, &tab_info);
+        let ui_tree = self.logic.build_ui_tree(&tab_info);
         match ui_tree.hit_test(x, y) {
             UiNode::Tab(i) => { self.logic.start_rename(i); AppResult::Redraw }
             _ => AppResult::Ok,

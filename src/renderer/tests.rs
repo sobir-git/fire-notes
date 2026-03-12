@@ -39,8 +39,10 @@ fn render_frame(ctx: &HeadlessContext, renderer: &mut Renderer) -> Vec<u8> {
         .map(|(i, t)| (t.title(), i == logic.active_tab))
         .collect();
     let current_tab = &logic.tabs[logic.active_tab];
+    let ui_tree = logic.build_ui_tree(&tab_info);
 
     renderer.render(
+        &ui_tree,
         &tab_info,
         current_tab,
         false, // cursor_visible

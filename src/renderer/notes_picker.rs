@@ -1,6 +1,7 @@
 //! Notes picker overlay rendering
 
 use crate::app::NoteEntry;
+use crate::config::rendering;
 use crate::theme::Theme;
 use crate::ui::{ListWidget, TextInput};
 use femtovg::{Canvas, Color, Paint, Path, FontId, renderer::OpenGl};
@@ -114,7 +115,7 @@ impl<'a> NotesPickerRenderer<'a> {
         );
         
         // Draw search text or placeholder
-        let font_size = 14.0 * scale;
+        let font_size = rendering::NOTES_PICKER_FONT_SIZE * scale;
         let mut text_paint = Paint::color(Color::rgbf(
             self.theme.fg.0,
             self.theme.fg.1,
@@ -232,7 +233,7 @@ impl<'a> NotesPickerRenderer<'a> {
         if let Ok(metrics) = self.canvas.measure_text(0.0, 0.0, "M", paint) {
             metrics.width()
         } else {
-            9.6 * self.scale
+            rendering::FALLBACK_CHAR_WIDTH * self.scale
         }
     }
 }

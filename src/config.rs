@@ -23,6 +23,14 @@ pub mod layout {
     pub const MIN_TAB_WIDTH: f32 = 100.0;
     /// New tab button size
     pub const NEW_TAB_BUTTON_SIZE: f32 = 28.0;
+    /// Window control button size (minimize/maximize/close)
+    pub const WINDOW_BUTTON_SIZE: f32 = 28.0;
+    /// Margin between window edge and close button, and between buttons
+    pub const WINDOW_BUTTON_MARGIN: f32 = 8.0;
+    /// Gap between window control buttons
+    pub const WINDOW_BUTTON_GAP: f32 = 4.0;
+    /// Dead zone between the scrolling tabs area and window controls, used for window dragging
+    pub const TAB_DRAG_GAP: f32 = 36.0;
 }
 
 /// Timing constants (in milliseconds)
@@ -47,14 +55,20 @@ pub mod rendering {
     pub const TAB_FONT_SIZE: f32 = 14.0;
     /// Approximate character width ratio for tab width calculation
     pub const TAB_CHAR_WIDTH_RATIO: f32 = 9.0;
+    /// Font size for the new-tab (+) button
+    pub const NEW_TAB_BUTTON_FONT_SIZE: f32 = 20.0;
+    /// Font size for the notes picker overlay
+    pub const NOTES_PICKER_FONT_SIZE: f32 = 14.0;
+    /// Fallback monospace character width as a raw pixel value (before scaling)
+    pub const FALLBACK_CHAR_WIDTH_PX: f32 = 9.6;
 }
 
 /// Scroll behavior constants
 pub mod scroll {
     /// Lines to scroll per wheel tick
-    pub const LINES_PER_WHEEL_TICK: usize = 1;
+    pub const LINES_PER_WHEEL_TICK: usize = 2;
     /// Pixels per scroll for tab bar horizontal scroll
-    pub const TAB_SCROLL_PIXELS: f32 = 30.0;
+    pub const TAB_SCROLL_PIXELS: f32 = 60.0;
 }
 
 /// Flame/particle animation constants

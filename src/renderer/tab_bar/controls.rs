@@ -2,32 +2,32 @@
 
 use femtovg::{Color, Paint, Path};
 
+use crate::ui::TabBar;
+
 use super::draw::TabBarRenderer;
 
 impl<'a> TabBarRenderer<'a> {
+    /// Draw window control buttons using pre-computed rects from the `TabBar` layout widget.
     pub(super) fn draw_window_controls(
         &mut self,
-        tab_height: f32,
+        layout: &TabBar,
         hovered_minimize: bool,
         hovered_maximize: bool,
         hovered_close: bool,
     ) {
-        let button_size = 28.0 * self.scale;
-        let button_margin = 8.0 * self.scale;
-        let button_y = (tab_height - button_size) / 2.0;
         let icon_size = 10.0 * self.scale;
 
-        let close_x = self.width - button_size - button_margin;
-        self.draw_window_button(close_x, button_y, button_size, hovered_close, true);
-        self.draw_close_icon(close_x, button_y, button_size, icon_size);
+        let cr = &layout.close_rect;
+        self.draw_window_button(cr.x, cr.y, cr.width, hovered_close, true);
+        self.draw_close_icon(cr.x, cr.y, cr.width, icon_size);
 
-        let maximize_x = close_x - button_size - 4.0 * self.scale;
-        self.draw_window_button(maximize_x, button_y, button_size, hovered_maximize, false);
-        self.draw_maximize_icon(maximize_x, button_y, button_size, icon_size);
+        let mr = &layout.maximize_rect;
+        self.draw_window_button(mr.x, mr.y, mr.width, hovered_maximize, false);
+        self.draw_maximize_icon(mr.x, mr.y, mr.width, icon_size);
 
-        let minimize_x = maximize_x - button_size - 4.0 * self.scale;
-        self.draw_window_button(minimize_x, button_y, button_size, hovered_minimize, false);
-        self.draw_minimize_icon(minimize_x, button_y, button_size, icon_size);
+        let minr = &layout.minimize_rect;
+        self.draw_window_button(minr.x, minr.y, minr.width, hovered_minimize, false);
+        self.draw_minimize_icon(minr.x, minr.y, minr.width, icon_size);
     }
 
     fn draw_window_button(&mut self, x: f32, y: f32, size: f32, hovered: bool, is_close: bool) {

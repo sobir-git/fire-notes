@@ -121,10 +121,14 @@ impl App {
             })
             .collect();
 
+        // Build UiTree once per frame — TabBar flows from here to the renderer.
+        let ui_tree = self.logic.build_ui_tree(&tab_info);
+
         let current_tab = &self.logic.tabs[self.logic.active_tab];
         let dragging_scrollbar = matches!(ui.mouse_interaction, MouseInteraction::ScrollbarDrag { .. });
 
         self.renderer.render(
+            &ui_tree,
             &tab_info,
             current_tab,
             ui.cursor_visible,
@@ -189,9 +193,7 @@ impl App {
     }
 
     pub fn scroll_tab_bar(&mut self, delta: f32) -> AppResult {
-        let result = self.logic.scroll_tab_bar(delta);
-        self.renderer.set_tab_scroll_x(self.logic.tab_scroll_x());
-        result
+        self.logic.scroll_tab_bar(delta)
     }
 
     pub fn reset_scroll_state(&mut self) {

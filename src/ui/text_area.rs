@@ -27,4 +27,10 @@ impl TextArea {
     pub fn hit_test(&self, x: f32, y: f32) -> bool {
         self.rect.contains(x, y)
     }
+
+    /// Number of fully visible text lines in this area given `line_height`.
+    pub fn visible_line_count(&self, scale: f32) -> usize {
+        let line_height = layout::LINE_HEIGHT * scale;
+        (self.rect.height / line_height).floor().max(1.0) as usize
+    }
 }

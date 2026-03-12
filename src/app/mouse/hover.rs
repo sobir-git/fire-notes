@@ -1,6 +1,5 @@
 //! Mouse hover detection.
 
-use crate::ui::UiTree;
 use super::super::state::AppResult;
 use super::super::App;
 
@@ -22,7 +21,7 @@ impl App {
         let total_lines = self.logic.tabs[self.logic.active_tab].total_lines();
         let visible_lines = self.visible_lines();
         let scroll_offset = self.logic.tabs[self.logic.active_tab].scroll_offset();
-        let ui_tree = UiTree::new(self.logic.width, self.logic.height, self.logic.scale, self.logic.ui_state.tab_scroll_x, &tab_info);
+        let ui_tree = self.logic.build_ui_tree(&tab_info);
         let hover = ui_tree.hover(x, y, total_lines, visible_lines, scroll_offset);
 
         self.logic.ui_state.hovered_tab_index = hover.tab_index;

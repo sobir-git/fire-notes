@@ -224,9 +224,7 @@ impl AppLogic {
     // =========================================================================
 
     pub fn visible_line_count(&self) -> usize {
-        let content_height =
-            self.height - layout::TAB_HEIGHT * self.scale - layout::PADDING * 2.0 * self.scale;
-        (content_height / (layout::LINE_HEIGHT * self.scale)).floor().max(1.0) as usize
+        crate::ui::TextArea::new(self.width, self.height, self.scale).visible_line_count(self.scale)
     }
 
     pub fn auto_scroll(&mut self) {
@@ -280,6 +278,14 @@ impl AppLogic {
 
     pub fn is_mouse_in_tab_bar(&self) -> bool {
         self.ui_state.last_mouse_y < layout::TAB_HEIGHT * self.scale
+    }
+
+    /// Build a `UiTree` from current layout state.
+    ///
+    /// All mouse handlers should call this instead of constructing `UiTree::new`
+    /// inline — ensures a single construction site and consistent layout.
+    pub fn build_ui_tree(&self, tab_titles: &[(&str, bool)]) -> crate::ui::UiTree {
+        crate::ui::UiTree::new(self.width, self.height, self.scale, self.ui_state.tab_scroll_x, tab_titles)
     }
 
     pub fn ui_state(&self) -> &UiState { &self.ui_state }

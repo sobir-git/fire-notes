@@ -144,19 +144,22 @@ impl UiTree {
         visible_lines: usize,
         scroll_offset: usize,
     ) -> UiAction {
-        match self.hit_test(x, y) {
-            UiNode::Tab(_) | UiNode::NewTabButton | UiNode::TabBar
-            | UiNode::WindowMinimize | UiNode::WindowMaximize | UiNode::WindowClose
-            | UiNode::WindowResizeEdge(_) => {
-                return self.click(x, y, total_lines, visible_lines, scroll_offset, false);
-            }
-            UiNode::Scrollbar => return UiAction::None,
-            UiNode::TextArea => return UiAction::TextClick,
-            UiNode::None => return UiAction::None,
-        }
+        self.multi_click(x, y, total_lines, visible_lines, scroll_offset)
     }
 
     pub fn triple_click(
+        &self,
+        x: f32,
+        y: f32,
+        total_lines: usize,
+        visible_lines: usize,
+        scroll_offset: usize,
+    ) -> UiAction {
+        self.multi_click(x, y, total_lines, visible_lines, scroll_offset)
+    }
+
+    /// Shared behaviour for double- and triple-click: non-text zones delegate to single click.
+    fn multi_click(
         &self,
         x: f32,
         y: f32,
@@ -168,11 +171,11 @@ impl UiTree {
             UiNode::Tab(_) | UiNode::NewTabButton | UiNode::TabBar
             | UiNode::WindowMinimize | UiNode::WindowMaximize | UiNode::WindowClose
             | UiNode::WindowResizeEdge(_) => {
-                return self.click(x, y, total_lines, visible_lines, scroll_offset, false);
+                self.click(x, y, total_lines, visible_lines, scroll_offset, false)
             }
-            UiNode::Scrollbar => return UiAction::None,
-            UiNode::TextArea => return UiAction::TextClick,
-            UiNode::None => return UiAction::None,
+            UiNode::Scrollbar => UiAction::None,
+            UiNode::TextArea => UiAction::TextClick,
+            UiNode::None => UiAction::None,
         }
     }
 
@@ -182,8 +185,10 @@ impl UiTree {
             return UiNode::WindowResizeEdge(edge);
         }
 
-        if self.tab_bar.rect.contains(x, y) {
-            return self.tab_bar.hit_test(x, y);
+        // Each widget's hit_test already guards with its own rect.contains().
+        let tab_node = self.tab_bar.hit_test(x, y);
+        if tab_node != UiNode::None {
+            return tab_node;
         }
 
         if self.scrollbar.hit_test(x, y) {
