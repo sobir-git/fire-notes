@@ -2,6 +2,10 @@
 
 mod flame;
 mod fonts;
+#[cfg(test)]
+pub mod headless;
+#[cfg(test)]
+mod tests;
 mod notes_picker;
 mod tab_bar;
 mod text_content;
@@ -171,6 +175,12 @@ impl Renderer {
         } else {
             9.6 * self.scale // Fallback approximate width
         }
+    }
+
+    /// Expose the canvas for test-only pixel readback.
+    #[cfg(test)]
+    pub fn canvas_mut(&mut self) -> &mut femtovg::Canvas<femtovg::renderer::OpenGl> {
+        &mut self.canvas
     }
 
 }

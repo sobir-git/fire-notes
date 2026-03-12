@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Centralized action system
 //!
 //! All user-triggerable actions are defined here. This provides:

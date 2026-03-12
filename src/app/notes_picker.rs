@@ -16,8 +16,7 @@ impl App {
         let all_note_paths = persistence::list_notes().unwrap_or_default();
 
         // Get paths of currently open tabs
-        let open_paths: Vec<&PathBuf> = self
-            .tabs
+        let open_paths: Vec<&PathBuf> = self.logic.tabs
             .iter()
             .filter_map(|tab| tab.path())
             .collect();
@@ -45,16 +44,16 @@ impl App {
             return AppResult::Ok;
         }
 
-        self.focus = Focus::start_notes_picker(notes);
+        self.logic.focus = Focus::start_notes_picker(notes);
         AppResult::Redraw
     }
 
     /// Open a note by path (either switch to existing tab or open new)
     pub fn open_note_by_path(&mut self, path: PathBuf) -> AppResult {
         // Check if already open
-        for (i, tab) in self.tabs.iter().enumerate() {
+        for (i, tab) in self.logic.tabs.iter().enumerate() {
             if tab.path() == Some(&path) {
-                self.active_tab = i;
+                self.logic.active_tab = i;
                 self.auto_scroll();
                 return AppResult::Redraw;
             }
@@ -62,8 +61,8 @@ impl App {
 
         // Open as new tab
         if let Some(tab) = Tab::from_file(path) {
-            self.tabs.push(tab);
-            self.active_tab = self.tabs.len() - 1;
+            self.logic.tabs.push(tab);
+            self.logic.active_tab = self.logic.tabs.len() - 1;
             self.auto_scroll();
             return AppResult::Redraw;
         }
@@ -73,7 +72,7 @@ impl App {
 
     /// Confirm notes picker selection
     pub fn confirm_notes_picker(&mut self) -> AppResult {
-        if let Some(path) = self.focus.confirm_notes_picker() {
+        if let Some(path) = self.logic.focus.confirm_notes_picker() {
             return self.open_note_by_path(path);
         }
         AppResult::Ok
@@ -81,7 +80,7 @@ impl App {
 
     /// Cancel notes picker
     pub fn cancel_notes_picker(&mut self) -> AppResult {
-        if self.focus.cancel_notes_picker() {
+        if self.logic.focus.cancel_notes_picker() {
             return AppResult::Redraw;
         }
         AppResult::Ok
@@ -89,11 +88,11 @@ impl App {
 
     /// Handle mouse click in notes picker
     pub fn handle_notes_picker_click(&mut self, x: f32, y: f32) -> AppResult {
-        let scale = self.scale;
+        let scale = self.logic.scale;
         
         // Calculate overlay dimensions (must match renderer)
-        let overlay_width = (self.width * 0.6).min(500.0 * scale);
-        let overlay_x = (self.width - overlay_width) / 2.0;
+        let overlay_width = (self.logic.width * 0.6).min(500.0 * scale);
+        let overlay_x = (self.logic.width - overlay_width) / 2.0;
         let overlay_y = 60.0 * scale;
         
         let input_height = 36.0 * scale;
@@ -111,7 +110,7 @@ impl App {
             let clicked_visible_idx = (relative_y / item_height) as usize;
             
             if clicked_visible_idx < max_visible_items {
-                if let Some(list) = self.focus.notes_picker_list_mut() {
+                if let Some(list) = self.logic.focus.notes_picker_list_mut() {
                     let scroll_offset = list.scroll_offset();
                     let clicked_idx = scroll_offset + clicked_visible_idx;
                     let was_already_selected = list.selected_index() == clicked_idx;
@@ -128,7 +127,7 @@ impl App {
         }
         
         // Check if click is outside the overlay (cancel)
-        let list_count = self.focus.notes_picker_state()
+        let list_count = self.logic.focus.notes_picker_state()
             .map(|(_, list)| list.len().min(max_visible_items))
             .unwrap_or(0);
         let list_height = list_count as f32 * item_height;

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Keyboard shortcut registry
 //!
 //! Maps keyboard input to Actions. All keybindings are defined in one place,

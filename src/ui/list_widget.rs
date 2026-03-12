@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Reusable list widget with keyboard and mouse support
 //!
 //! This widget provides:

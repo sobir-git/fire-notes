@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Trait-based input handling for focusable widgets
 //!
 //! Each focusable component implements InputHandler, and the Focus system

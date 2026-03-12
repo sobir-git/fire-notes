@@ -1,36 +1,9 @@
-//! Scrolling operations
+//! Scrolling operations — App shims delegate to AppLogic.
 
 use super::state::AppResult;
 use super::App;
 
 impl App {
-    /// Page Up: scroll and move cursor up by a full page
-    pub fn page_up(&mut self, selecting: bool) -> AppResult {
-        if self.focus.is_renaming() {
-            return AppResult::Ok;
-        }
-        let page_size = self.visible_lines().saturating_sub(1).max(1);
-
-        for _ in 0..page_size {
-            self.tabs[self.active_tab].move_up(selecting);
-        }
-
-        self.auto_scroll();
-        AppResult::Redraw
-    }
-
-    /// Page Down: scroll and move cursor down by a full page
-    pub fn page_down(&mut self, selecting: bool) -> AppResult {
-        if self.focus.is_renaming() {
-            return AppResult::Ok;
-        }
-        let page_size = self.visible_lines().saturating_sub(1).max(1);
-
-        for _ in 0..page_size {
-            self.tabs[self.active_tab].move_down(selecting);
-        }
-
-        self.auto_scroll();
-        AppResult::Redraw
-    }
+    pub fn page_up(&mut self, selecting: bool) -> AppResult { self.logic.page_up(selecting) }
+    pub fn page_down(&mut self, selecting: bool) -> AppResult { self.logic.page_down(selecting) }
 }
