@@ -72,6 +72,34 @@ impl TextInputWidget {
         }
         byte_idx.min(self.input.text.len())
     }
+
+    /// Screen rect of the cursor bar (2px wide, inset from field top/bottom).
+    /// Geometry owned here; state comes from the live `TextInput`.
+    pub fn cursor_rect(&self, input: &TextInput, char_width: f32) -> Rect {
+        let chars = input.text[..input.cursor].chars().count();
+        let x = self.text_x + chars as f32 * char_width - input.scroll_offset;
+        let padding = 4.0;
+        Rect { x, y: self.rect.y + padding, width: 2.0, height: self.rect.height - padding * 2.0 }
+    }
+
+    /// Screen rect covering the selected text, if any selection exists.
+    /// Geometry owned here; state comes from the live `TextInput`.
+    pub fn selection_rect(&self, input: &TextInput, char_width: f32) -> Option<Rect> {
+        let (start, end) = input.selection_range()?;
+        let start_chars = input.text[..start].chars().count();
+        let end_chars   = input.text[..end].chars().count();
+        let x = self.text_x + start_chars as f32 * char_width - input.scroll_offset;
+        let w = (end_chars - start_chars) as f32 * char_width;
+        let padding = 3.0;
+        Some(Rect { x, y: self.rect.y + padding, width: w, height: self.rect.height - padding * 2.0 })
+    }
+
+    /// Scroll the input so the cursor stays visible.
+    /// Widget owns `visible_width`; `char_width` comes from the renderer.
+    pub fn ensure_cursor_visible(&self, input: &mut TextInput, char_width: f32) {
+        let visible_width = self.rect.width - (self.text_x - self.rect.x) * 2.0;
+        input.ensure_cursor_visible(visible_width, char_width);
+    }
 }
 
 #[derive(Debug, Clone)]

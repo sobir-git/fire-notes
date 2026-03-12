@@ -96,17 +96,19 @@ impl App {
     }
 
     /// After editing or moving the cursor in the picker input, scroll it so
-    /// the cursor stays visible.
+    /// the cursor stays visible. Delegates to TextInputWidget.ensure_cursor_visible
+    /// which owns the visible_width calculation from its own rect.
     pub(crate) fn ensure_picker_cursor_visible(&mut self) {
+        let char_width = self.renderer.get_picker_char_width();
         let list_len = self.logic.focus.notes_picker_state()
             .map(|(_, list)| list.len()).unwrap_or(0);
+        // Build a temporary layout to get the input widget geometry, then apply
+        // scroll correction through the widget's own method.
         let layout = crate::ui::NotesPicker::new(
             self.logic.width, self.logic.height, self.logic.scale, list_len,
         );
-        let visible_width = layout.input.rect.width - (layout.input.text_x - layout.input.rect.x) * 2.0;
-        let char_width = self.renderer.get_picker_char_width();
         if let Some(input) = self.logic.focus.notes_picker_input_mut() {
-            input.ensure_cursor_visible(visible_width, char_width);
+            layout.input.ensure_cursor_visible(input, char_width);
         }
     }
 
