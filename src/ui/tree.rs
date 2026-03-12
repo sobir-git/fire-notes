@@ -10,7 +10,7 @@ use super::layout::Layout;
 use super::notes_picker::NotesPicker;
 use super::tab_bar::TabBar;
 use super::scrollbar::ScrollbarAction;
-use super::types::{Rect, ResizeEdge, UiAction, UiDragAction, UiHover, UiNode};
+use super::types::{Rect, WindowRect, ResizeEdge, UiAction, UiDragAction, UiHover, UiNode};
 
 const RESIZE_BORDER: f32 = 5.0;
 
@@ -26,8 +26,14 @@ pub struct UiTree {
     scale: f32,
 }
 
-impl Layout for UiTree {
-    fn layout(rect: Rect, scale: f32) -> Self {
+impl UiTree {
+    /// Lay out the full UI tree from the OS window dimensions.
+    ///
+    /// `window` can only be constructed by the platform layer — this is a
+    /// compile-time guarantee that no child widget accidentally encodes
+    /// parent-level geometry (e.g. knowing the tab bar height).
+    pub fn layout(window: WindowRect, scale: f32) -> Self {
+        let rect: Rect = window.into();
         let (tab_rect, content_rect) = rect.cut_top(cfg_layout::TAB_HEIGHT * scale);
         Self {
             tab_bar:      TabBar::layout(tab_rect, scale),
@@ -38,24 +44,22 @@ impl Layout for UiTree {
             scale,
         }
     }
-}
 
-impl UiTree {
-    /// Build from raw window dimensions + tab state.
+    /// Build from window + dynamic tab/picker state.
     /// `picker_list_len` — `Some(n)` when the notes picker is open with `n` items.
     pub fn new(
-        width: f32,
-        height: f32,
+        window: WindowRect,
         scale: f32,
         tab_scroll_x: f32,
         tabs: &[(&str, bool)],
         picker_list_len: Option<usize>,
     ) -> Self {
-        let window = Rect { x: 0.0, y: 0.0, width, height };
+        let w = window.width();
+        let h = window.height();
         let mut tree = Self::layout(window, scale);
-        tree.tab_bar = TabBar::new(width, scale, tab_scroll_x, tabs);
+        tree.tab_bar = TabBar::new(w, scale, tab_scroll_x, tabs);
         tree.notes_picker = picker_list_len
-            .map(|len| NotesPicker::new(width, height, scale, len));
+            .map(|len| NotesPicker::new(w, h, scale, len));
         tree
     }
 

@@ -224,8 +224,8 @@ impl AppLogic {
     // =========================================================================
 
     pub fn visible_line_count(&self) -> usize {
-        use crate::ui::{Layout, Rect, UiTree};
-        let window = Rect { x: 0.0, y: 0.0, width: self.width, height: self.height };
+        use crate::ui::{WindowRect, UiTree};
+        let window = WindowRect::new(self.width, self.height);
         UiTree::layout(window, self.scale).content_area.visible_line_count()
     }
 
@@ -288,7 +288,8 @@ impl AppLogic {
     /// inline — ensures a single construction site and consistent layout.
     pub fn build_ui_tree(&self, tab_titles: &[(&str, bool)]) -> crate::ui::UiTree {
         let picker_len = self.focus.notes_picker_state().map(|(_, list)| list.len());
-        crate::ui::UiTree::new(self.width, self.height, self.scale, self.ui_state.tab_scroll_x, tab_titles, picker_len)
+        let window = crate::ui::WindowRect::new(self.width, self.height);
+        crate::ui::UiTree::new(window, self.scale, self.ui_state.tab_scroll_x, tab_titles, picker_len)
     }
 
     pub fn ui_state(&self) -> &UiState { &self.ui_state }

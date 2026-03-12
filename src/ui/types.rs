@@ -66,6 +66,40 @@ pub struct Rect {
     pub height: f32,
 }
 
+/// A `Rect` that represents the full OS window surface.
+///
+/// The constructor is `pub(crate)` — only the platform layer (`App`, `AppLogic`)
+/// may create one.  This is a compile-time constraint: child widgets receive `Rect`
+/// from their parent; they can never construct a `WindowRect`, so they can never
+/// accidentally encode parent-level geometry knowledge.
+///
+/// ```text
+/// WindowRect::new(w, h)   ← only App / AppLogic
+///   └─ UiTree::layout(window, scale)
+///         └─ TabBar::layout(rect, scale)       ← Rect, not WindowRect
+///         └─ ContentArea::layout(rect, scale)  ← Rect, not WindowRect
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct WindowRect(Rect);
+
+impl WindowRect {
+    /// Create the root window rect.  Only callable inside `crate` — external
+    /// code (including child widgets) cannot construct a `WindowRect`.
+    pub(crate) fn new(width: f32, height: f32) -> Self {
+        Self(Rect { x: 0.0, y: 0.0, width, height })
+    }
+
+    /// Width of the window in physical pixels (at scale 1.0 logical).
+    pub fn width(self) -> f32 { self.0.width }
+
+    /// Height of the window in physical pixels.
+    pub fn height(self) -> f32 { self.0.height }
+}
+
+impl From<WindowRect> for Rect {
+    fn from(w: WindowRect) -> Rect { w.0 }
+}
+
 impl Rect {
     pub const ZERO: Self = Self { x: 0.0, y: 0.0, width: 0.0, height: 0.0 };
 

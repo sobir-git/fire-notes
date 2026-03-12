@@ -56,7 +56,7 @@ trait Layout: Sized {
 }
 ```
 
-Every widget implements this. The widget file owns 100% of its geometry. `UiTree` just calls `Widget::layout(rect, scale)` top-down. No layout code anywhere else.
+Every **child** widget implements this. `UiTree` does **not** — it is the root, not a child. It takes `WindowRect`, not `Rect` (see below). `UiTree` calls `Widget::layout(rect, scale)` top-down; no layout code anywhere else.
 
 ---
 
@@ -69,6 +69,35 @@ trait Paint {
 ```
 
 Renderers become: `widget.paint(canvas, theme)`. All paint logic lives in the widget file alongside its layout.
+
+### `WindowRect` — the compile-time root constraint
+
+```rust
+pub struct WindowRect(Rect);  // opaque newtype
+
+impl WindowRect {
+    pub(crate) fn new(width: f32, height: f32) -> Self { ... }  // crate-private
+    pub fn width(self) -> f32;
+    pub fn height(self) -> f32;
+}
+impl From<WindowRect> for Rect { ... }  // one-way: window → rect, never rect → window
+```
+
+`WindowRect::new` is `pub(crate)` — only `App` and `AppLogic` in the platform layer can create one. Child widgets receive `Rect` from their parent. **A child widget cannot construct a `WindowRect`**, so it physically cannot encode knowledge of parent-level geometry (tab bar height, padding, etc.).
+
+This turns a style rule into a compiler error:
+
+```rust
+// This was the bug — ContentArea knowing about TAB_HEIGHT:
+fn new(w: f32, h: f32, s: f32) -> Self {
+    let (_, content_rect) = Rect{..w,h..}.cut_top(TAB_HEIGHT * s);  // WRONG
+    ...
+}
+// Now impossible: ContentArea cannot construct WindowRect, so it cannot
+// start from window dimensions. It only receives its own Rect.
+```
+
+`UiTree::layout(window: WindowRect, scale)` takes the constrained type. All child `Layout` impls take `Rect`.
 
 ---
 
@@ -164,30 +193,32 @@ impl Layout for ContentArea {
 
 ### UiTree
 
+`UiTree` does **not** implement `Layout` — it is the root, not a child.
+
 ```rust
-impl Layout for UiTree {
-    fn layout(rect: Rect, scale: f32) -> Self {
+impl UiTree {
+    // Takes WindowRect, not Rect — compiler enforces this is the root
+    pub fn layout(window: WindowRect, scale: f32) -> Self {
+        let rect: Rect = window.into();
         let (tab_rect, content_rect) = rect.cut_top(TAB_HEIGHT * scale);
         UiTree {
-            tab_bar:      TabBar::layout(tab_rect, scale),
-            content_area: ContentArea::layout(content_rect, scale),
+            tab_bar:      TabBar::layout(tab_rect, scale),      // ← Rect
+            content_area: ContentArea::layout(content_rect, scale), // ← Rect
             notes_picker: None,
         }
     }
-}
 
-// Convenience ctor — delegates to layout(), then patches in tab state
-impl UiTree {
-    pub fn new(width, height, scale, tab_scroll_x, tabs, picker_list_len) -> Self {
-        let mut tree = Self::layout(Rect { x:0, y:0, width, height }, scale);
-        tree.tab_bar = TabBar::new(width, scale, tab_scroll_x, tabs);
+    // Convenience ctor: delegates to layout(), patches in tab/picker state
+    pub fn new(window: WindowRect, scale, tab_scroll_x, tabs, picker_list_len) -> Self {
+        let mut tree = Self::layout(window, scale);
+        tree.tab_bar = TabBar::new(...);
         tree.notes_picker = picker_list_len.map(...);
         tree
     }
 }
 ```
 
-**Entry point rule:** `UiTree::new(w, h, s, ...)` is the *only* place that converts raw window dimensions into a layout tree. No other widget constructs from `(width, height)` — they all receive a `Rect` from their parent. `ContentArea::new` was deleted for this reason.
+**Entry point rule:** `WindowRect::new(w, h)` is `pub(crate)`. Only `App`/`AppLogic` call it. Every other widget receives a `Rect` from its parent — never constructs from raw dimensions.
 
 ---
 
