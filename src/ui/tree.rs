@@ -10,7 +10,7 @@ use super::layout::Layout;
 use super::notes_picker::NotesPicker;
 use super::tab_bar::TabBar;
 use super::scrollbar::ScrollbarAction;
-use super::types::{Rect, WindowRect, ResizeEdge, UiAction, UiDragAction, UiHover, UiNode};
+use super::types::{CursorShape, Rect, WindowRect, ResizeEdge, UiAction, UiDragAction, UiHover, UiNode};
 
 const RESIZE_BORDER: f32 = 5.0;
 
@@ -104,20 +104,32 @@ impl UiTree {
 
         if let Some(edge) = self.detect_resize_edge(x, y) {
             hover.resize_edge = Some(edge);
+            hover.cursor_shape = match edge {
+                ResizeEdge::North | ResizeEdge::South => CursorShape::NsResize,
+                ResizeEdge::East  | ResizeEdge::West  => CursorShape::EwResize,
+                ResizeEdge::NorthEast | ResizeEdge::SouthWest => CursorShape::NeswResize,
+                ResizeEdge::NorthWest | ResizeEdge::SouthEast => CursorShape::NwseResize,
+            };
             return hover;
         }
 
         match self.tab_bar.hit_test(x, y) {
-            UiNode::Tab(i) => hover.tab_index = Some(i),
-            UiNode::NewTabButton => hover.plus = true,
-            UiNode::WindowMinimize => hover.window_minimize = true,
-            UiNode::WindowMaximize => hover.window_maximize = true,
-            UiNode::WindowClose => hover.window_close = true,
-            _ => {}
+            UiNode::Tab(i) => { hover.tab_index = Some(i); hover.cursor_shape = CursorShape::Pointer; }
+            UiNode::NewTabButton => { hover.plus = true; hover.cursor_shape = CursorShape::Pointer; }
+            UiNode::WindowMinimize => { hover.window_minimize = true; hover.cursor_shape = CursorShape::Default; }
+            UiNode::WindowMaximize => { hover.window_maximize = true; hover.cursor_shape = CursorShape::Default; }
+            UiNode::WindowClose => { hover.window_close = true; hover.cursor_shape = CursorShape::Default; }
+            _ => { hover.cursor_shape = CursorShape::Default; }
         }
 
-        hover.scrollbar = self.content_area.scrollbar.hit_test(x, y)
+        let on_scrollbar = self.content_area.scrollbar.hit_test(x, y)
             && self.content_area.scrollbar.is_scrollable(total_lines, visible_lines);
+        hover.scrollbar = on_scrollbar;
+        if on_scrollbar {
+            hover.cursor_shape = CursorShape::Default;
+        } else if self.content_area.text.rect.contains(x, y) {
+            hover.cursor_shape = CursorShape::Text;
+        }
         hover
     }
 

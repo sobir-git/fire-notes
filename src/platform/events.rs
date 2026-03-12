@@ -124,44 +124,15 @@ impl ApplicationHandler for AppHandler {
                 let needs_redraw_on_hover = state.app.handle_mouse_move(x, y).needs_redraw();
 
                 use winit::window::CursorIcon;
-                let cursor = if let Some(edge) = state.app.hovered_resize_edge() {
-                    match edge {
-                        crate::ui::ResizeEdge::North | crate::ui::ResizeEdge::South => CursorIcon::NsResize,
-                        crate::ui::ResizeEdge::East | crate::ui::ResizeEdge::West => CursorIcon::EwResize,
-                        crate::ui::ResizeEdge::NorthEast | crate::ui::ResizeEdge::SouthWest => CursorIcon::NeswResize,
-                        crate::ui::ResizeEdge::NorthWest | crate::ui::ResizeEdge::SouthEast => CursorIcon::NwseResize,
-                    }
-                } else if state.app.is_mouse_in_tab_bar() {
-                    let ui = state.app.ui_state();
-                    if ui.hovered_window_close || ui.hovered_window_maximize || ui.hovered_window_minimize
-                        || ui.hovered_plus || ui.hovered_tab_index.is_some()
-                    {
-                        CursorIcon::Pointer
-                    } else {
-                        CursorIcon::Default
-                    }
-                } else {
-                    match crate::config::cursor::EDITOR_CURSOR_TYPE {
-                        "Text" => CursorIcon::Text,
-                        "Help" => CursorIcon::Help,
-                        "Crosshair" => CursorIcon::Crosshair,
-                        "Cell" => CursorIcon::Cell,
-                        "VerticalText" => CursorIcon::VerticalText,
-                        "Alias" => CursorIcon::Alias,
-                        "Copy" => CursorIcon::Copy,
-                        "Move" => CursorIcon::Move,
-                        "NoDrop" => CursorIcon::NoDrop,
-                        "NotAllowed" => CursorIcon::NotAllowed,
-                        "Grab" => CursorIcon::Grab,
-                        "Grabbing" => CursorIcon::Grabbing,
-                        "Progress" => CursorIcon::Progress,
-                        "Wait" => CursorIcon::Wait,
-                        "ContextMenu" => CursorIcon::ContextMenu,
-                        "ZoomIn" => CursorIcon::ZoomIn,
-                        "ZoomOut" => CursorIcon::ZoomOut,
-                        "AllScroll" => CursorIcon::AllScroll,
-                        _ => CursorIcon::Text,
-                    }
+                use crate::app::CursorShape;
+                let cursor = match state.app.ui_state().cursor_shape {
+                    CursorShape::Default   => CursorIcon::Default,
+                    CursorShape::Text      => CursorIcon::Text,
+                    CursorShape::Pointer   => CursorIcon::Pointer,
+                    CursorShape::NsResize  => CursorIcon::NsResize,
+                    CursorShape::EwResize  => CursorIcon::EwResize,
+                    CursorShape::NeswResize => CursorIcon::NeswResize,
+                    CursorShape::NwseResize => CursorIcon::NwseResize,
                 };
                 state.window.set_cursor(cursor);
 

@@ -5,7 +5,7 @@
 
 use std::time::Instant;
 
-use crate::ui::ResizeEdge;
+use crate::ui::{CursorShape, ResizeEdge};
 
 /// Mouse interaction state machine - only one interaction at a time
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -33,6 +33,7 @@ pub struct UiState {
     pub hovered_window_maximize: bool,
     pub hovered_window_close: bool,
     pub hovered_resize_edge: Option<ResizeEdge>,
+    pub cursor_shape: CursorShape,
 
     // Mouse state
     pub mouse_interaction: MouseInteraction,
@@ -59,6 +60,7 @@ impl UiState {
             hovered_window_maximize: false,
             hovered_window_close: false,
             hovered_resize_edge: None,
+            cursor_shape: CursorShape::Default,
             mouse_interaction: MouseInteraction::None,
             last_drag_scroll: Instant::now(),
             last_mouse_x: 0.0,
@@ -85,7 +87,6 @@ impl UiState {
         }
     }
 
-    /// Clean up expired typing flame positions, returns true if any were present
     pub fn cleanup_typing_flames(&mut self, expiry_secs: f32) -> bool {
         let had_flames = !self.typing_flame_positions.is_empty();
         let now = Instant::now();

@@ -31,6 +31,7 @@ impl App {
         self.logic.ui_state.hovered_window_maximize = hover.window_maximize;
         self.logic.ui_state.hovered_window_close = hover.window_close;
         self.logic.ui_state.hovered_resize_edge = hover.resize_edge;
+        self.logic.ui_state.cursor_shape = hover.cursor_shape;
 
         if prev_hovered_tab_index != self.logic.ui_state.hovered_tab_index
             || prev_hovered_plus != self.logic.ui_state.hovered_plus

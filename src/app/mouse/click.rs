@@ -140,10 +140,8 @@ impl App {
     }
 
     pub(super) fn jump_scrollbar_to_ratio(&mut self, ratio: f32) -> AppResult {
-        let total_lines = self.logic.tabs[self.logic.active_tab].total_lines();
-        let visible_lines = self.visible_lines();
-        if total_lines <= visible_lines { return AppResult::Ok; }
-        let max_scroll = total_lines.saturating_sub(visible_lines);
+        let max_scroll = self.logic.tabs[self.logic.active_tab].max_scroll_offset();
+        if max_scroll == 0 { return AppResult::Ok; }
         let scroll_offset = (ratio.clamp(0.0, 1.0) * max_scroll as f32).round() as usize;
         if self.logic.tabs[self.logic.active_tab].set_scroll_offset(scroll_offset) {
             return AppResult::Redraw;

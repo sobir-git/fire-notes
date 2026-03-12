@@ -268,6 +268,31 @@ All layout items are fully implemented. The framework is complete.
 12. **`UiTree::new` delegates to `Self::layout`** — no duplicated layout arithmetic across entry points.
 13. **Vertical gap removed** — content starts immediately below the tab bar border.
 
+### CursorShape — widget-local cursor logic
+
+`CursorShape` lives in `src/ui/types.rs` — a pure UI-layer enum with no platform dependency.
+The platform layer (`events.rs`) translates it to `winit::CursorIcon`.
+
+```rust
+pub enum CursorShape { Default, Text, Pointer, NsResize, EwResize, NeswResize, NwseResize }
+```
+
+`UiHover` carries a `cursor_shape` field set locally inside `UiTree::hover()` by asking each
+area what cursor it wants. This is the correct encapsulation pattern:
+
+- Resize edge → resize cursor (decided in `detect_resize_edge`, local to `UiTree`)
+- Tab/button → `Pointer` (decided where `tab_bar.hit_test` result is matched)
+- Scrollbar → `Default` (decided where `scrollbar.hit_test` is called)
+- Text area → `Text` (decided where `content_area.text.rect.contains` is checked)
+
+`UiState.cursor_shape` is a stored field populated from `UiHover.cursor_shape` in
+`mouse/hover.rs`. `events.rs` reads this field — it never computes cursor shape itself.
+
+Rule: cursor shape logic belongs in `ui/tree.rs` alongside the hit-test that determines it.
+Never in `events.rs`, never in `ui_state.rs`.
+
+---
+
 ### Paint trait — deliberate decision
 `Paint` trait was not implemented. Reason: the `ui` module must not depend on `femtovg`.
 Renderers read widget geometry (e.g. `scrollbar.thumb()`) and draw. This is the correct boundary.

@@ -14,6 +14,20 @@ pub enum UiNode {
     WindowResizeEdge(ResizeEdge),
 }
 
+/// Cursor shape — a pure UI-layer type with no platform (winit) dependency.
+/// The platform layer translates this to the OS cursor icon.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum CursorShape {
+    #[default]
+    Default,
+    Text,
+    Pointer,
+    NsResize,
+    EwResize,
+    NeswResize,
+    NwseResize,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct UiHover {
     pub tab_index: Option<usize>,
@@ -23,6 +37,8 @@ pub struct UiHover {
     pub window_maximize: bool,
     pub window_close: bool,
     pub resize_edge: Option<ResizeEdge>,
+    /// Cursor shape the hovered area requests — derived locally by UiTree.
+    pub cursor_shape: CursorShape,
 }
 
 #[derive(Debug, Clone, Copy)]

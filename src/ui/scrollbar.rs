@@ -64,7 +64,7 @@ impl ScrollbarWidget {
         let min_thumb = layout::MIN_SCROLLBAR_THUMB * self.scale;
         let thumb_h = (track_h * view_ratio).max(min_thumb);
 
-        let max_scroll = total_lines.saturating_sub(visible_lines);
+        let max_scroll = total_lines.saturating_sub(1);
         let scroll_ratio = if max_scroll > 0 {
             scroll_offset as f32 / max_scroll as f32
         } else {

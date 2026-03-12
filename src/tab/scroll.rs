@@ -10,9 +10,14 @@ impl Tab {
         self.scroll_offset = self.scroll_offset.saturating_sub(lines);
     }
 
-    pub fn scroll_down(&mut self, lines: usize, visible_lines: usize) {
-        let max_scroll = self.buffer.len_lines().saturating_sub(visible_lines);
+    pub fn scroll_down(&mut self, lines: usize, _visible_lines: usize) {
+        let max_scroll = self.buffer.len_lines().saturating_sub(1);
         self.scroll_offset = (self.scroll_offset + lines).min(max_scroll);
+    }
+
+    /// Maximum scroll offset: last line scrolled to top of viewport.
+    pub fn max_scroll_offset(&self) -> usize {
+        self.buffer.len_lines().saturating_sub(1)
     }
 
     pub fn set_scroll_offset(&mut self, offset: usize) -> bool {

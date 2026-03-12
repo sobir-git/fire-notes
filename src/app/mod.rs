@@ -30,6 +30,7 @@ pub use focus::NoteEntry;
 pub use keybindings::{Key, KeyEvent, Modifiers, resolve as resolve_keybinding};
 pub use scroll_state::ScrollInput;
 pub use state::AppResult;
+pub use crate::ui::CursorShape;
 pub use ui_state::{MouseInteraction, UiState};
 
 pub struct App {
@@ -165,10 +166,6 @@ impl App {
             .enumerate()
             .map(|(i, t)| (t.title(), i == self.logic.active_tab))
             .collect()
-    }
-
-    pub fn hovered_resize_edge(&self) -> Option<crate::ui::ResizeEdge> {
-        self.logic.ui_state.hovered_resize_edge
     }
 
     pub fn has_active_animations(&self) -> bool {
