@@ -5,6 +5,7 @@ use femtovg::{Canvas, Color, FontId, Paint, Path, renderer::OpenGl};
 use crate::config::rendering;
 use crate::tab::Tab;
 use crate::theme::Theme;
+use crate::ui::TextArea;
 
 use super::layout::{FlameHit, build_flame_lookup, get_cursor_line_col};
 use super::super::fonts::{self, snap_to_pixel};
@@ -21,17 +22,17 @@ pub fn draw_text_lines(
     scroll_offset: usize,
     scroll_x: f32,
     do_wrap: bool,
-    start_y: f32,
-    line_height: f32,
-    padding: f32,
+    text_area: &TextArea,
     char_width: f32,
     text_paint: &Paint,
     char_positions: &[(f32, f32, f32, f32)],
 ) {
+    let line_height = text_area.line_height;
+    let padding     = text_area.text_padding;
     let flame_lookup = build_flame_lookup(char_positions, char_width, line_height);
     let cell_w = char_width.max(1.0);
     let cell_h = line_height.max(1.0);
-    let mut current_y = start_y;
+    let mut current_y = text_area.line_y(0);
 
     for line in text.lines().skip(scroll_offset) {
         if current_y > height { break; }
@@ -91,20 +92,18 @@ pub fn calculate_cursor_position(
     cursor_pos: usize,
     scroll_offset: usize,
     scroll_x: f32,
-    start_y: f32,
-    line_height: f32,
+    text_area: &TextArea,
     height: f32,
-    padding: f32,
     char_width: f32,
 ) -> Option<(f32, f32)> {
     let (cursor_line, cursor_col) = get_cursor_line_col(text, cursor_pos);
     if cursor_line < scroll_offset { return None; }
     let visual_line = cursor_line - scroll_offset;
-    let y = start_y + (visual_line as f32 * line_height);
+    let y = text_area.line_y(visual_line);
     if y > height { return None; }
     let line_content = text.lines().nth(cursor_line).unwrap_or("");
     let vl = crate::visual_position::VisualLine::new(line_content);
-    let x = vl.char_col_to_visual_x(cursor_col, padding - scroll_x, char_width);
+    let x = vl.char_col_to_visual_x(cursor_col, text_area.text_padding - scroll_x, char_width);
     Some((x, y))
 }
 
@@ -131,11 +130,11 @@ pub fn collect_selection_positions(
     text: &str,
     scroll_offset: usize,
     scroll_x: f32,
-    start_y: f32,
-    line_height: f32,
-    padding: f32,
+    text_area: &TextArea,
     char_width: f32,
 ) -> Vec<(f32, f32, f32, f32)> {
+    let line_height = text_area.line_height;
+    let padding     = text_area.text_padding;
     let mut positions = Vec::new();
     if tab.word_wrap() { return positions; }
     let Some(((start_line, start_col), (end_line, end_col))) = tab.selection_range_line_col() else {
@@ -148,7 +147,7 @@ pub fn collect_selection_positions(
         .take_while(|(idx, _)| *idx <= end_line)
     {
         let visible_idx = line_idx.saturating_sub(scroll_offset);
-        let y = start_y + (visible_idx as f32 * line_height);
+        let y = text_area.line_y(visible_idx);
         if y > canvas_height { break; }
         let line_bottom_y = y + line_height;
         let sc = if line_idx == start_line { start_col } else { 0 };

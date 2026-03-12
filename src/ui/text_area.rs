@@ -47,6 +47,12 @@ impl TextArea {
         self.char_width = width;
     }
 
+    /// Y coordinate for a visual line index (0 = first visible line at current scroll).
+    /// This is the single source of truth — both `char_rect` and the renderer use this.
+    pub fn line_y(&self, visual_line: usize) -> f32 {
+        self.rect.y + self.doc_top_margin + visual_line as f32 * self.line_height
+    }
+
     pub fn hit_test(&self, x: f32, y: f32) -> bool {
         self.rect.contains(x, y)
     }
@@ -97,7 +103,7 @@ impl TextArea {
     pub fn char_rect(&self, line: usize, col: usize, scroll_offset: usize) -> Rect {
         let visual_line = line.saturating_sub(scroll_offset);
         let x = self.rect.x + self.text_padding + col as f32 * self.char_width;
-        let y = self.rect.y + self.doc_top_margin + visual_line as f32 * self.line_height;
+        let y = self.line_y(visual_line);
         Rect { x, y, width: self.char_width.max(1.0), height: self.line_height }
     }
 }

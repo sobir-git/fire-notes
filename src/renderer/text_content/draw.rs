@@ -46,9 +46,7 @@ impl<'a> TextContentRenderer<'a> {
         flame_system: &mut FlameSystem,
         typing_flame_positions: &[(usize, usize, std::time::Instant)],
     ) {
-        let start_y     = content_area.start_y();
-        let line_height = content_area.line_height;
-        let padding     = content_area.text_padding(self.scale);
+        let text_area    = &content_area.text;
         let scroll_offset = tab.scroll_offset();
         let scroll_x      = tab.scroll_offset_x();
         let text          = tab.content();
@@ -61,21 +59,21 @@ impl<'a> TextContentRenderer<'a> {
         // ── Flame positions (selection + typing) ──────────────────────────
         let mut char_positions = txt::collect_selection_positions(
             self.width, self.height, tab, text,
-            scroll_offset, scroll_x, start_y, line_height, padding, char_width,
+            scroll_offset, scroll_x, text_area, char_width,
         );
         let now = Instant::now();
         let text_lines: Vec<&str> = text.lines().collect();
         for &(line, col, timestamp) in typing_flame_positions {
             if line < scroll_offset { continue; }
-            let y = start_y + ((line - scroll_offset) as f32 * line_height);
+            let y = text_area.line_y(line - scroll_offset);
             if y > self.height { continue; }
             let char_x = if line < text_lines.len() {
                 crate::visual_position::VisualLine::new(text_lines[line])
-                    .char_col_to_visual_center_x(col, padding - scroll_x, char_width)
+                    .char_col_to_visual_center_x(col, text_area.text_padding - scroll_x, char_width)
             } else {
-                padding - scroll_x + char_width * 0.5
+                text_area.text_padding - scroll_x + char_width * 0.5
             };
-            char_positions.push((char_x, y + line_height * 0.5, y + line_height,
+            char_positions.push((char_x, y + text_area.line_height * 0.5, y + text_area.line_height,
                 now.duration_since(timestamp).as_secs_f32().min(1.0)));
         }
 
@@ -87,7 +85,7 @@ impl<'a> TextContentRenderer<'a> {
         // ── Cursor position ───────────────────────────────────────────────
         let cursor_rect = txt::calculate_cursor_position(
             text, tab.cursor_position(), scroll_offset, scroll_x,
-            start_y, line_height, self.height, padding, char_width,
+            text_area, self.height, char_width,
         );
 
         // ── Text lines ────────────────────────────────────────────────────
@@ -95,14 +93,14 @@ impl<'a> TextContentRenderer<'a> {
             self.canvas, self.fonts, self.theme,
             self.width, self.height, self.scale, self.animation_start,
             text, scroll_offset, scroll_x, tab.word_wrap(),
-            start_y, line_height, padding, char_width,
+            text_area, char_width,
             &text_paint, &char_positions,
         );
 
         // ── Cursor ────────────────────────────────────────────────────────
         if cursor_visible {
             if let Some((cx, cy)) = cursor_rect {
-                txt::draw_cursor(self.canvas, self.theme, self.scale, cx, cy, line_height);
+                txt::draw_cursor(self.canvas, self.theme, self.scale, cx, cy, text_area.line_height);
             }
         }
 
