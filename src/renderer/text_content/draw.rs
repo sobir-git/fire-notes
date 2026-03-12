@@ -10,7 +10,7 @@ use crate::theme::Theme;
 use crate::ui::{ContentArea, ScrollbarWidget};
 
 use super::super::flame::FlameSystem;
-use super::text as txt;
+use super::text::{self as txt, DrawCtx};
 
 pub struct TextContentRenderer<'a> {
     pub(super) canvas: &'a mut Canvas<OpenGl>,
@@ -46,36 +46,22 @@ impl<'a> TextContentRenderer<'a> {
         flame_system: &mut FlameSystem,
         typing_flame_positions: &[(usize, usize, std::time::Instant)],
     ) {
-        let text_area    = &content_area.text;
-        let scroll_offset = tab.scroll_offset();
-        let scroll_x      = tab.scroll_offset_x();
-        let text          = tab.content();
-
         let mut text_paint = Paint::color(Color::rgbf(self.theme.fg.0, self.theme.fg.1, self.theme.fg.2));
         text_paint.set_font(self.fonts);
         text_paint.set_font_size(rendering::CONTENT_FONT_SIZE * self.scale);
         let char_width = txt::measure_char_width(self.canvas, &text_paint, self.scale);
 
+        let ctx = DrawCtx {
+            tab,
+            text_area:  &content_area.text,
+            char_width,
+            viewport_h: self.height,
+            viewport_w: self.width,
+        };
+
         // ── Flame positions (selection + typing) ──────────────────────────
-        let mut char_positions = txt::collect_selection_positions(
-            self.width, self.height, tab, text,
-            scroll_offset, scroll_x, text_area, char_width,
-        );
-        let now = Instant::now();
-        let text_lines: Vec<&str> = text.lines().collect();
-        for &(line, col, timestamp) in typing_flame_positions {
-            if line < scroll_offset { continue; }
-            let y = text_area.line_y(line - scroll_offset);
-            if y > self.height { continue; }
-            let char_x = if line < text_lines.len() {
-                crate::visual_position::VisualLine::new(text_lines[line])
-                    .char_col_to_visual_center_x(col, text_area.text_padding - scroll_x, char_width)
-            } else {
-                text_area.text_padding - scroll_x + char_width * 0.5
-            };
-            char_positions.push((char_x, y + text_area.line_height * 0.5, y + text_area.line_height,
-                now.duration_since(timestamp).as_secs_f32().min(1.0)));
-        }
+        let mut char_positions = txt::collect_selection_positions(&ctx);
+        append_typing_flame_positions(&mut char_positions, &ctx, typing_flame_positions);
 
         if !char_positions.is_empty() { flame_system.update_legacy(&char_positions, self.scale); }
         else                          { flame_system.clear(); }
@@ -83,33 +69,56 @@ impl<'a> TextContentRenderer<'a> {
         if !char_positions.is_empty() { flame_system.draw_layer(self.canvas, true); }
 
         // ── Cursor position ───────────────────────────────────────────────
-        let cursor_rect = txt::calculate_cursor_position(
-            text, tab.cursor_position(), scroll_offset, scroll_x,
-            text_area, self.height, char_width,
-        );
+        let cursor_rect = txt::calculate_cursor_position(&ctx);
 
         // ── Text lines ────────────────────────────────────────────────────
         txt::draw_text_lines(
             self.canvas, self.fonts, self.theme,
-            self.width, self.height, self.scale, self.animation_start,
-            text, scroll_offset, scroll_x, tab.word_wrap(),
-            text_area, char_width,
-            &text_paint, &char_positions,
+            self.scale, self.animation_start,
+            &ctx, &text_paint, &char_positions,
         );
 
         // ── Cursor ────────────────────────────────────────────────────────
         if cursor_visible {
             if let Some((cx, cy)) = cursor_rect {
-                txt::draw_cursor(self.canvas, self.theme, self.scale, cx, cy, text_area.line_height);
+                txt::draw_cursor(self.canvas, self.theme, self.scale, cx, cy, ctx.text_area.line_height);
             }
         }
 
         if !char_positions.is_empty() { flame_system.draw_layer(self.canvas, false); }
 
         // ── Scrollbar ─────────────────────────────────────────────────────
-        self.draw_scrollbar(tab, content_area, scrollbar, scroll_offset, hovered_scrollbar, dragging_scrollbar);
+        self.draw_scrollbar(tab, content_area, scrollbar, tab.scroll_offset(), hovered_scrollbar, dragging_scrollbar);
     }
 
+}
+
+fn append_typing_flame_positions(
+    positions: &mut Vec<(f32, f32, f32, f32)>,
+    ctx: &DrawCtx<'_>,
+    typing: &[(usize, usize, std::time::Instant)],
+) {
+    let now = Instant::now();
+    let text_lines: Vec<&str> = ctx.tab.content().lines().collect();
+    let scroll_offset = ctx.tab.scroll_offset();
+    let scroll_x      = ctx.tab.scroll_offset_x();
+    for &(line, col, timestamp) in typing {
+        if line < scroll_offset { continue; }
+        let y = ctx.text_area.line_y(line - scroll_offset);
+        if y > ctx.viewport_h { continue; }
+        let char_x = if line < text_lines.len() {
+            crate::visual_position::VisualLine::new(text_lines[line])
+                .char_col_to_visual_center_x(col, ctx.text_area.text_padding - scroll_x, ctx.char_width)
+        } else {
+            ctx.text_area.text_padding - scroll_x + ctx.char_width * 0.5
+        };
+        let lh = ctx.text_area.line_height;
+        positions.push((char_x, y + lh * 0.5, y + lh,
+            now.duration_since(timestamp).as_secs_f32().min(1.0)));
+    }
+}
+
+impl<'a> TextContentRenderer<'a> {
     fn draw_scrollbar(
         &mut self,
         tab: &Tab,

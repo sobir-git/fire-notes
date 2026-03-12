@@ -7,6 +7,16 @@ use crate::tab::Tab;
 use crate::theme::Theme;
 use crate::ui::TextArea;
 
+/// All per-frame context needed to draw text content.
+/// Passed by reference to every draw function — replaces long decomposed arg lists.
+pub struct DrawCtx<'a> {
+    pub tab:        &'a Tab,
+    pub text_area:  &'a TextArea,
+    pub char_width: f32,
+    pub viewport_h: f32,
+    pub viewport_w: f32,
+}
+
 use super::layout::{FlameHit, build_flame_lookup, get_cursor_line_col};
 use super::super::fonts::{self, snap_to_pixel};
 
@@ -14,45 +24,42 @@ pub fn draw_text_lines(
     canvas: &mut Canvas<OpenGl>,
     fonts: &[FontId],
     _theme: &Theme,
-    width: f32,
-    height: f32,
     scale: f32,
     animation_start: std::time::Instant,
-    text: &str,
-    scroll_offset: usize,
-    scroll_x: f32,
-    do_wrap: bool,
-    text_area: &TextArea,
-    char_width: f32,
+    ctx: &DrawCtx<'_>,
     text_paint: &Paint,
     char_positions: &[(f32, f32, f32, f32)],
 ) {
+    let text_area   = ctx.text_area;
     let line_height = text_area.line_height;
     let padding     = text_area.text_padding;
-    let flame_lookup = build_flame_lookup(char_positions, char_width, line_height);
-    let cell_w = char_width.max(1.0);
+    let scroll_offset = ctx.tab.scroll_offset();
+    let scroll_x      = ctx.tab.scroll_offset_x();
+    let do_wrap       = ctx.tab.word_wrap();
+    let flame_lookup = build_flame_lookup(char_positions, ctx.char_width, line_height);
+    let cell_w = ctx.char_width.max(1.0);
     let cell_h = line_height.max(1.0);
     let mut current_y = text_area.line_y(0);
 
-    for line in text.lines().skip(scroll_offset) {
-        if current_y > height { break; }
+    for line in ctx.tab.content().lines().skip(scroll_offset) {
+        if current_y > ctx.viewport_h { break; }
         let mut x_offset = if do_wrap { padding } else { padding - scroll_x };
 
         for ch in line.chars() {
             let advance = crate::visual_position::get_char_visual_width(ch);
-            let char_w = char_width * advance as f32;
+            let char_w = ctx.char_width * advance as f32;
 
-            if do_wrap && x_offset + char_w > width - padding {
+            if do_wrap && x_offset + char_w > ctx.viewport_w - padding {
                 current_y += line_height;
                 x_offset = padding;
-                if current_y > height { break; }
+                if current_y > ctx.viewport_h { break; }
             }
 
-            if current_y + line_height > 0.0 && current_y < height
+            if current_y + line_height > 0.0 && current_y < ctx.viewport_h
                 && !ch.is_control() && ch != ' ' {
                     let text_x = snap_to_pixel(x_offset);
                     let text_y = snap_to_pixel(current_y + line_height * 0.75);
-                    let cx = x_offset + char_width * 0.5;
+                    let cx = x_offset + ctx.char_width * 0.5;
                     let cy = current_y + line_height * 0.5;
                     let grid_x = (cx / cell_w) as i32;
                     let grid_y = (cy / cell_h) as i32;
@@ -87,23 +94,18 @@ pub fn draw_text_lines(
     }
 }
 
-pub fn calculate_cursor_position(
-    text: &str,
-    cursor_pos: usize,
-    scroll_offset: usize,
-    scroll_x: f32,
-    text_area: &TextArea,
-    height: f32,
-    char_width: f32,
-) -> Option<(f32, f32)> {
-    let (cursor_line, cursor_col) = get_cursor_line_col(text, cursor_pos);
+pub fn calculate_cursor_position(ctx: &DrawCtx<'_>) -> Option<(f32, f32)> {
+    let text   = ctx.tab.content();
+    let scroll_offset = ctx.tab.scroll_offset();
+    let scroll_x      = ctx.tab.scroll_offset_x();
+    let (cursor_line, cursor_col) = get_cursor_line_col(text, ctx.tab.cursor_position());
     if cursor_line < scroll_offset { return None; }
     let visual_line = cursor_line - scroll_offset;
-    let y = text_area.line_y(visual_line);
-    if y > height { return None; }
+    let y = ctx.text_area.line_y(visual_line);
+    if y > ctx.viewport_h { return None; }
     let line_content = text.lines().nth(cursor_line).unwrap_or("");
     let vl = crate::visual_position::VisualLine::new(line_content);
-    let x = vl.char_col_to_visual_x(cursor_col, text_area.text_padding - scroll_x, char_width);
+    let x = vl.char_col_to_visual_x(cursor_col, ctx.text_area.text_padding - scroll_x, ctx.char_width);
     Some((x, y))
 }
 
@@ -123,32 +125,25 @@ pub fn draw_cursor(
     );
 }
 
-pub fn collect_selection_positions(
-    canvas_width: f32,
-    canvas_height: f32,
-    tab: &Tab,
-    text: &str,
-    scroll_offset: usize,
-    scroll_x: f32,
-    text_area: &TextArea,
-    char_width: f32,
-) -> Vec<(f32, f32, f32, f32)> {
-    let line_height = text_area.line_height;
-    let padding     = text_area.text_padding;
+pub fn collect_selection_positions(ctx: &DrawCtx<'_>) -> Vec<(f32, f32, f32, f32)> {
+    let text_area     = ctx.text_area;
+    let line_height   = text_area.line_height;
+    let scroll_offset = ctx.tab.scroll_offset();
+    let scroll_x      = ctx.tab.scroll_offset_x();
     let mut positions = Vec::new();
-    if tab.word_wrap() { return positions; }
-    let Some(((start_line, start_col), (end_line, end_col))) = tab.selection_range_line_col() else {
+    if ctx.tab.word_wrap() { return positions; }
+    let Some(((start_line, start_col), (end_line, end_col))) = ctx.tab.selection_range_line_col() else {
         return positions;
     };
     let visible_start = scroll_offset.max(start_line);
-    for (line_idx, line_content) in text.lines()
+    for (line_idx, line_content) in ctx.tab.content().lines()
         .enumerate()
         .skip(visible_start)
         .take_while(|(idx, _)| *idx <= end_line)
     {
         let visible_idx = line_idx.saturating_sub(scroll_offset);
         let y = text_area.line_y(visible_idx);
-        if y > canvas_height { break; }
+        if y > ctx.viewport_h { break; }
         let line_bottom_y = y + line_height;
         let sc = if line_idx == start_line { start_col } else { 0 };
         let ec = if line_idx == end_line {
@@ -158,8 +153,8 @@ pub fn collect_selection_positions(
         };
         let vl = crate::visual_position::VisualLine::new(line_content);
         for col in sc..ec {
-            let char_x = vl.char_col_to_visual_center_x(col, padding - scroll_x, char_width);
-            if char_x < -char_width || char_x > canvas_width + char_width { continue; }
+            let char_x = vl.char_col_to_visual_center_x(col, text_area.text_padding - scroll_x, ctx.char_width);
+            if char_x < -ctx.char_width || char_x > ctx.viewport_w + ctx.char_width { continue; }
             positions.push((char_x, y + line_height * 0.5, line_bottom_y, 0.0));
         }
     }
