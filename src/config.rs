@@ -13,8 +13,6 @@ pub mod layout {
     pub const TAB_HEIGHT: f32 = 40.0;
     /// General padding around content areas
     pub const PADDING: f32 = 16.0;
-    /// Fixed gap between tab bar bottom border and the content area top — always visible, never scrolls away.
-    pub const CONTENT_TOP_INSET: f32 = 8.0;
     /// Width of the scrollbar
     pub const SCROLLBAR_WIDTH: f32 = 12.0;
     /// Minimum scrollbar thumb height
