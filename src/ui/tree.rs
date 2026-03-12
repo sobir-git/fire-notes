@@ -29,7 +29,6 @@ pub struct UiTree {
 impl Layout for UiTree {
     fn layout(rect: Rect, scale: f32) -> Self {
         let (tab_rect, content_rect) = rect.cut_top(cfg_layout::TAB_HEIGHT * scale);
-        let (_, content_rect)        = content_rect.cut_top(cfg_layout::PADDING * scale);
         Self {
             tab_bar:      TabBar::layout(tab_rect, scale),
             content_area: ContentArea::layout(content_rect, scale),

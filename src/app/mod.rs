@@ -155,7 +155,7 @@ impl App {
     }
 
     pub(crate) fn content_start_y(&self) -> f32 {
-        layout::TAB_HEIGHT * self.logic.scale + layout::PADDING * self.logic.scale
+        layout::TAB_HEIGHT * self.logic.scale
     }
 
     pub(crate) fn auto_scroll(&mut self) {

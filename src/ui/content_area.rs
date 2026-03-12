@@ -45,8 +45,7 @@ impl ContentArea {
     /// Build from window dimensions — entry point used by `UiTree`.
     pub fn new(width: f32, height: f32, scale: f32) -> Self {
         let window = Rect { x: 0.0, y: 0.0, width, height };
-        let (_, below_tab)    = window.cut_top(layout::TAB_HEIGHT * scale);
-        let (_, content_rect) = below_tab.cut_top(layout::PADDING * scale);
+        let (_, content_rect) = window.cut_top(layout::TAB_HEIGHT * scale);
         Self::layout(content_rect, scale)
     }
 
