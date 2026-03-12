@@ -140,17 +140,15 @@ impl App {
         }
 
         // Click on scrollbar → start drag or jump
-        if layout.list.scrollbar.hit_test(x, y) {
-            let scroll_offset = self.logic.focus.notes_picker_state()
-                .map(|(_, list)| list.scroll_offset()).unwrap_or(0);
-            match layout.list.scrollbar_click(x, y, list_len, scroll_offset) {
+        let scroll_offset = self.logic.focus.notes_picker_state()
+            .map(|(_, list)| list.scroll_offset()).unwrap_or(0);
+        if let Some(action) = layout.scrollbar_action(x, y, list_len, scroll_offset) {
+            match action {
                 ScrollbarAction::StartDrag { drag_offset } => {
                     return PickerClickResult::StartScrollbarDrag(drag_offset);
                 }
                 ScrollbarAction::JumpTo { ratio } => {
-                    let visible = layout.list.visible_count(list_len);
-                    let max_scroll = list_len.saturating_sub(visible);
-                    let target = (ratio * max_scroll as f32).round() as usize;
+                    let target = layout.list.scroll_offset_from_ratio(ratio, list_len);
                     if let Some(list) = self.logic.focus.notes_picker_list_mut() {
                         list.scroll_to(target);
                     }
@@ -188,10 +186,8 @@ impl App {
         let layout = crate::ui::NotesPicker::new(
             self.logic.width, self.logic.height, self.logic.scale, list_len,
         );
-        let visible = layout.list.visible_count(list_len);
-        let max_scroll = list_len.saturating_sub(visible);
         if let Some(ratio) = layout.list.scrollbar_drag_ratio(y, list_len, scroll_offset, drag_offset) {
-            let target = (ratio * max_scroll as f32).round() as usize;
+            let target = layout.list.scroll_offset_from_ratio(ratio, list_len);
             if let Some(list) = self.logic.focus.notes_picker_list_mut() {
                 list.scroll_to(target);
                 return AppResult::Redraw;

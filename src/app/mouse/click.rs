@@ -17,7 +17,7 @@ impl App {
             match self.handle_notes_picker_click(x, y) {
                 PickerClickResult::App(r) => return r,
                 PickerClickResult::StartScrollbarDrag(drag_offset) => {
-                    self.logic.ui_state.picker_sb_drag = Some(drag_offset);
+                    self.logic.ui_state.mouse_interaction = MouseInteraction::PickerScrollbarDrag { drag_offset };
                     return AppResult::Ok;
                 }
             }

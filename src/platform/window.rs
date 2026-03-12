@@ -114,8 +114,22 @@ pub fn build_app_state(event_loop: &ActiveEventLoop) -> AppState {
         .expect("Failed to create renderer")
     };
 
+    // On Wayland, with_inner_size() in WindowAttributes is often ignored by the
+    // compositor. Call request_inner_size() after creation to actually apply the
+    // saved size. If it returns Some(...) the size was applied immediately; if
+    // None the compositor will issue a Resized event later.
+    let final_size = if let Some(saved) = load_window_state() {
+        if let Some(new_size) = window.request_inner_size(PhysicalSize::new(saved.width, saved.height)) {
+            new_size
+        } else {
+            size
+        }
+    } else {
+        size
+    };
+
     let scale = window.scale_factor() as f32;
-    let app = App::new(renderer, size.width as f32, size.height as f32, scale);
+    let app = App::new(renderer, final_size.width as f32, final_size.height as f32, scale);
 
     AppState { window, gl_context, gl_surface, app }
 }

@@ -5,6 +5,7 @@
 
 use super::layout::Layout;
 use super::list_view::ListViewWidget;
+use super::scrollbar::ScrollbarAction;
 use super::text_input::TextInputWidget;
 use super::types::{CursorShape, Rect};
 
@@ -60,6 +61,13 @@ impl NotesPicker {
     pub fn item_hit_test(&self, x: f32, y: f32, total_items: usize) -> Option<usize> {
         if !self.overlay_rect.contains(x, y) { return None; }
         self.list.hit_test_item(x, y, total_items)
+    }
+
+    /// Hit-test the scrollbar and return the appropriate action.
+    /// Returns `None` if the click is not on the scrollbar.
+    pub fn scrollbar_action(&self, x: f32, y: f32, total_items: usize, scroll_offset: usize) -> Option<ScrollbarAction> {
+        if !self.list.scrollbar.hit_test(x, y) { return None; }
+        Some(self.list.scrollbar_click(x, y, total_items, scroll_offset))
     }
 
     /// Cursor shape appropriate for the area under (x, y).

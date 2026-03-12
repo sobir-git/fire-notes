@@ -32,6 +32,9 @@ impl App {
                     UiDragAction::None => AppResult::Ok,
                 }
             }
+            MouseInteraction::PickerScrollbarDrag { drag_offset } => {
+                self.drag_picker_scrollbar(y, drag_offset)
+            }
             MouseInteraction::TextSelection => self.handle_text_selection_drag(x, y),
         }
     }

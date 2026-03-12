@@ -109,6 +109,14 @@ impl ListViewWidget {
         self.scrollbar.is_scrollable(total_items, visible)
     }
 
+    /// Convert a scrollbar ratio [0,1] to a concrete scroll offset.
+    /// `total_items` is the full unfiltered/filtered item count.
+    pub fn scroll_offset_from_ratio(&self, ratio: f32, total_items: usize) -> usize {
+        let visible    = (self.list_rect.height / self.item_height).floor() as usize;
+        let max_scroll = total_items.saturating_sub(visible);
+        (ratio.clamp(0.0, 1.0) * max_scroll as f32).round() as usize
+    }
+
     /// Scrollbar thumb geometry for a list (max scroll = total - visible, not total - 1).
     /// `total_items` and `scroll_offset` come from `ListWidget`.
     pub fn scrollbar_thumb(&self, total_items: usize, scroll_offset: usize) -> Option<ThumbMetrics> {
