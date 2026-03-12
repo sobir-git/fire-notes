@@ -60,9 +60,11 @@ impl Focus {
     pub fn is_notes_picker(&self) -> bool { matches!(self, Focus::NotesPicker { .. }) }
 
     pub fn start_notes_picker(notes: Vec<NoteEntry>) -> Self {
+        let mut list = ListWidget::new(notes);
+        list.set_max_visible(crate::ui::MAX_VISIBLE_ITEMS);
         Focus::NotesPicker {
             input: TextInput::new(String::new()),
-            list: ListWidget::new(notes),
+            list,
         }
     }
 

@@ -76,6 +76,43 @@ impl App {
         AppResult::Ok
     }
 
+    pub fn is_notes_picker_open(&self) -> bool {
+        self.logic.focus.is_notes_picker()
+    }
+
+    /// Scroll the notes picker list by `lines` (positive = down, negative = up).
+    pub fn scroll_notes_picker(&mut self, lines: isize) -> AppResult {
+        if let Some(list) = self.logic.focus.notes_picker_list_mut() {
+            let changed = if lines > 0 {
+                (0..lines as usize).fold(false, |acc, _| list.select_down() || acc)
+            } else {
+                (0..(-lines) as usize).fold(false, |acc, _| list.select_up() || acc)
+            };
+            if changed { return AppResult::Redraw; }
+        }
+        AppResult::Ok
+    }
+
+    /// Hover over the picker — highlight item under cursor.
+    pub fn hover_notes_picker(&mut self, x: f32, y: f32) -> AppResult {
+        let list_len = self.logic.focus.notes_picker_state()
+            .map(|(_, list)| list.len())
+            .unwrap_or(0);
+        let layout = crate::ui::NotesPicker::new(
+            self.logic.width, self.logic.height, self.logic.scale, list_len,
+        );
+        if let Some(display_idx) = layout.item_hit_test(x, y, list_len.min(crate::ui::MAX_VISIBLE_ITEMS)) {
+            if let Some(list) = self.logic.focus.notes_picker_list_mut() {
+                let target = list.scroll_offset() + display_idx;
+                if list.selected_index() != target {
+                    list.select_index(target);
+                    return AppResult::Redraw;
+                }
+            }
+        }
+        AppResult::Ok
+    }
+
     /// Cancel notes picker
     pub fn cancel_notes_picker(&mut self) -> AppResult {
         if self.logic.focus.cancel_notes_picker() {
@@ -86,57 +123,33 @@ impl App {
 
     /// Handle mouse click in notes picker
     pub fn handle_notes_picker_click(&mut self, x: f32, y: f32) -> AppResult {
-        let scale = self.logic.scale;
-        
-        // Calculate overlay dimensions (must match renderer)
-        let overlay_width = (self.logic.width * 0.6).min(500.0 * scale);
-        let overlay_x = (self.logic.width - overlay_width) / 2.0;
-        let overlay_y = 60.0 * scale;
-        
-        let input_height = 36.0 * scale;
-        let item_height = 32.0 * scale;
-        let max_visible_items = 8;
-        
-        // Check if click is within overlay bounds
-        let input_x = overlay_x + 8.0 * scale;
-        let input_width = overlay_width - 16.0 * scale;
-        let list_y = overlay_y + 8.0 * scale + input_height + 4.0 * scale;
-        
-        // Check if click is in the list area
-        if x >= input_x && x <= input_x + input_width && y >= list_y {
-            let relative_y = y - list_y;
-            let clicked_visible_idx = (relative_y / item_height) as usize;
-            
-            if clicked_visible_idx < max_visible_items {
-                if let Some(list) = self.logic.focus.notes_picker_list_mut() {
-                    let scroll_offset = list.scroll_offset();
-                    let clicked_idx = scroll_offset + clicked_visible_idx;
-                    let was_already_selected = list.selected_index() == clicked_idx;
-                    
-                    if list.select_index(clicked_idx) {
-                        // If clicking already selected item, confirm (acts like double-click)
-                        if was_already_selected {
-                            return self.confirm_notes_picker();
-                        }
-                        return AppResult::Redraw;
+        let list_len = self.logic.focus.notes_picker_state()
+            .map(|(_, list)| list.len())
+            .unwrap_or(0);
+        let layout = crate::ui::NotesPicker::new(
+            self.logic.width, self.logic.height, self.logic.scale, list_len,
+        );
+
+        // Click outside overlay → cancel
+        if !layout.overlay_rect.contains(x, y) {
+            return self.cancel_notes_picker();
+        }
+
+        // Click in list area → select or confirm
+        if let Some(display_idx) = layout.item_hit_test(x, y, list_len.min(crate::ui::MAX_VISIBLE_ITEMS)) {
+            if let Some(list) = self.logic.focus.notes_picker_list_mut() {
+                let scroll_offset = list.scroll_offset();
+                let clicked_idx = scroll_offset + display_idx;
+                let was_already_selected = list.selected_index() == clicked_idx;
+                if list.select_index(clicked_idx) {
+                    if was_already_selected {
+                        return self.confirm_notes_picker();
                     }
+                    return AppResult::Redraw;
                 }
             }
         }
-        
-        // Check if click is outside the overlay (cancel)
-        let list_count = self.logic.focus.notes_picker_state()
-            .map(|(_, list)| list.len().min(max_visible_items))
-            .unwrap_or(0);
-        let list_height = list_count as f32 * item_height;
-        let overlay_height = input_height + list_height + 16.0 * scale;
-        
-        if x < overlay_x || x > overlay_x + overlay_width 
-            || y < overlay_y || y > overlay_y + overlay_height 
-        {
-            return self.cancel_notes_picker();
-        }
-        
+
         AppResult::Ok
     }
 }

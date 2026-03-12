@@ -98,7 +98,15 @@ impl ApplicationHandler for AppHandler {
             }
 
             WindowEvent::MouseWheel { delta, .. } => {
-                if state.app.is_mouse_in_tab_bar() {
+                if state.app.is_notes_picker_open() {
+                    let lines = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => if y > 0.0 { -1isize } else { 1 },
+                        MouseScrollDelta::PixelDelta(pos) => if pos.y > 0.0 { -1 } else { 1 },
+                    };
+                    if state.app.scroll_notes_picker(lines).needs_redraw() {
+                        state.window.request_redraw();
+                    }
+                } else if state.app.is_mouse_in_tab_bar() {
                     let scroll_delta = match delta {
                         MouseScrollDelta::LineDelta(_, y) => y * scroll::TAB_SCROLL_PIXELS,
                         MouseScrollDelta::PixelDelta(pos) => pos.y as f32 / 2.0,
@@ -121,7 +129,11 @@ impl ApplicationHandler for AppHandler {
                 self.mouse_position = (position.x, position.y);
                 let x = self.mouse_position.0 as f32;
                 let y = self.mouse_position.1 as f32;
-                let needs_redraw_on_hover = state.app.handle_mouse_move(x, y).needs_redraw();
+                let needs_redraw_on_hover = if state.app.is_notes_picker_open() {
+                    state.app.hover_notes_picker(x, y).needs_redraw()
+                } else {
+                    state.app.handle_mouse_move(x, y).needs_redraw()
+                };
 
                 use winit::window::CursorIcon;
                 use crate::app::CursorShape;
