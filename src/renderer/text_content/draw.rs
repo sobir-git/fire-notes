@@ -54,10 +54,9 @@ impl<'a> TextContentRenderer<'a> {
 
         let ctx = DrawCtx {
             tab,
-            text_area:  &content_area.text,
+            text_area:    &content_area.text,
+            content_rect: &content_area.rect,
             char_width,
-            viewport_h: content_area.rect.height + content_area.rect.y,
-            viewport_w: content_area.rect.width  + content_area.rect.x,
         };
 
         // ── Flame positions (selection + typing) ──────────────────────────
@@ -106,7 +105,7 @@ fn append_typing_flame_positions(
     for &(line, col, timestamp) in typing {
         if line < scroll_offset { continue; }
         let y = ctx.text_area.line_y(line - scroll_offset);
-        if y > ctx.viewport_h { continue; }
+        if y > ctx.content_rect.y + ctx.content_rect.height { continue; }
         let char_x = if line < text_lines.len() {
             crate::visual_position::VisualLine::new(text_lines[line])
                 .char_col_to_visual_center_x(col, ctx.text_area.text_padding - scroll_x, ctx.char_width)

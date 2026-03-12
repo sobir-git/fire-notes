@@ -9,7 +9,6 @@ mod tests;
 mod notes_picker;
 mod tab_bar;
 mod text_content;
-pub mod viewport;
 
 use crate::app::NoteEntry;
 use crate::tab::Tab;
