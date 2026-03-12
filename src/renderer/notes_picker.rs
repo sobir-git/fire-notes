@@ -4,7 +4,7 @@
 
 use crate::app::NoteEntry;
 use crate::theme::Theme;
-use crate::ui::{ListWidget, NotesPicker, TextInput, MAX_VISIBLE_ITEMS};
+use crate::ui::{ListWidget, NotesPicker, TextInput};
 use femtovg::{Canvas, Color, Paint, Path, FontId, renderer::OpenGl};
 
 use super::fonts;
@@ -108,25 +108,25 @@ impl<'a> NotesPickerRenderer<'a> {
         }
 
         // ── List items ────────────────────────────────────────────────────
-        let scroll_offset = list.scroll_offset();
+        let scroll_offset  = list.scroll_offset();
         let selected_index = list.selected_index();
+        let total_items    = list.len();
+        let visible_count  = layout.list.visible_count(total_items);
 
         for (display_idx, filtered_idx) in list
             .filtered_indices()
             .iter()
             .skip(scroll_offset)
-            .take(MAX_VISIBLE_ITEMS)
+            .take(visible_count)
             .enumerate()
         {
             let is_selected = scroll_offset + display_idx == selected_index;
-            let m = layout.item_metrics(display_idx);
+            let row  = layout.list.item_rect(display_idx);
+            let base = layout.list.item_baseline_y(display_idx, font_size);
 
             if is_selected {
                 let mut highlight = Path::new();
-                highlight.rounded_rect(
-                    m.row_rect.x, m.row_rect.y, m.row_rect.width, m.row_rect.height,
-                    4.0 * scale,
-                );
+                highlight.rounded_rect(row.x, row.y, row.width, row.height, 4.0 * scale);
                 self.canvas.fill_path(
                     &highlight,
                     &Paint::color(Color::rgbf(
@@ -146,7 +146,7 @@ impl<'a> NotesPickerRenderer<'a> {
                 let mut title_paint = Paint::color(title_color);
                 title_paint.set_font(self.fonts);
                 title_paint.set_font_size(font_size);
-                let _ = self.canvas.fill_text(text_x, m.text_baseline_y, &note.title, &title_paint);
+                let _ = self.canvas.fill_text(text_x, base, &note.title, &title_paint);
 
                 if note.is_open {
                     let mut ind_paint = Paint::color(Color::rgbf(
@@ -156,18 +156,37 @@ impl<'a> NotesPickerRenderer<'a> {
                     ));
                     ind_paint.set_font(self.fonts);
                     ind_paint.set_font_size(font_size * 0.8);
-                    let _ = self.canvas.fill_text(m.indicator_x, m.text_baseline_y, "●", &ind_paint);
+                    let _ = self.canvas.fill_text(layout.indicator_x, base, "●", &ind_paint);
                 }
             }
         }
 
+        // ── Scrollbar ─────────────────────────────────────────────────────
+        if let Some(thumb) = layout.list.scrollbar_thumb(total_items, scroll_offset) {
+            let sr = &layout.list.scrollbar.rect;
+            let mut track = Path::new();
+            track.rect(sr.x, sr.y, sr.width, sr.height);
+            self.canvas.fill_path(&track, &Paint::color(Color::rgba(60, 60, 60, 120)));
+            let tr = &thumb.rect;
+            let mut thumb_path = Path::new();
+            thumb_path.rounded_rect(tr.x, tr.y, tr.width, tr.height, tr.width / 2.0);
+            self.canvas.fill_path(
+                &thumb_path,
+                &Paint::color(Color::rgbf(
+                    self.theme.tab_active_border.0 * 0.6,
+                    self.theme.tab_active_border.1 * 0.6,
+                    self.theme.tab_active_border.2 * 0.6,
+                )),
+            );
+        }
+
         // ── No-results message ────────────────────────────────────────────
         if list.is_empty() && !input.text().is_empty() {
-            let m = layout.item_metrics(0);
+            let base = layout.list.item_baseline_y(0, font_size);
             let mut no_results = Paint::color(Color::rgba(150, 150, 150, 180));
             no_results.set_font(self.fonts);
             no_results.set_font_size(font_size);
-            let _ = self.canvas.fill_text(text_x, m.text_baseline_y, "No matching notes", &no_results);
+            let _ = self.canvas.fill_text(text_x, base, "No matching notes", &no_results);
         }
     }
 

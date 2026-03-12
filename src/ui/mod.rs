@@ -5,6 +5,7 @@ mod content_area;
 mod layout;
 mod notes_picker;
 mod tab_bar;
+mod list_view;
 mod list_widget;
 mod scrollbar;
 mod text_area;
@@ -18,6 +19,8 @@ pub use types::{CursorShape, Rect, WindowRect, ResizeEdge, UiAction, UiDragActio
 pub use layout::Layout;
 pub use content_area::ContentArea;
 pub use notes_picker::{NotesPicker, MAX_VISIBLE_ITEMS};
+#[allow(unused_imports)]
+pub use list_view::ListViewWidget;
 pub use list_widget::ListWidget;
 pub use scrollbar::ScrollbarWidget;
 pub use tab_bar::TabBar;
