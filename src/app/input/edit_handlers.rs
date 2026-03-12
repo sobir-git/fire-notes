@@ -35,6 +35,7 @@ impl App {
         let result = self.logic.focus.handle_backspace();
         if result.was_handled() {
             self.logic.ui_state.reset_cursor_blink();
+            if self.logic.focus.is_notes_picker() { self.ensure_picker_cursor_visible(); }
             return result.into();
         }
         self.logic.tabs[self.logic.active_tab].backspace();
@@ -47,6 +48,7 @@ impl App {
         let result = self.logic.focus.handle_delete_word_left();
         if result.was_handled() {
             self.logic.ui_state.reset_cursor_blink();
+            if self.logic.focus.is_notes_picker() { self.ensure_picker_cursor_visible(); }
             return result.into();
         }
         self.logic.tabs[self.logic.active_tab].delete_word_left();
@@ -59,6 +61,7 @@ impl App {
         let result = self.logic.focus.handle_delete();
         if result.was_handled() {
             self.logic.ui_state.reset_cursor_blink();
+            if self.logic.focus.is_notes_picker() { self.ensure_picker_cursor_visible(); }
             return result.into();
         }
         self.logic.tabs[self.logic.active_tab].delete();
@@ -70,6 +73,7 @@ impl App {
         let result = self.logic.focus.handle_delete_word_right();
         if result.was_handled() {
             self.logic.ui_state.reset_cursor_blink();
+            if self.logic.focus.is_notes_picker() { self.ensure_picker_cursor_visible(); }
             return result.into();
         }
         self.logic.tabs[self.logic.active_tab].delete_word_right();

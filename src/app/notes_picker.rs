@@ -95,6 +95,21 @@ impl App {
         AppResult::Ok
     }
 
+    /// After editing or moving the cursor in the picker input, scroll it so
+    /// the cursor stays visible.
+    pub(crate) fn ensure_picker_cursor_visible(&mut self) {
+        let list_len = self.logic.focus.notes_picker_state()
+            .map(|(_, list)| list.len()).unwrap_or(0);
+        let layout = crate::ui::NotesPicker::new(
+            self.logic.width, self.logic.height, self.logic.scale, list_len,
+        );
+        let visible_width = layout.input.rect.width - (layout.input.text_x - layout.input.rect.x) * 2.0;
+        let char_width = self.renderer.get_picker_char_width();
+        if let Some(input) = self.logic.focus.notes_picker_input_mut() {
+            input.ensure_cursor_visible(visible_width, char_width);
+        }
+    }
+
     /// Click on the picker input field to place the cursor.
     /// Returns true if the click landed on the input.
     pub(crate) fn click_picker_input(&mut self, x: f32, y: f32, selecting: bool) -> bool {

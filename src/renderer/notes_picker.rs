@@ -81,20 +81,34 @@ impl<'a> NotesPickerRenderer<'a> {
         let text_x = layout.input.text_x;
         let text_y = layout.input.text_baseline_y;
 
+        let char_width = self.measure_char_width(&text_paint);
+
         if input.text().is_empty() {
             let mut ph = Paint::color(Color::rgba(150, 150, 150, 180));
             ph.set_font(self.fonts);
             ph.set_font_size(font_size);
             let _ = self.canvas.fill_text(text_x, text_y, "Search notes...", &ph);
         } else {
-            let _ = self.canvas.fill_text(text_x, text_y, input.text(), &text_paint);
+            // ── Selection highlight ──────────────────────────────────────
+            if let Some((sel_start, sel_end)) = input.selection_range() {
+                let start_chars = input.text()[..sel_start].chars().count();
+                let end_chars   = input.text()[..sel_end].chars().count();
+                let sel_x = text_x + start_chars as f32 * char_width - input.scroll_offset;
+                let sel_w = (end_chars - start_chars) as f32 * char_width;
+                let mut sel_path = Path::new();
+                sel_path.rect(sel_x, ir.y + 3.0 * scale, sel_w, ir.height - 6.0 * scale);
+                self.canvas.fill_path(
+                    &sel_path,
+                    &Paint::color(Color::rgba(100, 140, 210, 120)),
+                );
+            }
+            let _ = self.canvas.fill_text(text_x - input.scroll_offset, text_y, input.text(), &text_paint);
         }
 
         // ── Cursor ────────────────────────────────────────────────────────
         if cursor_visible {
-            let cursor_char_idx = input.text()[..input.cursor()].chars().count();
-            let char_width = self.measure_char_width(&text_paint);
-            let cursor_x = text_x + cursor_char_idx as f32 * char_width;
+            let cursor_chars = input.text()[..input.cursor()].chars().count();
+            let cursor_x = text_x + cursor_chars as f32 * char_width - input.scroll_offset;
             let mut cursor_path = Path::new();
             cursor_path.rect(cursor_x, ir.y + 4.0 * scale, 2.0, ir.height - 8.0 * scale);
             self.canvas.fill_path(

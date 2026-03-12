@@ -7,7 +7,11 @@ use super::super::App;
 impl App {
     pub fn move_cursor_left(&mut self, selecting: bool) -> AppResult {
         let result = self.logic.focus.move_left(selecting);
-        if result.was_handled() { self.logic.ui_state.reset_cursor_blink(); return result.into(); }
+        if result.was_handled() {
+            self.logic.ui_state.reset_cursor_blink();
+            if self.logic.focus.is_notes_picker() { self.ensure_picker_cursor_visible(); }
+            return result.into();
+        }
         self.logic.tabs[self.logic.active_tab].move_left(selecting);
         self.auto_scroll();
         AppResult::Redraw
@@ -15,7 +19,11 @@ impl App {
 
     pub fn move_cursor_right(&mut self, selecting: bool) -> AppResult {
         let result = self.logic.focus.move_right(selecting);
-        if result.was_handled() { self.logic.ui_state.reset_cursor_blink(); return result.into(); }
+        if result.was_handled() {
+            self.logic.ui_state.reset_cursor_blink();
+            if self.logic.focus.is_notes_picker() { self.ensure_picker_cursor_visible(); }
+            return result.into();
+        }
         self.logic.tabs[self.logic.active_tab].move_right(selecting);
         self.auto_scroll();
         AppResult::Redraw
@@ -23,7 +31,11 @@ impl App {
 
     pub fn move_cursor_word_left(&mut self, selecting: bool) -> AppResult {
         let result = self.logic.focus.move_word_left(selecting);
-        if result.was_handled() { self.logic.ui_state.reset_cursor_blink(); return result.into(); }
+        if result.was_handled() {
+            self.logic.ui_state.reset_cursor_blink();
+            if self.logic.focus.is_notes_picker() { self.ensure_picker_cursor_visible(); }
+            return result.into();
+        }
         self.logic.tabs[self.logic.active_tab].move_word_left(selecting);
         self.auto_scroll();
         AppResult::Redraw
@@ -31,7 +43,11 @@ impl App {
 
     pub fn move_cursor_word_right(&mut self, selecting: bool) -> AppResult {
         let result = self.logic.focus.move_word_right(selecting);
-        if result.was_handled() { self.logic.ui_state.reset_cursor_blink(); return result.into(); }
+        if result.was_handled() {
+            self.logic.ui_state.reset_cursor_blink();
+            if self.logic.focus.is_notes_picker() { self.ensure_picker_cursor_visible(); }
+            return result.into();
+        }
         self.logic.tabs[self.logic.active_tab].move_word_right(selecting);
         self.auto_scroll();
         AppResult::Redraw
@@ -55,7 +71,11 @@ impl App {
 
     pub fn move_cursor_to_line_start(&mut self, selecting: bool) -> AppResult {
         let result = self.logic.focus.move_to_line_start(selecting);
-        if result.was_handled() { self.logic.ui_state.reset_cursor_blink(); return result.into(); }
+        if result.was_handled() {
+            self.logic.ui_state.reset_cursor_blink();
+            if self.logic.focus.is_notes_picker() { self.ensure_picker_cursor_visible(); }
+            return result.into();
+        }
         self.logic.tabs[self.logic.active_tab].move_to_line_start(selecting);
         self.auto_scroll();
         AppResult::Redraw
@@ -63,7 +83,11 @@ impl App {
 
     pub fn move_cursor_to_line_end(&mut self, selecting: bool) -> AppResult {
         let result = self.logic.focus.move_to_line_end(selecting);
-        if result.was_handled() { self.logic.ui_state.reset_cursor_blink(); return result.into(); }
+        if result.was_handled() {
+            self.logic.ui_state.reset_cursor_blink();
+            if self.logic.focus.is_notes_picker() { self.ensure_picker_cursor_visible(); }
+            return result.into();
+        }
         self.logic.tabs[self.logic.active_tab].move_to_line_end(selecting);
         self.auto_scroll();
         AppResult::Redraw
