@@ -16,8 +16,6 @@ pub struct TextContentRenderer<'a> {
     pub(super) canvas: &'a mut Canvas<OpenGl>,
     pub(super) fonts: &'a [FontId],
     pub(super) theme: &'a Theme,
-    pub(super) width: f32,
-    pub(super) height: f32,
     pub(super) scale: f32,
     pub(super) animation_start: Instant,
 }
@@ -27,12 +25,10 @@ impl<'a> TextContentRenderer<'a> {
         canvas: &'a mut Canvas<OpenGl>,
         fonts: &'a [FontId],
         theme: &'a Theme,
-        width: f32,
-        height: f32,
         scale: f32,
         animation_start: Instant,
     ) -> Self {
-        Self { canvas, fonts, theme, width, height, scale, animation_start }
+        Self { canvas, fonts, theme, scale, animation_start }
     }
 
     pub fn draw(
@@ -55,8 +51,8 @@ impl<'a> TextContentRenderer<'a> {
             tab,
             text_area:  &content_area.text,
             char_width,
-            viewport_h: self.height,
-            viewport_w: self.width,
+            viewport_h: content_area.rect.height + content_area.rect.y,
+            viewport_w: content_area.rect.width  + content_area.rect.x,
         };
 
         // ── Flame positions (selection + typing) ──────────────────────────

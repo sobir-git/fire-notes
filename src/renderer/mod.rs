@@ -126,8 +126,6 @@ impl Renderer {
                 &mut self.canvas,
                 &self.fonts,
                 &self.theme,
-                self.width,
-                self.height,
                 self.scale,
                 self.animation_start,
             );
