@@ -48,15 +48,13 @@ pub struct Renderer {
     canvas: Canvas<OpenGl>,
     fonts: Vec<FontId>,
     theme: Theme,
-    width: f32,
-    height: f32,
     scale: f32,
     flame_system: FlameSystem,
     animation_start: Instant,
 }
 
 impl Renderer {
-    pub fn new(renderer: OpenGl, width: f32, height: f32, scale: f32) -> Self {
+    pub fn new(renderer: OpenGl, _width: f32, _height: f32, scale: f32) -> Self {
         let mut canvas = Canvas::new(renderer).expect("Failed to create canvas");
 
         // Load fonts with fallbacks
@@ -69,17 +67,13 @@ impl Renderer {
             canvas,
             fonts,
             theme,
-            width,
-            height,
             scale,
             flame_system: FlameSystem::new(),
             animation_start: now,
         }
     }
 
-    pub fn resize(&mut self, width: f32, height: f32, scale: f32) {
-        self.width = width;
-        self.height = height;
+    pub fn resize(&mut self, _width: f32, _height: f32, scale: f32) {
         self.scale = scale;
     }
 
@@ -96,7 +90,8 @@ impl Renderer {
         let dragging_scrollbar      = frame.dragging_scrollbar;
         let typing_flame_positions  = frame.typing_flame_positions;
         let notes_picker_state      = frame.notes_picker_state;
-        let (width, height) = (self.width, self.height);
+        let width  = ui_tree.width();
+        let height = ui_tree.height();
 
         // Use DPI=1.0, but we compensate by using larger font sizes in physical pixels
         // This forces femtovg to rasterize glyphs at higher resolution
@@ -162,8 +157,6 @@ impl Renderer {
                 &mut self.canvas,
                 &self.fonts,
                 &self.theme,
-                self.width,
-                self.height,
                 self.scale,
             );
             picker.draw(input, list, cursor_visible, picker_layout);

@@ -21,11 +21,8 @@ impl<'a> NotesPickerRenderer<'a> {
         canvas: &'a mut Canvas<OpenGl>,
         fonts: &'a [FontId],
         theme: &'a Theme,
-        width: f32,
-        height: f32,
         scale: f32,
     ) -> Self {
-        let _ = (width, height);
         Self { canvas, fonts, theme, scale }
     }
 

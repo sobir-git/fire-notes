@@ -63,6 +63,11 @@ impl UiTree {
         tree
     }
 
+    /// Window width in physical pixels (as laid out).
+    pub fn width(&self)  -> f32 { self.width }
+    /// Window height in physical pixels (as laid out).
+    pub fn height(&self) -> f32 { self.height }
+
     // ── Resize edge detection ─────────────────────────────────────────────
 
     fn detect_resize_edge(&self, x: f32, y: f32) -> Option<ResizeEdge> {
