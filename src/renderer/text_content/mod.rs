@@ -2,5 +2,6 @@
 
 mod draw;
 pub mod layout;
+pub(super) mod text;
 
 pub use draw::TextContentRenderer;

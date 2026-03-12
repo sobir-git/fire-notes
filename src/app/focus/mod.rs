@@ -14,18 +14,15 @@ pub struct NoteEntry {
 }
 
 /// Represents what currently has keyboard focus
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum Focus {
     /// Main text editor (the active tab's content)
+    #[default]
     Editor,
     /// Tab title rename input
     TabRename { tab_index: usize, input: TextInput },
     /// Notes picker (quick open)
     NotesPicker { input: TextInput, list: ListWidget<NoteEntry> },
-}
-
-impl Default for Focus {
-    fn default() -> Self { Focus::Editor }
 }
 
 impl Focus {

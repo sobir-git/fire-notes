@@ -104,7 +104,6 @@ impl Renderer {
                 &mut self.canvas,
                 &self.fonts,
                 &self.theme,
-                self.width,
                 self.scale,
             );
             tab_bar_renderer.draw(
@@ -134,7 +133,8 @@ impl Renderer {
             );
             text_content.draw(
                 current_tab,
-                &ui_tree.scrollbar,
+                &ui_tree.content_area,
+                &ui_tree.content_area.scrollbar,
                 cursor_visible,
                 hovered_scrollbar,
                 dragging_scrollbar,
@@ -144,7 +144,7 @@ impl Renderer {
         }
 
         // Draw notes picker overlay if active
-        if let Some((input, list)) = notes_picker_state {
+        if let (Some((input, list)), Some(picker_layout)) = (notes_picker_state, &ui_tree.notes_picker) {
             let mut picker = NotesPickerRenderer::new(
                 &mut self.canvas,
                 &self.fonts,
@@ -153,25 +153,17 @@ impl Renderer {
                 self.height,
                 self.scale,
             );
-            picker.draw(input, list, cursor_visible);
+            picker.draw(input, list, cursor_visible, picker_layout);
         }
 
         self.canvas.flush();
     }
 
-    pub fn get_char_width(&self) -> f32 {
+    pub fn get_char_width(&mut self) -> f32 {
         let mut text_paint = Paint::color(Color::rgb(255, 255, 255));
         text_paint.set_font(&self.fonts);
         text_paint.set_font_size(rendering::CONTENT_FONT_SIZE * self.scale);
-        self.measure_char_width(&text_paint)
-    }
-
-    fn measure_char_width(&self, paint: &Paint) -> f32 {
-        if let Ok(metrics) = self.canvas.measure_text(0.0, 0.0, "M", paint) {
-            metrics.width()
-        } else {
-            rendering::FALLBACK_CHAR_WIDTH * self.scale
-        }
+        fonts::measure_char_width(&mut self.canvas, &text_paint, self.scale)
     }
 
     /// Expose the canvas for test-only pixel readback.

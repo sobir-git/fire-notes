@@ -5,6 +5,7 @@
 //! `TabBar` assembles them — no inline pixel arithmetic here.
 
 use crate::config::{layout, rendering};
+use super::layout::Layout;
 use super::types::{Rect, UiNode};
 
 // ── WindowControls widget ──────────────────────────────────────────────────
@@ -18,16 +19,16 @@ pub struct WindowControls {
 }
 
 impl WindowControls {
-    /// Build from the window width and scale factor.
-    pub fn new(width: f32, bar_height: f32, scale: f32) -> Self {
-        let size = layout::WINDOW_BUTTON_SIZE * scale;
+    /// Build right-aligned within `bar_rect`.
+    pub fn new(bar_rect: Rect, scale: f32) -> Self {
+        let size   = layout::WINDOW_BUTTON_SIZE   * scale;
         let margin = layout::WINDOW_BUTTON_MARGIN * scale;
-        let gap = layout::WINDOW_BUTTON_GAP * scale;
-        let y = (bar_height - size) / 2.0;
+        let gap    = layout::WINDOW_BUTTON_GAP    * scale;
+        let y = bar_rect.y + (bar_rect.height - size) / 2.0;
 
-        let close = Rect { x: width - size - margin,         y, width: size, height: size };
-        let maximize = Rect { x: close.x - size - gap,       y, width: size, height: size };
-        let minimize = Rect { x: maximize.x - size - gap,    y, width: size, height: size };
+        let close    = Rect { x: bar_rect.x + bar_rect.width - size - margin,  y, width: size, height: size };
+        let maximize = Rect { x: close.x - size - gap,                         y, width: size, height: size };
+        let minimize = Rect { x: maximize.x - size - gap,                      y, width: size, height: size };
 
         Self { minimize, maximize, close }
     }
@@ -56,21 +57,19 @@ pub struct NewTabButton {
 }
 
 impl NewTabButton {
-    /// Build from the current end-of-tabs position, the clip boundary, and scale.
+    /// Build from the current end-of-tabs position, the clip boundary, and the bar rect.
     ///
-    /// `tabs_end_x`  — screen-space x right after the last visible tab  
+    /// `tabs_end_x`  — screen x right after the last visible tab
     /// `max_right_x` — rightmost allowed right edge (left of drag gap)
-    pub fn new(tabs_end_x: f32, bar_height: f32, max_right_x: f32, scale: f32) -> Self {
-        let size = layout::NEW_TAB_BUTTON_SIZE * scale;
-        let margin = layout::WINDOW_BUTTON_MARGIN * scale;
-        // Ideal: right after the last tab.
-        // Clamped: never enter the drag gap.
+    pub fn new(tabs_end_x: f32, bar_rect: Rect, max_right_x: f32, scale: f32) -> Self {
+        let size   = layout::NEW_TAB_BUTTON_SIZE   * scale;
+        let margin = layout::WINDOW_BUTTON_MARGIN  * scale;
         let x = (tabs_end_x + margin).min(max_right_x - size - margin);
         Self {
             rect: Rect {
                 x,
-                y: (bar_height - size) / 2.0,
-                width: size,
+                y: bar_rect.y + (bar_rect.height - size) / 2.0,
+                width:  size,
                 height: size,
             },
         }
@@ -153,37 +152,46 @@ pub struct TabBar {
     pub new_tab_rect: Rect,
 }
 
-impl TabBar {
-    pub fn new(width: f32, scale: f32, tab_scroll_x: f32, tabs: &[(&str, bool)]) -> Self {
-        let tab_height = layout::TAB_HEIGHT * scale;
-        let tab_padding = layout::TAB_PADDING * scale;
-        let drag_gap = layout::TAB_DRAG_GAP * scale;
+impl Layout for TabBar {
+    /// Layout from the parent-supplied rect (the tab bar strip).
+    /// Tabs default to no scroll and no entries — call `with_tabs` afterwards.
+    fn layout(rect: Rect, scale: f32) -> Self {
+        Self::build(rect, scale, 0.0, &[])
+    }
+}
 
-        // Delegate to sub-widgets
-        let controls = WindowControls::new(width, tab_height, scale);
-        // Tabs clip at the drag-gap boundary left of the controls
+impl TabBar {
+    /// Convenience: build from window width + tab state.
+    pub fn new(width: f32, scale: f32, tab_scroll_x: f32, tabs: &[(&str, bool)]) -> Self {
+        let rect = Rect { x: 0.0, y: 0.0, width, height: layout::TAB_HEIGHT * scale };
+        Self::build(rect, scale, tab_scroll_x, tabs)
+    }
+
+    fn build(rect: Rect, scale: f32, tab_scroll_x: f32, tabs: &[(&str, bool)]) -> Self {
+        let tab_padding = layout::TAB_PADDING * scale;
+        let drag_gap    = layout::TAB_DRAG_GAP * scale;
+
+        let controls    = WindowControls::new(rect, scale);
         let tabs_clip_x = controls.left_edge() - drag_gap;
 
         // ── Scrolling tabs ─────────────────────────────────────────────────
-        let mut current_x = -tab_scroll_x;
+        let mut current_x = rect.x - tab_scroll_x;
         let mut tab_metrics = Vec::with_capacity(tabs.len());
 
         for (i, (title, _)) in tabs.iter().enumerate() {
             let tab_width =
                 (title.len() as f32 * rendering::TAB_CHAR_WIDTH_RATIO * scale + tab_padding * 2.0)
                     .max(layout::MIN_TAB_WIDTH * scale);
-            tab_metrics.push(TabMetrics::new(i, Rect { x: current_x, y: 0.0, width: tab_width, height: tab_height }));
+            tab_metrics.push(TabMetrics::new(i, Rect { x: current_x, y: rect.y, width: tab_width, height: rect.height }));
             current_x += tab_width + 1.0;
         }
 
-        let new_tab_button = NewTabButton::new(current_x, tab_height, tabs_clip_x, scale);
-
-        // Build the scroll area container: owns and clips all tabs.
-        let clip_rect = Rect { x: 0.0, y: 0.0, width: tabs_clip_x, height: tab_height };
+        let new_tab_button = NewTabButton::new(current_x, rect, tabs_clip_x, scale);
+        let clip_rect = Rect { x: rect.x, y: rect.y, width: tabs_clip_x - rect.x, height: rect.height };
         let scroll_area = TabScrollArea::new(clip_rect, tab_scroll_x, tab_metrics);
 
         Self {
-            rect: Rect { x: 0.0, y: 0.0, width, height: tab_height },
+            rect,
             scroll_area,
             new_tab_rect: new_tab_button.rect,
             tabs_clip_x,

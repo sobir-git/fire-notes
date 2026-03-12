@@ -6,17 +6,12 @@ use crate::config::rendering;
 use crate::theme::Theme;
 use crate::ui::{TabBar, TextInput};
 
-/// Snap a coordinate to the pixel grid to prevent blurry text rendering.
-#[inline]
-fn snap_to_pixel(coord: f32) -> f32 {
-    coord.round()
-}
+use super::super::fonts::{self, snap_to_pixel};
 
 pub struct TabBarRenderer<'a> {
     pub(super) canvas: &'a mut Canvas<OpenGl>,
     pub(super) fonts: &'a [FontId],
     pub(super) theme: &'a Theme,
-    pub(super) width: f32,
     pub(super) scale: f32,
 }
 
@@ -25,10 +20,9 @@ impl<'a> TabBarRenderer<'a> {
         canvas: &'a mut Canvas<OpenGl>,
         fonts: &'a [FontId],
         theme: &'a Theme,
-        width: f32,
         scale: f32,
     ) -> Self {
-        Self { canvas, fonts, theme, width, scale }
+        Self { canvas, fonts, theme, scale }
     }
 
     /// Draw the entire tab bar using the pre-computed `TabBar` layout widget.
@@ -47,12 +41,12 @@ impl<'a> TabBarRenderer<'a> {
         hovered_maximize: bool,
         hovered_close: bool,
     ) {
-        let tab_height = layout.rect.height;
+        let r = &layout.rect;
         // Clip scrolling tabs to the drag-gap boundary (left of drag zone + controls).
-        let tabs_clip_width = layout.tabs_clip_x;
+        let tabs_clip_width = layout.tabs_clip_x - r.x;
 
         self.canvas.save();
-        self.canvas.intersect_scissor(0.0, 0.0, tabs_clip_width, tab_height);
+        self.canvas.intersect_scissor(r.x, r.y, tabs_clip_width, r.height);
 
         for tab in &layout.scroll_area.tabs {
             let (title, is_active) = tabs[tab.index];
@@ -92,7 +86,7 @@ impl<'a> TabBarRenderer<'a> {
                 title.len() as f32 * rendering::TAB_CHAR_WIDTH_RATIO * self.scale
             };
             let text_x = snap_to_pixel(r.x + (r.width - text_width) / 2.0);
-            let text_y = snap_to_pixel(tab_height / 2.0 + 5.0 * self.scale);
+            let text_y = snap_to_pixel(layout.rect.y + layout.rect.height / 2.0 + 5.0 * self.scale);
             let _ = self.canvas.fill_text(text_x, text_y, title, &text_paint);
 
             if Some(tab.index) == renaming_tab {
@@ -104,7 +98,7 @@ impl<'a> TabBarRenderer<'a> {
         // Plus button is pinned at a fixed position — always draw it.
         self.draw_new_tab_button(layout, hovered_plus);
         self.draw_window_controls(layout, hovered_minimize, hovered_maximize, hovered_close);
-        self.draw_bottom_line(tab_height);
+        self.draw_bottom_line(layout);
     }
 
     fn draw_rename_overlay(
@@ -119,11 +113,7 @@ impl<'a> TabBarRenderer<'a> {
             if let Some((sel_start, sel_end)) = input.selection_range() {
                 let sel_start_chars = input.text()[..sel_start].chars().count();
                 let sel_end_chars = input.text()[..sel_end].chars().count();
-                let char_width = if let Ok(m) = self.canvas.measure_text(0.0, 0.0, "M", text_paint) {
-                    m.width()
-                } else {
-                    rendering::TAB_CHAR_WIDTH_RATIO * self.scale
-                };
+                let char_width = fonts::measure_char_width(self.canvas, text_paint, self.scale);
                 let sel_x = text_x + sel_start_chars as f32 * char_width;
                 let sel_width = (sel_end_chars - sel_start_chars) as f32 * char_width;
                 let mut sel_path = Path::new();
@@ -133,11 +123,7 @@ impl<'a> TabBarRenderer<'a> {
 
             if cursor_visible {
                 let cursor_chars = input.text()[..input.cursor()].chars().count();
-                let char_width = if let Ok(m) = self.canvas.measure_text(0.0, 0.0, "M", text_paint) {
-                    m.width()
-                } else {
-                    rendering::TAB_CHAR_WIDTH_RATIO * self.scale
-                };
+                let char_width = fonts::measure_char_width(self.canvas, text_paint, self.scale);
                 let cursor_x = snap_to_pixel(text_x + cursor_chars as f32 * char_width);
                 let cursor_y1 = text_y - 14.0 * self.scale;
                 let cursor_y2 = text_y + 4.0 * self.scale;
@@ -188,9 +174,10 @@ impl<'a> TabBarRenderer<'a> {
         let _ = self.canvas.fill_text(plus_x, plus_y, "+", &plus_paint);
     }
 
-    pub(super) fn draw_bottom_line(&mut self, tab_height: f32) {
+    pub(super) fn draw_bottom_line(&mut self, layout: &TabBar) {
+        let r = &layout.rect;
         let mut line = Path::new();
-        line.rect(0.0, tab_height, self.width, 1.0);
+        line.rect(r.x, r.y + r.height, r.width, 1.0);
         self.canvas.fill_path(
             &line,
             &Paint::color(Color::rgbf(self.theme.border.0, self.theme.border.1, self.theme.border.2)),

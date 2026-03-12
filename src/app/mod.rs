@@ -69,7 +69,7 @@ impl App {
             let tabs = match persistence::list_notes() {
                 Ok(note_paths) if !note_paths.is_empty() => note_paths
                     .into_iter()
-                    .filter_map(|path| Tab::from_file(path))
+                    .filter_map(Tab::from_file)
                     .collect(),
                 _ => vec![Tab::new_untitled()],
             };

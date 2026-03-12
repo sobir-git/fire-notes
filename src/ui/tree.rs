@@ -1,33 +1,70 @@
-//! UI tree coordinator for hit-testing and actions
+//! UI tree — top-level layout compositor.
+//!
+//! `UiTree::layout(window_rect, scale)` cuts the window into tab bar and
+//! content using `Rect` primitives, then delegates to each child's `Layout`
+//! impl.  No coordinate arithmetic lives anywhere else.
 
+use crate::config::layout as cfg_layout;
+use super::content_area::ContentArea;
+use super::layout::Layout;
+use super::notes_picker::NotesPicker;
 use super::tab_bar::TabBar;
-use super::scrollbar::{ScrollbarAction, ScrollbarWidget};
-use super::text_area::TextArea;
-use super::types::{ResizeEdge, UiAction, UiDragAction, UiHover, UiNode};
+use super::scrollbar::ScrollbarAction;
+use super::types::{Rect, ResizeEdge, UiAction, UiDragAction, UiHover, UiNode};
 
 const RESIZE_BORDER: f32 = 5.0;
 
 #[derive(Debug, Clone)]
 pub struct UiTree {
     pub tab_bar: TabBar,
-    pub scrollbar: ScrollbarWidget,
-    pub text_area: TextArea,
+    /// Content area owns both `text: TextArea` and `scrollbar: ScrollbarWidget`.
+    pub content_area: ContentArea,
+    /// Notes picker overlay layout — `Some` when the picker is open.
+    pub notes_picker: Option<NotesPicker>,
     width: f32,
     height: f32,
     scale: f32,
 }
 
-impl UiTree {
-    pub fn new(width: f32, height: f32, scale: f32, tab_scroll_x: f32, tabs: &[(&str, bool)]) -> Self {
+impl Layout for UiTree {
+    fn layout(rect: Rect, scale: f32) -> Self {
+        let (tab_rect, content_rect) = rect.cut_top(cfg_layout::TAB_HEIGHT * scale);
+        let (_, content_rect)        = content_rect.cut_top(cfg_layout::PADDING * scale);
         Self {
-            tab_bar: TabBar::new(width, scale, tab_scroll_x, tabs),
-            scrollbar: ScrollbarWidget::new(width, height, scale),
-            text_area: TextArea::new(width, height, scale),
+            tab_bar:      TabBar::layout(tab_rect, scale),
+            content_area: ContentArea::layout(content_rect, scale),
+            notes_picker: None,
+            width:  rect.width,
+            height: rect.height,
+            scale,
+        }
+    }
+}
+
+impl UiTree {
+    /// Build from raw window dimensions + tab state.
+    /// `picker_list_len` — `Some(n)` when the notes picker is open with `n` items.
+    pub fn new(
+        width: f32,
+        height: f32,
+        scale: f32,
+        tab_scroll_x: f32,
+        tabs: &[(&str, bool)],
+        picker_list_len: Option<usize>,
+    ) -> Self {
+        let notes_picker = picker_list_len
+            .map(|len| NotesPicker::new(width, height, scale, len));
+        Self {
+            tab_bar:      TabBar::new(width, scale, tab_scroll_x, tabs),
+            content_area: ContentArea::new(width, height, scale),
+            notes_picker,
             width,
             height,
             scale,
         }
     }
+
+    // ── Resize edge detection ─────────────────────────────────────────────
 
     fn detect_resize_edge(&self, x: f32, y: f32) -> Option<ResizeEdge> {
         let border = RESIZE_BORDER * self.scale;
@@ -49,17 +86,18 @@ impl UiTree {
         }
     }
 
+    // ── Public API ────────────────────────────────────────────────────────
+
     pub fn hover(
         &self,
         x: f32,
         y: f32,
         total_lines: usize,
         visible_lines: usize,
-        scroll_offset: usize,
+        _scroll_offset: usize,
     ) -> UiHover {
         let mut hover = UiHover::default();
 
-        // Check resize edges first
         if let Some(edge) = self.detect_resize_edge(x, y) {
             hover.resize_edge = Some(edge);
             return hover;
@@ -74,11 +112,8 @@ impl UiTree {
             _ => {}
         }
 
-        hover.scrollbar = self
-            .scrollbar
-            .metrics(total_lines, visible_lines, scroll_offset)
-            .map(|metrics| metrics.track.contains(x, y))
-            .unwrap_or(false);
+        hover.scrollbar = self.content_area.scrollbar.hit_test(x, y)
+            && self.content_area.scrollbar.is_scrollable(total_lines, visible_lines);
         hover
     }
 
@@ -99,17 +134,10 @@ impl UiTree {
             UiNode::WindowMaximize if !selecting => UiAction::WindowMaximize,
             UiNode::WindowClose if !selecting => UiAction::WindowClose,
             UiNode::WindowResizeEdge(edge) if !selecting => UiAction::WindowResize(edge),
-            UiNode::Scrollbar => {
-                if selecting {
-                    return UiAction::None;
-                }
-                match self
-                    .scrollbar
-                    .on_click(x, y, total_lines, visible_lines, scroll_offset)
-                {
-                    ScrollbarAction::StartDrag { drag_offset } => {
-                        UiAction::StartScrollbarDrag { drag_offset }
-                    }
+            UiNode::Scrollbar if !selecting => {
+                match self.content_area.scrollbar.on_click(x, y, total_lines, visible_lines, scroll_offset) {
+                    ScrollbarAction::StartDrag { drag_offset } =>
+                        UiAction::StartScrollbarDrag { drag_offset },
                     ScrollbarAction::JumpTo { ratio } => UiAction::ScrollbarJump { ratio },
                     ScrollbarAction::None => UiAction::None,
                 }
@@ -127,10 +155,7 @@ impl UiTree {
         scroll_offset: usize,
         drag_offset: f32,
     ) -> UiDragAction {
-        if let Some(ratio) = self
-            .scrollbar
-            .drag_ratio(y, total_lines, visible_lines, drag_offset, scroll_offset)
-        {
+        if let Some(ratio) = self.content_area.scrollbar.drag_ratio(y, total_lines, visible_lines, drag_offset, scroll_offset) {
             return UiDragAction::ScrollbarDrag { ratio };
         }
         UiDragAction::None
@@ -158,7 +183,6 @@ impl UiTree {
         self.multi_click(x, y, total_lines, visible_lines, scroll_offset)
     }
 
-    /// Shared behaviour for double- and triple-click: non-text zones delegate to single click.
     fn multi_click(
         &self,
         x: f32,
@@ -180,22 +204,20 @@ impl UiTree {
     }
 
     pub fn hit_test(&self, x: f32, y: f32) -> UiNode {
-        // Check resize edges first (highest priority for borderless window)
         if let Some(edge) = self.detect_resize_edge(x, y) {
             return UiNode::WindowResizeEdge(edge);
         }
 
-        // Each widget's hit_test already guards with its own rect.contains().
         let tab_node = self.tab_bar.hit_test(x, y);
         if tab_node != UiNode::None {
             return tab_node;
         }
 
-        if self.scrollbar.hit_test(x, y) {
+        if self.content_area.scrollbar.hit_test(x, y) {
             return UiNode::Scrollbar;
         }
 
-        if self.text_area.hit_test(x, y) {
+        if self.content_area.text.hit_test(x, y) {
             return UiNode::TextArea;
         }
 

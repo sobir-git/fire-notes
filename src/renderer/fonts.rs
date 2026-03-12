@@ -1,6 +1,23 @@
 //! Font loading and discovery
 
-use femtovg::{Canvas, FontId, renderer::OpenGl};
+use crate::config::rendering;
+use femtovg::{Canvas, FontId, Paint, renderer::OpenGl};
+
+/// Snap a coordinate to the pixel grid to prevent blurry rendering.
+#[inline]
+pub fn snap_to_pixel(coord: f32) -> f32 {
+    coord.round()
+}
+
+/// Measure the width of a single character cell using the glyph 'M'.
+/// Falls back to `FALLBACK_CHAR_WIDTH * scale` if measurement fails.
+pub fn measure_char_width(canvas: &mut Canvas<OpenGl>, paint: &Paint, scale: f32) -> f32 {
+    if let Ok(metrics) = canvas.measure_text(0.0, 0.0, "M", paint) {
+        metrics.width()
+    } else {
+        rendering::FALLBACK_CHAR_WIDTH * scale
+    }
+}
 
 /// Load fonts with fallbacks for the editor
 pub fn load_fonts(canvas: &mut Canvas<OpenGl>) -> Vec<FontId> {

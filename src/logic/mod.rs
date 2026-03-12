@@ -224,7 +224,7 @@ impl AppLogic {
     // =========================================================================
 
     pub fn visible_line_count(&self) -> usize {
-        crate::ui::TextArea::new(self.width, self.height, self.scale).visible_line_count(self.scale)
+        crate::ui::ContentArea::new(self.width, self.height, self.scale).visible_line_count()
     }
 
     pub fn auto_scroll(&mut self) {
@@ -285,7 +285,8 @@ impl AppLogic {
     /// All mouse handlers should call this instead of constructing `UiTree::new`
     /// inline — ensures a single construction site and consistent layout.
     pub fn build_ui_tree(&self, tab_titles: &[(&str, bool)]) -> crate::ui::UiTree {
-        crate::ui::UiTree::new(self.width, self.height, self.scale, self.ui_state.tab_scroll_x, tab_titles)
+        let picker_len = self.focus.notes_picker_state().map(|(_, list)| list.len());
+        crate::ui::UiTree::new(self.width, self.height, self.scale, self.ui_state.tab_scroll_x, tab_titles, picker_len)
     }
 
     pub fn ui_state(&self) -> &UiState { &self.ui_state }

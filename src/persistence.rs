@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Get the data directory for storing notes
 /// - If running from source (binary path contains "target") or FIRE_NOTES_DEV is set: ./tmp/fire-notes
@@ -27,7 +27,7 @@ pub fn get_data_dir() -> PathBuf {
     }
 }
 
-fn is_internal_state_file(path: &PathBuf) -> bool {
+fn is_internal_state_file(path: &Path) -> bool {
     matches!(
         path.file_name().and_then(|name| name.to_str()),
         Some("window_state.txt")
@@ -54,18 +54,18 @@ fn load_note_metadata() -> NoteMetadata {
         .unwrap_or_default()
 }
 
-pub fn load_note_title(path: &PathBuf) -> Option<String> {
+pub fn load_note_title(path: &Path) -> Option<String> {
     let metadata = load_note_metadata();
     metadata.titles.get(&path.to_string_lossy().to_string()).cloned()
 }
 
-pub fn save_note_title(path: &PathBuf, title: &str) -> std::io::Result<()> {
+pub fn save_note_title(path: &Path, title: &str) -> std::io::Result<()> {
     let mut metadata = load_note_metadata();
     metadata
         .titles
         .insert(path.to_string_lossy().to_string(), title.to_string());
     let payload = serde_json::to_string_pretty(&metadata)
-        .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))?;
+        .map_err(std::io::Error::other)?;
     fs::write(note_metadata_path(), payload)
 }
 
@@ -115,7 +115,7 @@ pub fn save_window_state(state: WindowState) -> std::io::Result<()> {
     let dir = ensure_data_dir()?;
     let path = dir.join("window_state.json");
     let payload = serde_json::to_string_pretty(&state)
-        .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))?;
+        .map_err(std::io::Error::other)?;
     fs::write(path, payload)
 }
 
@@ -198,7 +198,7 @@ pub fn save_session_state(state: &SessionState) -> std::io::Result<()> {
     let dir = ensure_data_dir()?;
     let path = dir.join("session_state.json");
     let payload = serde_json::to_string_pretty(state)
-        .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))?;
+        .map_err(std::io::Error::other)?;
     fs::write(path, payload)
 }
 
@@ -224,7 +224,7 @@ pub fn list_notes() -> std::io::Result<Vec<PathBuf>> {
         let entry = entry?;
         let path = entry.path();
         if path.is_file()
-            && path.extension().map_or(false, |e| e == "md" || e == "txt")
+            && path.extension().is_some_and(|e| e == "md" || e == "txt")
             && !is_internal_state_file(&path)
         {
             notes.push(path);
@@ -244,7 +244,7 @@ pub fn save_note(filename: &str, content: &str) -> std::io::Result<PathBuf> {
 
 /// Load a note from the data directory
 #[allow(dead_code)]
-pub fn load_note(path: &PathBuf) -> std::io::Result<String> {
+pub fn load_note(path: &Path) -> std::io::Result<String> {
     fs::read_to_string(path)
 }
 
