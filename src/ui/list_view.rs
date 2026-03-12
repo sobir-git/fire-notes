@@ -104,11 +104,34 @@ impl ListViewWidget {
         self.scrollbar.is_scrollable(total_items, visible)
     }
 
-    /// Scrollbar thumb geometry, delegating to `ScrollbarWidget`.
+    /// Scrollbar thumb geometry for a list (max scroll = total - visible, not total - 1).
     /// `total_items` and `scroll_offset` come from `ListWidget`.
     pub fn scrollbar_thumb(&self, total_items: usize, scroll_offset: usize) -> Option<ThumbMetrics> {
         let visible = (self.list_rect.height / self.item_height).floor() as usize;
-        self.scrollbar.thumb(total_items, visible, scroll_offset)
+        if !self.scrollbar.is_scrollable(total_items, visible) {
+            return None;
+        }
+        let track_h    = self.scrollbar.rect.height;
+        let view_ratio = visible as f32 / total_items as f32;
+        let min_thumb  = crate::config::layout::MIN_SCROLLBAR_THUMB * self.scale;
+        let thumb_h    = (track_h * view_ratio).max(min_thumb);
+
+        let max_scroll = total_items.saturating_sub(visible);
+        let scroll_ratio = if max_scroll > 0 {
+            (scroll_offset as f32 / max_scroll as f32).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let track_space = (track_h - thumb_h).max(0.0);
+        let thumb_y     = self.scrollbar.rect.y + track_space * scroll_ratio;
+        Some(ThumbMetrics {
+            rect: Rect {
+                x:      self.scrollbar.rect.x,
+                y:      thumb_y,
+                width:  self.scrollbar.rect.width,
+                height: thumb_h,
+            },
+        })
     }
 
     /// Handle a click on the scrollbar.

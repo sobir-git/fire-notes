@@ -98,9 +98,8 @@ impl Layout for NotesPicker {
         };
         let list = ListViewWidget::layout(list_rect, scale);
 
-        // Indicator dot: right edge of overlay, offset inward.
-        let (ind_strip, _) = overlay_rect.cut_right(2.0 * padding + 4.0 * scale);
-        let indicator_x = ind_strip.x;
+        // Indicator dot: right edge of the list content area (left of scrollbar), inset by padding.
+        let indicator_x = list.list_rect.x + list.list_rect.width - 2.0 * padding;
 
         Self {
             backdrop_rect: window,
