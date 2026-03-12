@@ -210,11 +210,15 @@ impl TabBar {
         let Some(tab) = self.scroll_area.tabs.iter().find(|t| t.index == tab_index) else {
             return current_scroll_x;
         };
-        let left_bound  = self.rect.x;
-        let right_bound = self.tabs_clip_x;
+        let left_bound = self.rect.x;
+        // When tabs overflow the button pins at tabs_clip_x - size - margin.
+        // When they don't, button.x is larger. min() always picks the tightest
+        // (leftmost) position, giving a scroll-independent right bound.
+        let size        = self.new_tab_button.rect.width;
+        let right_bound = self.new_tab_button.rect.x.min(self.tabs_clip_x - size);
 
         if tab.rect.x < left_bound {
-            return current_scroll_x - (left_bound - tab.rect.x);
+            return (current_scroll_x - (left_bound - tab.rect.x)).max(0.0);
         }
         if tab.rect.x + tab.rect.width > right_bound {
             return current_scroll_x + (tab.rect.x + tab.rect.width - right_bound);
