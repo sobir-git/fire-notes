@@ -34,7 +34,8 @@ impl UiTree {
     /// parent-level geometry (e.g. knowing the tab bar height).
     pub fn layout(window: WindowRect, scale: f32) -> Self {
         let rect: Rect = window.into();
-        let (tab_rect, content_rect) = rect.cut_top(cfg_layout::TAB_HEIGHT * scale);
+        let (tab_rect, rest)          = rect.cut_top(cfg_layout::TAB_HEIGHT       * scale);
+        let (_, content_rect)         = rest.cut_top(cfg_layout::CONTENT_TOP_INSET * scale);
         Self {
             tab_bar:      TabBar::layout(tab_rect, scale),
             content_area: ContentArea::layout(content_rect, scale),
