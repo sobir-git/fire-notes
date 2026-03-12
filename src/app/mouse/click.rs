@@ -65,9 +65,9 @@ impl App {
         let scroll_offset = self.logic.tabs[self.logic.active_tab].scroll_offset();
         let scroll_offset_x = self.logic.tabs[self.logic.active_tab].scroll_offset_x();
         let char_width = self.renderer.get_char_width();
-        let total_lines = self.logic.tabs[self.logic.active_tab].total_lines();
+        let content_lines = self.logic.tabs[self.logic.active_tab].content_line_count();
         let (clicked_line, visual_col, below_last) =
-            text_area.hit_to_doc_position(x, y, scroll_offset, scroll_offset_x, char_width, total_lines);
+            text_area.hit_to_doc_position(x, y, scroll_offset, scroll_offset_x, char_width, content_lines);
         let clicked_col = if below_last {
             self.logic.tabs[self.logic.active_tab].line_char_len(clicked_line)
         } else {

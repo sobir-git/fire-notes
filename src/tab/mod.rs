@@ -62,6 +62,14 @@ impl Tab {
 
     pub fn total_lines(&self) -> usize { self.buffer.len_lines() }
 
+    /// Number of content lines — equivalent to `content().lines().count()`.
+    /// Unlike `total_lines()` this never includes ropey's phantom trailing empty line,
+    /// so it is safe to use as an upper bound for click hit-testing.
+    pub fn content_line_count(&self) -> usize {
+        let content = self.content();
+        if content.is_empty() { 1 } else { content.lines().count() }
+    }
+
     pub fn word_wrap(&self) -> bool { self.word_wrap }
 
     #[allow(dead_code)]
