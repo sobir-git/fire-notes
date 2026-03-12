@@ -15,8 +15,6 @@ pub struct TextArea {
     pub line_height: f32,
     pub char_width: f32,
     pub text_padding: f32,
-    /// Vertical offset from rect.y to the first text line — breathing room below the tab bar.
-    pub text_top_margin: f32,
 }
 
 #[allow(dead_code)]
@@ -26,10 +24,9 @@ impl Layout for TextArea {
     fn layout(rect: Rect, scale: f32) -> Self {
         Self {
             rect,
-            line_height:     layout::LINE_HEIGHT     * scale,
-            char_width:      0.0,   // set after font measurement via set_char_width()
-            text_padding:    layout::PADDING         * scale,
-            text_top_margin: layout::TEXT_TOP_MARGIN * scale,
+            line_height:  layout::LINE_HEIGHT * scale,
+            char_width:   0.0,   // set after font measurement via set_char_width()
+            text_padding: layout::PADDING * scale,
         }
     }
 }
@@ -70,7 +67,7 @@ impl TextArea {
         scroll_x: f32,
         char_width: f32,
     ) -> Option<(usize, usize)> {
-        let rel_y = y - self.rect.y - self.text_top_margin;
+        let rel_y = y - self.rect.y;
         if rel_y < 0.0 { return None; }
         let visual_line = (rel_y / self.line_height).floor() as usize;
         let line = scroll_offset + visual_line;
@@ -85,7 +82,7 @@ impl TextArea {
         &self,
         y: f32,
     ) -> isize {
-        let rel_y = y - self.rect.y - self.text_top_margin;
+        let rel_y = y - self.rect.y;
         (rel_y / self.line_height).floor() as isize
     }
 
@@ -97,7 +94,7 @@ impl TextArea {
     pub fn char_rect(&self, line: usize, col: usize, scroll_offset: usize) -> Rect {
         let visual_line = line.saturating_sub(scroll_offset);
         let x = self.rect.x + self.text_padding + col as f32 * self.char_width;
-        let y = self.rect.y + self.text_top_margin + visual_line as f32 * self.line_height;
+        let y = self.rect.y + visual_line as f32 * self.line_height;
         Rect { x, y, width: self.char_width.max(1.0), height: self.line_height }
     }
 }

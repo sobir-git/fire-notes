@@ -13,8 +13,6 @@ pub mod layout {
     pub const TAB_HEIGHT: f32 = 40.0;
     /// General padding around content areas
     pub const PADDING: f32 = 16.0;
-    /// Top margin inside the text area — breathing room between the tab bar border and the first line
-    pub const TEXT_TOP_MARGIN: f32 = 8.0;
     /// Width of the scrollbar
     pub const SCROLLBAR_WIDTH: f32 = 12.0;
     /// Minimum scrollbar thumb height
