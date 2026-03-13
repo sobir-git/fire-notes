@@ -1,5 +1,6 @@
 //! Tab management and rename/notes-picker actions.
 
+use crate::app::active_overlay::ActiveInline;
 use crate::app::focus::Focus;
 use crate::app::state::AppResult;
 use crate::tab::Tab;
@@ -65,7 +66,7 @@ impl AppLogic {
             use crate::ui::Rect;
             let rect = Rect::ZERO; // renderer will position it; geometry not needed at logic layer
             let widget = TabRename::new(tab_index, tab.title(), rect, self.scale);
-            self.inline = Some((tab_index, Box::new(widget)));
+            self.inline = Some(ActiveInline::TabRename(widget));
             self.focus = Focus::TabRename;
         }
     }
@@ -73,10 +74,7 @@ impl AppLogic {
     pub(crate) fn confirm_rename(&mut self) -> AppResult {
         if !matches!(self.focus, Focus::TabRename) { return AppResult::Ok; }
         self.focus = Focus::Editor;
-        if let Some((tab_index, _)) = self.inline.take() {
-            // title was already committed via InlineResult::Commit in dispatch_inline
-            let _ = tab_index;
-        }
+        self.inline = None;
         AppResult::Redraw
     }
 

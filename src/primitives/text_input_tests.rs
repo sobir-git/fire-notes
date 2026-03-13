@@ -15,14 +15,14 @@ mod tests {
     // ── helpers ───────────────────────────────────────────────────────────────
 
     fn ti(text: &str) -> TextInput {
-        let mut t = TextInput::new(text.to_string());
+        let mut t = TextInput::new(text);
         // place cursor at start for predictable baselines
-        t.state.move_to_start(false);
+        t.move_to_start(false);
         t
     }
 
     fn ti_at_end(text: &str) -> TextInput {
-        TextInput::new(text.to_string())
+        TextInput::new(text)
         // TextInput::new places cursor at end by default
     }
 
@@ -55,11 +55,11 @@ mod tests {
     #[test]
     fn insert_replaces_selection() {
         let mut t = ti("hello");
-        t.state.select_all();                 // anchor=0, cursor=5
+        t.select_all();                 // anchor=0, cursor=5
         t.insert('X');
         assert_eq!(t.text(), "X");
         assert_eq!(t.cursor(), 1);
-        assert!(t.state.selection_anchor.is_none());
+        assert!(!t.has_selection());
     }
 
     // ── backspace ─────────────────────────────────────────────────────────────
@@ -83,8 +83,8 @@ mod tests {
     #[test]
     fn backspace_deletes_selection() {
         let mut t = ti("hello world");
-        t.state.move_to_end(false);
-        t.state.move_word_left(true); // select "world"
+        t.move_to_end(false);
+        t.move_word_left(true); // select "world"
         t.backspace();
         assert_eq!(t.text(), "hello ");
     }
@@ -122,19 +122,19 @@ mod tests {
     #[test]
     fn move_left_collapses_selection_to_start() {
         let mut t = ti("hello");
-        t.state.select_all(); // anchor=0, cursor=5
+        t.select_all(); // anchor=0, cursor=5
         t.move_left(false);
         assert_eq!(t.cursor(), 0);
-        assert!(t.state.selection_anchor.is_none());
+        assert!(!t.has_selection());
     }
 
     #[test]
     fn move_right_collapses_selection_to_end() {
         let mut t = ti("hello");
-        t.state.select_all(); // anchor=0, cursor=5
+        t.select_all(); // anchor=0, cursor=5
         t.move_right(false);
         assert_eq!(t.cursor(), 5);
-        assert!(t.state.selection_anchor.is_none());
+        assert!(!t.has_selection());
     }
 
     // ── home / end ────────────────────────────────────────────────────────────
@@ -206,7 +206,7 @@ mod tests {
     fn move_right_with_shift_extends_selection() {
         let mut t = ti("abc");
         t.move_right(true); // anchor=0, cursor=1
-        assert_eq!(t.state.selection_anchor, Some(0));
+        assert!(t.has_selection());
         assert_eq!(t.cursor(), 1);
     }
 
@@ -214,14 +214,14 @@ mod tests {
     fn move_left_with_shift_extends_selection_backward() {
         let mut t = ti_at_end("abc");
         t.move_left(true); // anchor=3, cursor=2
-        assert_eq!(t.state.selection_anchor, Some(3));
+        assert!(t.has_selection());
         assert_eq!(t.cursor(), 2);
     }
 
     #[test]
     fn select_all_then_insert_replaces_entire_text() {
         let mut t = ti("old content");
-        t.state.select_all();
+        t.select_all();
         t.insert('X');
         assert_eq!(t.text(), "X");
     }
@@ -264,11 +264,14 @@ mod tests {
 
     #[test]
     fn insert_updates_scroll_so_cursor_is_visible() {
-        let mut t = TextInput::new(String::new());
-        t.relayout(crate::ui::Rect { x: 0.0, y: 0.0, width: 50.0, height: 20.0 }, 1.0);
+        let rect = crate::ui::Rect { x: 0.0, y: 0.0, width: 50.0, height: 20.0 };
+        let mut t = TextInput::new("");
         t.set_char_width(8.0);
         // type 10 chars — cursor at x=80, visible_width ≈ 34px → scroll must kick in
-        for ch in "abcdefghij".chars() { t.insert(ch); }
+        for ch in "abcdefghij".chars() {
+            t.insert(ch);
+            t.ensure_visible(rect, 1.0);
+        }
         // cursor should be visible: cursor_x >= scroll_offset
         let cursor_x = t.cursor() as f32 * 8.0;
         let scroll = t.scroll_offset();
@@ -280,11 +283,15 @@ mod tests {
 
     #[test]
     fn move_to_start_scrolls_back_to_zero() {
-        let mut t = TextInput::new(String::new());
-        t.relayout(crate::ui::Rect { x: 0.0, y: 0.0, width: 50.0, height: 20.0 }, 1.0);
+        let rect = crate::ui::Rect { x: 0.0, y: 0.0, width: 50.0, height: 20.0 };
+        let mut t = TextInput::new("");
         t.set_char_width(8.0);
-        for ch in "abcdefghijklmnop".chars() { t.insert(ch); }
+        for ch in "abcdefghijklmnop".chars() {
+            t.insert(ch);
+            t.ensure_visible(rect, 1.0);
+        }
         t.move_to_start(false);
+        t.ensure_visible(rect, 1.0);
         assert_eq!(t.scroll_offset(), 0.0);
     }
 
@@ -318,26 +325,29 @@ mod tests {
         let mut t = ti("hello");
         t.relayout(crate::ui::Rect { x: 0.0, y: 0.0, width: 200.0, height: 30.0 }, 1.0);
         // render() should not panic and return a Layer node
-        let node = t.render(true);
+        use crate::primitives::text_input::ViewProps;
+        let node = t.view(crate::ui::Rect { x: 0.0, y: 0.0, width: 200.0, height: 30.0 }, 1.0,
+            ViewProps { placeholder: "", cursor_visible: true, focused: true });
         assert!(matches!(node, Node::Layer(_)));
     }
 
     #[test]
-    fn render_at_produces_node() {
+    fn view_produces_node() {
         use crate::layout::Node;
+        use crate::primitives::text_input::ViewProps;
         let t = ti("hi");
         let rect = crate::ui::Rect { x: 0.0, y: 0.0, width: 200.0, height: 30.0 };
-        let node = t.render_at(rect, 1.0, "placeholder", false);
+        let node = t.view(rect, 1.0, ViewProps::unfocused("placeholder"));
         assert!(matches!(node, Node::Layer(_)));
     }
 
     #[test]
-    fn render_at_uses_placeholder_when_empty() {
-        // Smoke test: no panic on empty text with placeholder
+    fn view_uses_placeholder_when_empty() {
         use crate::layout::Node;
+        use crate::primitives::text_input::ViewProps;
         let t = ti("");
         let rect = crate::ui::Rect { x: 0.0, y: 0.0, width: 200.0, height: 30.0 };
-        let node = t.render_at(rect, 1.0, "Type here...", false);
+        let node = t.view(rect, 1.0, ViewProps::unfocused("Type here..."));
         assert!(matches!(node, Node::Layer(_)));
     }
 }

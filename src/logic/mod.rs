@@ -11,6 +11,7 @@
 //!   directly in tests (no rendering required).
 
 mod actions;   // src/logic/actions/mod.rs
+mod render;    // src/logic/render/mod.rs
 
 #[cfg(test)]
 mod tests;
@@ -18,12 +19,12 @@ mod tests;
 use std::sync::mpsc;
 
 use crate::app::action::Action;
+use crate::app::active_overlay::{ActiveInline, ActiveOverlay};
 use crate::app::focus::Focus;
+use crate::app::overlay_event::{InlineResult, OverlayEvent, OverlayResult};
 use crate::app::scroll_state::{ScrollDirection, ScrollInput, ScrollState};
 use crate::app::state::AppResult;
 use crate::config::{self, layout, timing};
-use crate::layout::{FrameworkEvent, InlineResult, InlineWidget, Overlay, OverlayResult};
-#[allow(unused_imports)] use InlineResult as _;
 use crate::tab::Tab;
 use crate::theme::Theme;
 use crate::ui::{UiTree, WindowRect};
@@ -58,9 +59,9 @@ pub struct AppLogic {
     /// Active theme — passed into overlay.render().
     pub(crate) theme: Theme,
     /// Active overlay (picker, dialog…) — `Some` while open.
-    pub(crate) overlay: Option<Box<dyn Overlay>>,
-    /// Active inline widget (tab rename, …) — `(tab_index, widget)`.
-    pub(crate) inline: Option<(usize, Box<dyn InlineWidget>)>,
+    pub(crate) overlay: Option<ActiveOverlay>,
+    /// Active inline widget (tab rename, …).
+    pub(crate) inline: Option<ActiveInline>,
     /// Retained UI tree — persists across frames so hover state survives.
     pub(crate) ui_tree: UiTree,
     pub(crate) scroll_state: ScrollState,
@@ -281,7 +282,7 @@ impl AppLogic {
                 let r = self.cancel_overlay();
                 if r.needs_redraw() { return r; }
                 if matches!(self.focus, Focus::TabRename) {
-                    return self.dispatch_inline(FrameworkEvent::Key(crate::app::Key::Escape));
+                    return self.dispatch_inline(OverlayEvent::Cancel);
                 }
                 AppResult::Ok
             }
@@ -289,7 +290,7 @@ impl AppLogic {
                 let r = self.confirm_overlay();
                 if r.needs_redraw() { return r; }
                 if matches!(self.focus, Focus::TabRename) {
-                    return self.dispatch_inline(FrameworkEvent::Key(crate::app::Key::Enter));
+                    return self.dispatch_inline(OverlayEvent::Confirm);
                 }
                 self.handle_char('\n')
             }
@@ -299,7 +300,7 @@ impl AppLogic {
     }
 
     /// Open an overlay. The caller constructs the concrete type and boxes it.
-    pub fn open_overlay_with(&mut self, overlay: Box<dyn Overlay>) -> AppResult {
+    pub fn open_overlay_with(&mut self, overlay: ActiveOverlay) -> AppResult {
         self.overlay = Some(overlay);
         self.focus   = Focus::open_overlay();
         AppResult::Redraw
@@ -313,10 +314,12 @@ impl AppLogic {
         AppResult::Ok
     }
 
-    /// Dispatch a FrameworkEvent to the active overlay and translate OverlayResult → AppResult.
-    pub fn dispatch_overlay(&mut self, event: FrameworkEvent) -> AppResult {
+    /// Dispatch an OverlayEvent to the active overlay.
+    pub fn dispatch_overlay(&mut self, event: OverlayEvent<'_>) -> AppResult {
+        let window = crate::ui::Rect { x: 0.0, y: 0.0, width: self.width, height: self.height };
+        let scale  = self.scale;
         let result = if let Some(o) = &mut self.overlay {
-            o.on_event(event)
+            o.on_event(event, window, scale)
         } else {
             return AppResult::Ok;
         };
@@ -336,17 +339,19 @@ impl AppLogic {
     }
 
     fn confirm_overlay(&mut self) -> AppResult {
+        let window = crate::ui::Rect { x: 0.0, y: 0.0, width: self.width, height: self.height };
+        let scale  = self.scale;
         let result = if let Some(o) = &mut self.overlay {
-            o.on_event(FrameworkEvent::Key(crate::app::Key::Enter))
+            o.on_event(OverlayEvent::Confirm, window, scale)
         } else {
             return AppResult::Ok;
         };
         self.handle_overlay_result(result)
     }
 
-    /// Dispatch a FrameworkEvent to the active inline widget and handle the result.
-    pub(crate) fn dispatch_inline(&mut self, event: FrameworkEvent) -> AppResult {
-        let result = if let Some((_, w)) = &mut self.inline {
+    /// Dispatch an OverlayEvent to the active inline widget.
+    pub(crate) fn dispatch_inline(&mut self, event: OverlayEvent<'_>) -> AppResult {
+        let result = if let Some(w) = &mut self.inline {
             w.on_event(event)
         } else {
             return AppResult::Ok;
@@ -364,7 +369,8 @@ impl AppLogic {
                 AppResult::Redraw
             }
             InlineResult::Commit(title) => {
-                if let Some((tab_index, _)) = self.inline.take() {
+                if let Some(w) = self.inline.take() {
+                    let tab_index = w.tab_index();
                     if !title.is_empty() {
                         if let Some(tab) = self.tabs.get_mut(tab_index) {
                             tab.set_title(title);
@@ -379,8 +385,11 @@ impl AppLogic {
 
     /// Insert text from clipboard (called by platform shell after reading clipboard).
     pub fn insert_paste_text(&mut self, text: &str) -> AppResult {
+        if self.focus.is_overlay() {
+            return self.dispatch_overlay(OverlayEvent::Paste(text.to_string()));
+        }
         if matches!(self.focus, Focus::TabRename) {
-            return AppResult::Ok;
+            return self.dispatch_inline(OverlayEvent::Paste(text.to_string()));
         }
         if !text.is_empty() {
             self.tabs[self.active_tab].paste_text(text);
@@ -449,7 +458,7 @@ impl AppLogic {
             SlashCommand { name: "Close Tab".into(),    description: "Close the active tab".into() },
         ];
 
-        let window: Rect = WindowRect::new(self.width, self.height).into();
+        let _window: Rect = WindowRect::new(self.width, self.height).into();
         let content = self.ui_tree.slot("content");
         let tab = &self.tabs[self.active_tab];
         let cursor_line = tab.cursor_line();
@@ -465,8 +474,8 @@ impl AppLogic {
             height: lh,
         };
 
-        let menu = SlashMenu::new(commands, anchor, window, self.scale);
-        self.open_overlay_with(Box::new(menu))
+        let menu = SlashMenu::new(commands, anchor, cw);
+        self.open_overlay_with(crate::app::active_overlay::ActiveOverlay::SlashMenu(menu))
     }
 
     // =========================================================================
@@ -559,206 +568,5 @@ impl AppLogic {
         crate::persistence::SessionState { active_path, tabs }
     }
 
-    // =========================================================================
-    // Render — single Node tree, replaces render_frame() + snapshot.rs
-    // =========================================================================
-
-    /// Produce the full UI scene as a `Node` tree.
-    ///
-    /// This is the **only** render path. The renderer walks this tree and emits
-    /// draw calls. No `RenderFrame`, no snapshot bridging, no per-subsystem
-    /// baking methods.
-    pub fn render(&mut self) -> crate::layout::Node {
-        use crate::layout::Node;
-        use crate::layout::node::{
-            EditorCursor, EditorNode, EditorSelection, FlamePos,
-            RenameOverlayNode, ScrollbarNode, TabBarNode, TabEntry,
-            TextLine, WinButton, WinButtonKind,
-        };
-        use crate::layout::node::Color as NColor;
-
-        self.prepare_ui_tree();
-
-        // ── Geometry from ui_tree ─────────────────────────────────────────
-        let tb      = &self.ui_tree.tab_bar;
-        let ca      = &self.ui_tree.content_area;
-        let scale   = self.scale;
-
-        // ── Tab bar node ──────────────────────────────────────────────────
-        let renaming_tab = self.inline.as_ref().map(|(idx, _)| *idx);
-
-        let tab_bar_font_size = crate::config::rendering::TAB_FONT_SIZE * scale;
-        let tab_bar_baseline  = tb.rect.y + tb.rect.height / 2.0 + tab_bar_font_size * 0.35;
-
-        let tabs: Vec<TabEntry> = tb.scroll_area.tabs.iter().map(|tm| {
-            let t = &self.tabs[tm.index];
-            let title = if Some(tm.index) == renaming_tab {
-                self.inline.as_ref()
-                    .and_then(|(_, w)| w.as_any()
-                        .downcast_ref::<crate::components::tab_rename::TabRename>())
-                    .map(|tr| tr.input.text().to_string())
-                    .unwrap_or_else(|| t.title().to_string())
-            } else {
-                t.title().to_string()
-            };
-            TabEntry {
-                title,
-                rect: tm.rect,
-                is_active:  tm.index == self.active_tab,
-                is_hovered: tb.hovered_tab_index == Some(tm.index),
-            }
-        }).collect();
-
-        let rename = self.inline.as_ref().and_then(|(tab_index, w)| {
-            let tr = w.as_any().downcast_ref::<crate::components::tab_rename::TabRename>()?;
-            // Find the tab rect for text_x/text_y
-            let tm = tb.scroll_area.tabs.iter().find(|t| t.index == *tab_index)?;
-            Some(RenameOverlayNode {
-                tab_index:      *tab_index,
-                text:           tr.input.text().to_string(),
-                cursor:         tr.input.state.cursor,
-                cursor_visible: self.cursor_visible,
-                text_x:         tm.rect.x + tm.rect.width / 2.0, // centering; renderer measures
-                text_y:         tab_bar_baseline,
-            })
-        });
-
-        let win_buttons = vec![
-            WinButton { rect: tb.close_rect,    hovered: tb.hovered_close,    kind: WinButtonKind::Close },
-            WinButton { rect: tb.maximize_rect, hovered: tb.hovered_maximize, kind: WinButtonKind::Maximize },
-            WinButton { rect: tb.minimize_rect, hovered: tb.hovered_minimize, kind: WinButtonKind::Minimize },
-        ];
-
-        let tab_bar_node = Node::TabBar(TabBarNode {
-            rect:            tb.rect,
-            tabs_clip_x:     tb.tabs_clip_x,
-            tabs,
-            new_tab_rect:    tb.new_tab_rect,
-            new_tab_hovered: tb.hovered_plus,
-            win_buttons,
-            rename,
-        });
-
-        // ── Editor node ───────────────────────────────────────────────────
-        let current_tab   = &self.tabs[self.active_tab];
-        let scroll_offset = current_tab.scroll_offset();
-        let total_lines   = current_tab.total_lines();
-        let visible_count = ca.visible_line_count();
-        let scroll_x      = current_tab.scroll_offset_x();
-        let line_height   = ca.text.line_height;
-        let text_padding  = ca.text.text_padding;
-        let doc_top_margin = ca.text.doc_top_margin;
-        let char_width    = self.char_width_hint;
-
-        let lines: Vec<TextLine> = current_tab.content().lines()
-            .enumerate()
-            .skip(scroll_offset)
-            .take(visible_count)
-            .map(|(idx, text)| {
-                let visual = idx - scroll_offset;
-                let y = ca.text.rect.y + doc_top_margin + visual as f32 * line_height;
-                TextLine { line_index: idx, text: text.to_string(), y }
-            })
-            .collect();
-
-        // Cursor
-        let cursor = {
-            let cl = current_tab.cursor_line();
-            let cc = current_tab.cursor_col();
-            let (cx, cy) = if cl >= scroll_offset {
-                let visual = cl - scroll_offset;
-                let y = ca.text.rect.y + doc_top_margin + visual as f32 * line_height;
-                let line_text = current_tab.content().lines().nth(cl).unwrap_or("");
-                let vl = crate::visual_position::VisualLine::new(line_text);
-                let x  = vl.char_col_to_visual_x(cc, text_padding - scroll_x, char_width);
-                (x, y)
-            } else { (0.0, -999.0) };
-            EditorCursor { x: cx, y: cy, line_height, visible: self.cursor_visible }
-        };
-
-        // Selection
-        let selection = current_tab.selection_range_line_col().map(|(start, end)| {
-            let (start_line, start_col) = start;
-            let (end_line, end_col)     = end;
-            let mut rects = Vec::new();
-            for ld in lines.iter() {
-                let li = ld.line_index;
-                if li < start_line || li > end_line { continue; }
-                let sc = if li == start_line { start_col } else { 0 };
-                let line_text = &ld.text;
-                let ec = if li == end_line { end_col.min(line_text.chars().count()) }
-                         else              { line_text.chars().count() };
-                if sc >= ec { continue; }
-                let vl = crate::visual_position::VisualLine::new(line_text);
-                let x1 = vl.char_col_to_visual_x(sc, text_padding - scroll_x, char_width);
-                let x2 = vl.char_col_to_visual_x(ec, text_padding - scroll_x, char_width);
-                let sel_rect = crate::ui::Rect { x: x1, y: ld.y, width: (x2 - x1).max(char_width), height: line_height };
-                rects.push(sel_rect);
-            }
-            EditorSelection { rects }
-        });
-
-        // Scrollbar
-        let scrollbar = if total_lines > visible_count && visible_count > 0 {
-            let s = &ca.scrollbar;
-            s.thumb(total_lines, visible_count, scroll_offset).map(|thumb| ScrollbarNode {
-                track:       s.rect,
-                thumb:       thumb.rect,
-                track_color: NColor::rgba(0.0, 0.0, 0.0, 0.0),
-                thumb_color: NColor::rgba(1.0, 1.0, 1.0,
-                    if ca.scrollbar_hovered { 0.35 } else { 0.20 }),
-            })
-        } else { None };
-
-        // Flames
-        let now = std::time::Instant::now();
-        let mut flames: Vec<FlamePos> = Vec::new();
-        // Selection flames — one spawn point per character column across each selection rect
-        let cw = char_width.max(1.0);
-        for r in selection.as_ref().map(|s| s.rects.iter()).into_iter().flatten() {
-            let bottom = r.y + r.height;
-            let cy     = r.y + r.height * 0.5;
-            let n_chars = (r.width / cw).ceil() as usize;
-            for i in 0..n_chars.max(1) {
-                let cx = r.x + (i as f32 + 0.5) * cw;
-                flames.push(FlamePos { cx, cy, bottom, age: 0.0 });
-            }
-        }
-        // Typing flames
-        for &(line, col, timestamp) in &self.typing_flame_positions {
-            if line < scroll_offset { continue; }
-            let visual = line - scroll_offset;
-            let y = ca.text.rect.y + doc_top_margin + visual as f32 * line_height;
-            if y > ca.rect.y + ca.rect.height { continue; }
-            let line_text = current_tab.content().lines().nth(line).unwrap_or("");
-            let vl = crate::visual_position::VisualLine::new(line_text);
-            let cx = vl.char_col_to_visual_center_x(col, text_padding - scroll_x, char_width);
-            let age = now.duration_since(timestamp).as_secs_f32().min(1.0);
-            flames.push(FlamePos { cx, cy: y + line_height * 0.5, bottom: y + line_height, age });
-        }
-
-        let editor_node = Node::Editor(EditorNode {
-            rect:         ca.rect,
-            text_rect:    ca.text.rect,
-            line_height,
-            text_padding,
-            char_width,
-            scroll_x,
-            word_wrap:    current_tab.word_wrap(),
-            lines,
-            cursor,
-            selection,
-            scrollbar,
-            flames,
-        });
-
-        // ── Overlay ───────────────────────────────────────────────────────
-        let overlay = self.overlay.as_ref().map(|o| o.render(&self.theme));
-
-        // ── Full scene ────────────────────────────────────────────────────
-        let mut scene = vec![tab_bar_node, editor_node];
-        if let Some(o) = overlay { scene.push(o); }
-        Node::layer(scene)
-    }
 }
 

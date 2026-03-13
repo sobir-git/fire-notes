@@ -4,11 +4,10 @@
 
 use std::path::PathBuf;
 
+use crate::app::active_overlay::ActiveOverlay;
+use crate::app::overlay_event::OverlayEvent;
 use crate::components::notes_picker::NotesPicker;
-use crate::layout::FrameworkEvent;
 use crate::persistence;
-use crate::ui::Rect;
-
 use super::focus::NoteEntry;
 use super::state::AppResult;
 use super::App;
@@ -26,21 +25,21 @@ impl App {
             NoteEntry { path, title, is_open }
         }).collect();
         if notes.is_empty() { return AppResult::Ok; }
-        let window = Rect { x: 0.0, y: 0.0, width: self.logic.width, height: self.logic.height };
-        let picker = NotesPicker::new(notes, window, self.logic.scale);
-        self.logic.open_overlay_with(Box::new(picker))
+        let cw = self.renderer.get_picker_char_width();
+        let picker = NotesPicker::new(notes, cw);
+        self.logic.open_overlay_with(ActiveOverlay::NotesPicker(picker))
     }
 
     pub fn is_notes_picker_open(&self) -> bool { self.logic.focus.is_overlay() }
 
     pub fn scroll_notes_picker(&mut self, lines: isize) -> AppResult {
-        self.logic.dispatch_overlay(FrameworkEvent::Scroll { lines })
+        self.logic.dispatch_overlay(OverlayEvent::Scroll { lines })
     }
 
     pub fn hover_notes_picker(&mut self, x: f32, y: f32) -> AppResult {
         if let Some(o) = &self.logic.overlay {
             self.logic.cursor_shape = o.cursor_shape_at(x, y);
         }
-        self.logic.dispatch_overlay(FrameworkEvent::PointerMove { x, y })
+        self.logic.dispatch_overlay(OverlayEvent::PointerMove { x, y })
     }
 }

@@ -27,8 +27,8 @@ pub struct TextStyle {
     pub font_size:   f32,
     pub color:       Color,
     pub baseline_y:  f32,
-    /// Horizontal clip start (for scrollable inputs).
-    pub clip_x:      f32,
+    /// X coordinate where text rendering starts (text origin, not the scissor rect).
+    pub text_x:      f32,
     /// Horizontal scroll offset in pixels.
     pub scroll_x:    f32,
 }
@@ -107,8 +107,6 @@ pub struct RenameOverlayNode {
     pub text:           String,
     pub cursor:         usize,
     pub cursor_visible: bool,
-    /// Pixel x where text rendering starts (pre-computed from tab rect).
-    pub text_x:         f32,
     /// Pixel y baseline.
     pub text_y:         f32,
 }
@@ -164,7 +162,6 @@ pub struct FlamePos {
 #[derive(Debug, Clone)]
 pub struct EditorNode {
     pub rect:         Rect,
-    pub text_rect:    Rect,
     pub line_height:  f32,
     pub text_padding: f32,
     pub char_width:   f32,
@@ -218,21 +215,8 @@ pub enum Node {
 }
 
 impl Node {
-    /// Convenience: empty layer.
-    pub fn empty() -> Self { Node::Layer(vec![]) }
-
     /// Convenience: wrap multiple nodes into a layer.
     pub fn layer(children: impl Into<Vec<Node>>) -> Self {
         Node::Layer(children.into())
     }
-}
-
-// ── Builder helpers ───────────────────────────────────────────────────────────
-
-pub fn box_node(rect: Rect, style: BoxStyle) -> Node {
-    Node::Box { rect, style }
-}
-
-pub fn text_node(text: impl Into<String>, style: TextStyle, clip: Option<Rect>) -> Node {
-    Node::Text { text: text.into(), style, clip }
 }

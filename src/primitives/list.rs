@@ -4,7 +4,6 @@
 //! Replaces `ui::ListWidget<T>` (state) + `ui::ListViewWidget` (geometry) + `fw::List<T>` (merged).
 
 use crate::config::layout as cfg;
-use crate::layout::Widget;
 use crate::layout::node::{BoxStyle, Color, Node, ScrollbarNode, TextStyle};
 use crate::ui::{CursorShape, Rect};
 use super::scrollbar::{Scrollbar, ScrollbarAction};
@@ -335,7 +334,7 @@ impl<T: Clone> List<T> {
             font_size,
             color:      Color::rgb(0.78, 0.78, 0.78),
             baseline_y: 0.0,
-            clip_x:     self.list_rect.x,
+            text_x:     self.list_rect.x,
             scroll_x:   0.0,
         };
         let sel_style  = TextStyle { color: Color::rgb(1.0, 1.0, 1.0), ..row_style };
@@ -368,7 +367,7 @@ impl<T: Clone> List<T> {
             font_size,
             color:      Color::rgb(r, g, b),
             baseline_y: 0.0,
-            clip_x:     self.list_rect.x,
+            text_x:     self.list_rect.x,
             scroll_x:   0.0,
         };
         let sel_style = TextStyle { color: Color::rgb(sr, sg, sb), ..row_style };
@@ -414,7 +413,7 @@ impl<T: Clone> List<T> {
             font_size,
             color:      Color::rgb(r, g, b),
             baseline_y: 0.0,
-            clip_x:     list_rect.x,
+            text_x:     list_rect.x,
             scroll_x:   0.0,
         };
         let sel_style = TextStyle { color: Color::rgb(sr, sg, sb_), ..row_style };
@@ -461,7 +460,7 @@ impl<T: Clone> List<T> {
                 if has_indicator {
                     row_nodes.push(Node::Text {
                         text:  "●".to_string(),
-                        style: TextStyle { baseline_y: center_y, clip_x: indicator_x, ..dot_style },
+                        style: TextStyle { baseline_y: center_y, text_x: indicator_x, ..dot_style },
                         clip:  None,
                     });
                 }
@@ -539,7 +538,7 @@ impl<T: Clone> List<T> {
             if has_indicator {
                 row_nodes.push(Node::Text {
                     text:  "●".to_string(),
-                    style: TextStyle { baseline_y: geo.center_y, clip_x: indicator_x, ..dot_style },
+                    style: TextStyle { baseline_y: geo.center_y, text_x: indicator_x, ..dot_style },
                     clip:  None,
                 });
             }
@@ -567,20 +566,6 @@ impl<T: Clone> List<T> {
     }
 }
 
-// ── Widget impl ───────────────────────────────────────────────────────────────
-
-impl<T: Clone> Widget for List<T> {
-    type Event = ListPointerResult;
-    fn on_pointer_down(&mut self, x: f32, y: f32) -> ListPointerResult {
-        self.on_pointer_down(x, y)
-    }
-    fn on_hover(&mut self, x: f32, y: f32) -> bool {
-        self.on_hover(x, y)
-    }
-    fn cursor_shape_at(&self, _x: f32, _y: f32) -> CursorShape {
-        CursorShape::Default
-    }
-}
 
 #[cfg(test)]
 mod tests {

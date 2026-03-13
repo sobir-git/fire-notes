@@ -1,44 +1,32 @@
 //! TabRename — inline tab-title editor. One file, one component.
 
-use crate::app::Key;
-use crate::layout::{FrameworkEvent, InlineResult, InlineWidget};
+use crate::app::overlay_event::{InlineResult, OverlayEvent};
 use crate::primitives::TextInput;
 use crate::ui::Rect;
 
 pub struct TabRename {
-    #[allow(dead_code)]
     pub tab_index: usize,
     pub input:     TextInput,
 }
 
 impl TabRename {
     pub fn new(tab_index: usize, title: &str, rect: Rect, scale: f32) -> Self {
-        let mut input = TextInput::new(title.to_string());
-        input.relayout(rect, scale);
-        input.state.select_all();
+        let mut input = TextInput::new(title);
+        let _ = (rect, scale);
+        input.select_all();
         Self { tab_index, input }
     }
-}
 
-impl InlineWidget for TabRename {
-    fn as_any(&self) -> &dyn std::any::Any { self }
-
-    fn on_event(&mut self, ev: FrameworkEvent) -> InlineResult {
+    pub fn on_event(&mut self, ev: OverlayEvent<'_>) -> InlineResult {
         use InlineResult::*;
         match ev {
-            FrameworkEvent::Char(c)              => { self.input.insert(c);             Redraw }
-            FrameworkEvent::Backspace            => { self.input.backspace();           Redraw }
-            FrameworkEvent::ArrowLeft            => { self.input.move_left(false);      Redraw }
-            FrameworkEvent::ArrowRight           => { self.input.move_right(false);     Redraw }
-            FrameworkEvent::Key(Key::Home)       => { self.input.move_to_start(false);  Redraw }
-            FrameworkEvent::Key(Key::End)        => { self.input.move_to_end(false);    Redraw }
-            FrameworkEvent::Key(Key::Enter)      => Commit(self.input.text().trim().to_string()),
-            FrameworkEvent::Key(Key::Escape)     => Cancel,
-            FrameworkEvent::PointerDown { x, y, char_width } => {
-                self.input.on_pointer_down_with(x, y, char_width); Redraw
-            }
-            FrameworkEvent::PointerDrag { x, char_width } => {
-                self.input.on_drag(x, char_width); Redraw
+            OverlayEvent::Confirm                => Commit(self.input.text().trim().to_string()),
+            OverlayEvent::Cancel                 => Cancel,
+            OverlayEvent::PointerDown { .. } | OverlayEvent::PointerDrag { .. } => Redraw,
+            OverlayEvent::Text(text_ev) => {
+                let dummy = Rect { x: 0.0, y: 0.0, width: 9999.0, height: 24.0 };
+                self.input.handle_key(text_ev, dummy, 1.0);
+                Redraw
             }
             _ => Nothing,
         }

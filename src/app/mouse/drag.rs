@@ -39,8 +39,7 @@ impl App {
 
         if self.logic.ui_tree.content_area.is_text_selecting {
             if self.logic.focus.is_overlay() {
-                let char_width = self.renderer.get_picker_char_width();
-                return self.logic.dispatch_overlay(crate::layout::FrameworkEvent::PointerDrag { x, char_width });
+                return self.logic.dispatch_overlay(crate::app::overlay_event::OverlayEvent::PointerDrag { x });
             } else {
                 return self.handle_text_selection_drag(x, y);
             }

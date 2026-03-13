@@ -1,30 +1,36 @@
 //! Event loop handler — bridges winit events to the App.
+//!
+//! This file owns `AppHandler` and the `ApplicationHandler` impl.
+//! Each heavy event arm is delegated to a focused sub-module:
+//!
+//! | Module                  | Handles                          |
+//! |-------------------------|----------------------------------|
+//! | `handle_resize`         | `WindowEvent::Resized`           |
+//! | `handle_keyboard`       | `WindowEvent::KeyboardInput`     |
+//! | `handle_mouse`          | Wheel / CursorMoved / MouseInput |
+//! | `handle_dropped_file`   | `WindowEvent::DroppedFile`       |
 
-use std::num::NonZeroU32;
 use std::time::{Duration, Instant};
 
 use glutin::prelude::*;
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::keyboard::ModifiersState;
 use winit::window::WindowId;
 
-use crate::app::{AppResult, ScrollInput};
-use crate::config::scroll;
 use crate::persistence::{save_session_state, save_window_state};
 
-use super::keys::convert_winit_key;
 use super::window::{AppState, build_app_state, capture_window_state};
 
 pub struct AppHandler {
     pub state: Option<AppState>,
-    modifiers: ModifiersState,
-    mouse_position: (f64, f64),
-    mouse_pressed: bool,
-    last_click_time: Option<Instant>,
-    last_click_pos: Option<(f64, f64)>,
-    click_count: u32,
+    pub(super) modifiers: ModifiersState,
+    pub(super) mouse_position: (f64, f64),
+    pub(super) mouse_pressed: bool,
+    pub(super) last_click_time: Option<Instant>,
+    pub(super) last_click_pos: Option<(f64, f64)>,
+    pub(super) click_count: u32,
 }
 
 impl AppHandler {
@@ -68,21 +74,7 @@ impl ApplicationHandler for AppHandler {
             }
 
             WindowEvent::Resized(size) => {
-                if size.width > 0 && size.height > 0 {
-                    state.gl_surface.resize(
-                        &state.gl_context,
-                        NonZeroU32::new(size.width).unwrap(),
-                        NonZeroU32::new(size.height).unwrap(),
-                    );
-                    let scale = state.window.scale_factor() as f32;
-                    state.app.resize(size.width as f32, size.height as f32, scale);
-                    // Render immediately — avoids one-frame lag on Wayland where the
-                    // compositor resizes the surface before the next RedrawRequested.
-                    state.app.render();
-                    state.gl_surface
-                        .swap_buffers(&state.gl_context)
-                        .expect("Failed to swap buffers");
-                }
+                super::handle_resize::handle_resize(state, size);
             }
 
             WindowEvent::ModifiersChanged(mods) => {
@@ -90,173 +82,41 @@ impl ApplicationHandler for AppHandler {
             }
 
             WindowEvent::KeyboardInput { event, is_synthetic, .. } => {
-                if is_synthetic { return; }
-                if event.state == ElementState::Pressed {
-                    let key_event = convert_winit_key(&event.logical_key, &self.modifiers);
-                    if let Some(key_event) = key_event {
-                        if let Some(action) = crate::app::resolve_keybinding(&key_event) {
-                            let result = state.app.execute(action);
-                            if result.needs_redraw() { state.window.request_redraw(); }
-                        }
-                    }
-                }
+                super::handle_keyboard::handle_keyboard(
+                    state, &event, is_synthetic, &self.modifiers,
+                );
             }
 
             WindowEvent::MouseWheel { delta, .. } => {
-                if state.app.is_notes_picker_open() {
-                    let lines = match delta {
-                        MouseScrollDelta::LineDelta(_, y) => if y > 0.0 { -1isize } else { 1 },
-                        MouseScrollDelta::PixelDelta(pos) => if pos.y > 0.0 { -1 } else { 1 },
-                    };
-                    if state.app.scroll_notes_picker(lines).needs_redraw() {
-                        state.window.request_redraw();
-                    }
-                } else if state.app.is_mouse_in_tab_bar() {
-                    let scroll_delta = match delta {
-                        MouseScrollDelta::LineDelta(_, y) => y * scroll::TAB_SCROLL_PIXELS,
-                        MouseScrollDelta::PixelDelta(pos) => pos.y as f32 / 2.0,
-                    };
-                    if state.app.scroll_tab_bar(scroll_delta).needs_redraw() {
-                        state.window.request_redraw();
-                    }
-                } else {
-                    let scroll_input = match delta {
-                        MouseScrollDelta::LineDelta(_, y) => ScrollInput::LineDelta(y),
-                        MouseScrollDelta::PixelDelta(pos) => ScrollInput::PixelDelta(pos.y as f32),
-                    };
-                    if state.app.handle_scroll_event(scroll_input).needs_redraw() {
-                        state.window.request_redraw();
-                    }
-                }
+                super::handle_mouse::handle_mouse_wheel(state, delta);
             }
 
             WindowEvent::CursorMoved { position, .. } => {
-                self.mouse_position = (position.x, position.y);
-                let x = self.mouse_position.0 as f32;
-                let y = self.mouse_position.1 as f32;
-
-                let needs_redraw_on_hover = if state.app.is_notes_picker_open() {
-                    state.app.hover_notes_picker(x, y).needs_redraw()
-                } else {
-                    state.app.handle_mouse_move(x, y).needs_redraw()
-                };
-
-                use winit::window::CursorIcon;
-                use crate::app::CursorShape;
-                let cursor = match state.app.logic.cursor_shape {
-                    CursorShape::Default   => CursorIcon::Default,
-                    CursorShape::Text      => CursorIcon::Text,
-                    CursorShape::Pointer   => CursorIcon::Pointer,
-                    CursorShape::NsResize  => CursorIcon::NsResize,
-                    CursorShape::EwResize  => CursorIcon::EwResize,
-                    CursorShape::NeswResize => CursorIcon::NeswResize,
-                    CursorShape::NwseResize => CursorIcon::NwseResize,
-                };
-                state.window.set_cursor(cursor);
-
-                if self.mouse_pressed {
-                    if state.app.drag_at(x, y).needs_redraw() {
-                        state.window.request_redraw();
-                    }
-                } else if needs_redraw_on_hover {
-                    state.window.request_redraw();
-                }
+                super::handle_mouse::handle_cursor_moved(
+                    &mut self.mouse_position,
+                    self.mouse_pressed,
+                    state,
+                    position,
+                );
             }
 
             WindowEvent::MouseInput { state: button_state, button, .. } => {
-                match button {
-                    MouseButton::Left => {
-                        if button_state == ElementState::Pressed {
-                            self.mouse_pressed = true;
-                            let now = Instant::now();
-                            let mut consecutive = false;
+                super::handle_mouse::handle_mouse_input(
+                    self.mouse_position,
+                    &mut self.mouse_pressed,
+                    &mut self.last_click_time,
+                    &mut self.last_click_pos,
+                    &mut self.click_count,
+                    self.modifiers,
+                    state,
+                    event_loop,
+                    button_state,
+                    button,
+                );
+            }
 
-                            if let Some(last_time) = self.last_click_time {
-                                if now.duration_since(last_time).as_millis() < 500 {
-                                    if let Some((lx, ly)) = self.last_click_pos {
-                                        let dist = ((self.mouse_position.0 - lx).powi(2)
-                                            + (self.mouse_position.1 - ly).powi(2))
-                                        .sqrt();
-                                        if dist < 5.0 { consecutive = true; }
-                                    }
-                                }
-                            }
-
-                            if consecutive { self.click_count += 1; } else { self.click_count = 1; }
-                            self.last_click_time = Some(now);
-                            self.last_click_pos = Some(self.mouse_position);
-
-                            let x = self.mouse_position.0 as f32;
-                            let y = self.mouse_position.1 as f32;
-
-                            let result = match self.click_count {
-                                2 => state.app.handle_double_click(x, y),
-                                3 => {
-                                    let r = state.app.handle_triple_click(x, y);
-                                    self.click_count = 0;
-                                    r
-                                }
-                                _ => state.app.click_at(x, y, self.modifiers.shift_key()),
-                            };
-
-                            match &result {
-                                AppResult::WindowMinimize => {
-                                    state.window.set_minimized(true);
-                                }
-                                AppResult::WindowMaximize => {
-                                    let is_maximized = state.window.is_maximized();
-                                    state.window.set_maximized(!is_maximized);
-                                }
-                                AppResult::WindowClose => {
-                                    if let Some(ws) = capture_window_state(&state.window) {
-                                        let _ = save_window_state(ws);
-                                    }
-                                    let _ = save_session_state(&state.app.export_session_state());
-                                    event_loop.exit();
-                                    return;
-                                }
-                                AppResult::WindowDrag => {
-                                    let _ = state.window.drag_window();
-                                    self.mouse_pressed = false;
-                                    state.app.end_drag();
-                                }
-                                AppResult::WindowResize(edge) => {
-                                    use winit::window::ResizeDirection;
-                                    let direction = match edge {
-                                        crate::ui::ResizeEdge::North => ResizeDirection::North,
-                                        crate::ui::ResizeEdge::South => ResizeDirection::South,
-                                        crate::ui::ResizeEdge::East => ResizeDirection::East,
-                                        crate::ui::ResizeEdge::West => ResizeDirection::West,
-                                        crate::ui::ResizeEdge::NorthEast => ResizeDirection::NorthEast,
-                                        crate::ui::ResizeEdge::NorthWest => ResizeDirection::NorthWest,
-                                        crate::ui::ResizeEdge::SouthEast => ResizeDirection::SouthEast,
-                                        crate::ui::ResizeEdge::SouthWest => ResizeDirection::SouthWest,
-                                    };
-                                    let _ = state.window.drag_resize_window(direction);
-                                    self.mouse_pressed = false;
-                                    state.app.end_drag();
-                                }
-                                _ => {}
-                            }
-
-                            if result.needs_redraw() { state.window.request_redraw(); }
-                        } else {
-                            self.mouse_pressed = false;
-                            state.app.end_drag();
-                            state.app.reset_scroll_state();
-                        }
-                    }
-                    MouseButton::Right | MouseButton::Other(2) | MouseButton::Middle
-                        if button_state == ElementState::Pressed =>
-                    {
-                        let result = state.app.right_click_at(
-                            self.mouse_position.0 as f32,
-                            self.mouse_position.1 as f32,
-                        );
-                        if result.needs_redraw() { state.window.request_redraw(); }
-                    }
-                    _ => {}
-                }
+            WindowEvent::DroppedFile(path) => {
+                super::handle_dropped_file::handle_dropped_file(state, path);
             }
 
             WindowEvent::RedrawRequested => {

@@ -253,6 +253,7 @@ impl Rect {
     }
 
     /// Return the smallest rect that contains both `self` and `other`.
+    #[allow(dead_code)]
     pub fn union(&self, other: &Rect) -> Rect {
         let x1 = self.x.min(other.x);
         let y1 = self.y.min(other.y);

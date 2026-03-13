@@ -7,7 +7,6 @@
 
 mod cursor;
 mod edit;
-mod input_handler;
 
 use super::layout::Layout;
 use super::types::{CursorShape, Rect};

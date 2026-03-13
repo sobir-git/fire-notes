@@ -146,6 +146,18 @@ impl TextInput {
         last_word_end
     }
 
+    /// Select the word surrounding the cursor position computed from `x`.
+    /// Used for double-click: positions cursor at x then expands to word boundaries.
+    pub fn select_word_at_x(&mut self, x: f32, char_width: f32) {
+        self.set_cursor_from_x(x, char_width, false);
+        let left  = self.find_word_boundary_left();
+        let right = self.find_word_boundary_right();
+        if left < right {
+            self.selection_anchor = Some(left);
+            self.cursor = right;
+        }
+    }
+
     pub fn set_cursor_from_x(&mut self, x: f32, char_width: f32, selecting: bool) {
         if selecting && self.selection_anchor.is_none() {
             self.selection_anchor = Some(self.cursor);

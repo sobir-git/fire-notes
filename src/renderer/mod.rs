@@ -1,13 +1,21 @@
-//! GPU-accelerated rendering with femtovg
+//! GPU-accelerated rendering with femtovg.
 //!
-//! Single entry point: `Renderer::render(node, width, height)` walks the
-//! `Node` tree produced by `AppLogic::render()` and emits draw calls.
-//! No `RenderFrame`, no per-subsystem renderers.
+//! Architecture:
+//! - `Renderer::render(node, w, h)` — public entry point; clears canvas, walks tree, flushes.
+//! - `draw::draw(node, ctx)` — recursive walker; dispatches to per-node draw functions.
+//! - `draw/box_node.rs`, `text_node.rs`, … — each node variant owns its GPU calls.
+//! - `DrawCtx` — shared render context (canvas, fonts, theme, scale, flame).
+//! - `node_renderer` — thin shell; kept for the `nc()` color helper used by draw modules.
+//!
+//! Invariant: `src/logic/` and `src/layout/` never import femtovg.
+//! All GPU calls live inside `src/renderer/draw/`.
 
+mod draw_ctx;
+pub(crate) mod draw;
 mod flame;
 mod fonts;
-mod node_renderer;
-pub(crate) mod text_content; // kept only for FlameHit/build_flame_lookup used by node_renderer
+pub(crate) mod node_renderer; // kept for nc() color helper
+pub(crate) mod text_content;  // FlameHit / build_flame_lookup
 #[cfg(test)]
 pub mod headless;
 #[cfg(test)]
@@ -16,11 +24,11 @@ mod tests;
 use crate::config::rendering;
 use crate::layout::Node;
 use crate::theme::Theme;
+use draw_ctx::DrawCtx;
 use femtovg::{Canvas, Color, FontId, Paint, renderer::OpenGl};
 use std::time::Instant;
 
 use flame::FlameSystem;
-use node_renderer::NodeRenderer;
 
 pub struct Renderer {
     canvas:          Canvas<OpenGl>,
@@ -49,9 +57,6 @@ impl Renderer {
     }
 
     /// Render the full UI scene from a Node tree.
-    ///
-    /// `node` is produced by `AppLogic::render()` — no RenderFrame, no
-    /// per-subsystem baking, no translate structs.
     pub fn render(&mut self, node: &Node, width: f32, height: f32) {
         self.canvas.set_size(width as u32, height as u32, 1.0);
         self.canvas.clear_rect(
@@ -59,7 +64,7 @@ impl Renderer {
             Color::rgbf(self.theme.bg.0, self.theme.bg.1, self.theme.bg.2),
         );
 
-        let mut nr = NodeRenderer {
+        let mut ctx = DrawCtx {
             canvas:          &mut self.canvas,
             fonts:           &self.fonts,
             theme:           &self.theme,
@@ -67,7 +72,7 @@ impl Renderer {
             animation_start: self.animation_start,
             flame:           &mut self.flame_system,
         };
-        nr.draw(node);
+        draw::draw(node, &mut ctx);
 
         self.canvas.flush();
     }
@@ -77,6 +82,13 @@ impl Renderer {
         paint.set_font(&self.fonts);
         paint.set_font_size(14.0 * self.scale);
         fonts::measure_char_width(&mut self.canvas, &paint, self.scale)
+    }
+
+    /// Measured advance width for the TextInput font (14px × scale).
+    /// Feed this back to `TextInput::set_char_width` after init and on resize.
+    #[allow(dead_code)]
+    pub fn get_text_input_char_width(&mut self) -> f32 {
+        self.get_picker_char_width()
     }
 
     pub fn get_char_width(&mut self) -> f32 {

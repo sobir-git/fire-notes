@@ -8,8 +8,7 @@ use super::super::App;
 impl App {
     pub fn click_at(&mut self, x: f32, y: f32, selecting: bool) -> AppResult {
         if self.logic.focus.is_overlay() {
-            let char_width = self.renderer.get_picker_char_width();
-            return self.logic.dispatch_overlay(crate::layout::FrameworkEvent::PointerDown { x, y, char_width });
+            return self.logic.dispatch_overlay(crate::app::overlay_event::OverlayEvent::PointerDown { x, y });
         }
 
         self.logic.prepare_ui_tree();
@@ -69,6 +68,9 @@ impl App {
     }
 
     pub fn handle_double_click(&mut self, x: f32, y: f32) -> AppResult {
+        if self.logic.focus.is_overlay() {
+            return self.logic.dispatch_overlay(crate::app::overlay_event::OverlayEvent::PointerDoubleClick { x, y });
+        }
         self.logic.prepare_ui_tree();
         let total_lines = self.logic.tabs[self.logic.active_tab].total_lines();
         let visible_lines = self.visible_lines();
@@ -90,6 +92,9 @@ impl App {
     }
 
     pub fn handle_triple_click(&mut self, x: f32, y: f32) -> AppResult {
+        if self.logic.focus.is_overlay() {
+            return self.logic.dispatch_overlay(crate::app::overlay_event::OverlayEvent::PointerTripleClick { x, y });
+        }
         self.logic.prepare_ui_tree();
         let total_lines = self.logic.tabs[self.logic.active_tab].total_lines();
         let visible_lines = self.visible_lines();

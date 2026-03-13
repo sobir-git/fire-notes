@@ -1,30 +1,30 @@
 //! Text editing action handlers (char input, delete, undo/redo, select, line ops).
 
 use crate::app::focus::Focus;
+use crate::app::overlay_event::OverlayEvent;
 use crate::app::state::AppResult;
-use crate::layout::FrameworkEvent;
+use crate::primitives::text_input::TextInputEvent;
 use crate::logic::AppLogic;
 
-/// Delegate an edit event to the inline widget if TabRename is active.
 macro_rules! rename_edit {
     ($self:expr, backspace) => {{
         if matches!($self.focus, Focus::TabRename) {
-            return $self.dispatch_inline(FrameworkEvent::Backspace);
+            return $self.dispatch_inline(OverlayEvent::Text(TextInputEvent::Backspace { word: false }));
         }
     }};
     ($self:expr, handle_delete) => {{
         if matches!($self.focus, Focus::TabRename) {
-            return $self.dispatch_inline(FrameworkEvent::Delete);
+            return $self.dispatch_inline(OverlayEvent::Text(TextInputEvent::Delete { word: false }));
         }
     }};
     ($self:expr, handle_char, $ch:expr) => {{
         if matches!($self.focus, Focus::TabRename) {
-            return $self.dispatch_inline(FrameworkEvent::Char($ch));
+            return $self.dispatch_inline(OverlayEvent::Text(TextInputEvent::Char($ch)));
         }
     }};
     ($self:expr, $method:ident $(, $arg:expr)*) => {{
         if matches!($self.focus, Focus::TabRename) {
-            return AppResult::Redraw; // other edit ops ignored while renaming
+            return AppResult::Redraw;
         }
     }};
 }
@@ -32,7 +32,7 @@ macro_rules! rename_edit {
 impl AppLogic {
     pub(crate) fn handle_char(&mut self, ch: char) -> AppResult {
         if self.focus.is_overlay() {
-            return self.dispatch_overlay(crate::layout::FrameworkEvent::Char(ch));
+            return self.dispatch_overlay(OverlayEvent::Text(TextInputEvent::Char(ch)));
         }
         rename_edit!(self, handle_char, ch);
         let line = self.tabs[self.active_tab].cursor_line();
@@ -52,7 +52,7 @@ impl AppLogic {
 
     pub(crate) fn handle_backspace(&mut self) -> AppResult {
         if self.focus.is_overlay() {
-            return self.dispatch_overlay(crate::layout::FrameworkEvent::Backspace);
+            return self.dispatch_overlay(OverlayEvent::Text(TextInputEvent::Backspace { word: false }));
         }
         rename_edit!(self, handle_backspace);
         self.tabs[self.active_tab].backspace();
@@ -63,7 +63,7 @@ impl AppLogic {
 
     pub(crate) fn handle_delete(&mut self) -> AppResult {
         if self.focus.is_overlay() {
-            return self.dispatch_overlay(crate::layout::FrameworkEvent::Delete);
+            return self.dispatch_overlay(OverlayEvent::Text(TextInputEvent::Delete { word: false }));
         }
         rename_edit!(self, handle_delete);
         self.tabs[self.active_tab].delete();

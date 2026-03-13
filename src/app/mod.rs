@@ -5,9 +5,10 @@
 //! - `App` - coordinates between components, owns tabs and renderer
 
 pub(crate) mod action;
+pub(crate) mod active_overlay;
 pub(crate) mod focus;
-pub(crate) mod input_handler;
 pub(crate) mod keybindings;
+pub(crate) mod overlay_event;
 mod mouse;
 mod notes_picker;
 mod scroll;
