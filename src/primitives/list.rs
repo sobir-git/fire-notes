@@ -4,10 +4,11 @@
 //! Replaces `ui::ListWidget<T>` (state) + `ui::ListViewWidget` (geometry) + `fw::List<T>` (merged).
 
 use crate::config::layout as cfg;
-use crate::ui::Rect;
+use crate::layout::Widget;
+use crate::ui::{CursorShape, Rect};
 use super::scrollbar::{Scrollbar, ScrollbarAction};
 
-// ── Result type ───────────────────────────────────────────────────────────────
+// ── Event type ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ListPointerResult {
@@ -262,6 +263,21 @@ impl<T> List<T> {
         } else if self.selected_index >= self.scroll_offset + self.max_visible {
             self.scroll_offset = self.selected_index - self.max_visible + 1;
         }
+    }
+}
+
+// ── Widget impl ───────────────────────────────────────────────────────────────
+
+impl<T: Clone> Widget for List<T> {
+    type Event = ListPointerResult;
+    fn on_pointer_down(&mut self, x: f32, y: f32) -> ListPointerResult {
+        self.on_pointer_down(x, y)
+    }
+    fn on_hover(&mut self, x: f32, y: f32) -> bool {
+        self.on_hover(x, y)
+    }
+    fn cursor_shape_at(&self, _x: f32, _y: f32) -> CursorShape {
+        CursorShape::Default
     }
 }
 

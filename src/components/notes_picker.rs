@@ -81,7 +81,7 @@ impl NotesPicker {
         }
         match self.layout.hit_slot(x, y) {
             Some(0) => {
-                self.search.on_pointer_down(x, y, char_width);
+                self.search.on_pointer_down_with(x, y, char_width);
                 PickerEvent::Redraw
             }
             Some(1) => match self.list.on_pointer_down(x, y) {

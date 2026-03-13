@@ -3,6 +3,7 @@
 //!
 //! Replaces `ui::TextInput` (state) + `ui::TextInputWidget` (geometry) + `fw::TextInput` (merged).
 
+use crate::layout::Widget;
 use crate::ui::{CursorShape, Rect, TextInput as RawState};
 
 // ── Primitive ─────────────────────────────────────────────────────────────────
@@ -21,6 +22,35 @@ pub struct TextInput {
     /// Text baseline Y (vertically centred in rect).
     pub text_baseline_y: f32,
     pub scale: f32,
+    /// Cached char width — set by caller after font measurement.
+    pub char_width: f32,
+}
+
+// ── Widget impl ───────────────────────────────────────────────────────────────
+
+/// `Widget` impl uses the stored `char_width`. Call `set_char_width` after
+/// font measurement so on_pointer_down has correct hit-testing.
+#[derive(Debug, Clone, PartialEq)]
+pub enum InputEvent {
+    /// Click was inside the input — cursor repositioned.
+    Focused,
+    /// Click was outside the input.
+    Miss,
+}
+
+impl Widget for TextInput {
+    type Event = InputEvent;
+    fn on_pointer_down(&mut self, x: f32, y: f32) -> InputEvent {
+        if self.on_pointer_down_with(x, y, self.char_width) {
+            InputEvent::Focused
+        } else {
+            InputEvent::Miss
+        }
+    }
+    fn on_hover(&mut self, _x: f32, _y: f32) -> bool { false }
+    fn cursor_shape_at(&self, x: f32, y: f32) -> CursorShape {
+        if self.rect.contains(x, y) { CursorShape::Text } else { CursorShape::Default }
+    }
 }
 
 impl TextInput {
@@ -32,8 +62,11 @@ impl TextInput {
             text_x:           0.0,
             text_baseline_y:  0.0,
             scale:            1.0,
+            char_width:       8.0,
         }
     }
+
+    pub fn set_char_width(&mut self, w: f32) { self.char_width = w; }
 
     pub fn new(text: String) -> Self {
         let mut s = Self::new_empty();
@@ -62,7 +95,7 @@ impl TextInput {
     // ── Events ────────────────────────────────────────────────────────────────
 
     /// Returns `true` if this widget claimed the event.
-    pub fn on_pointer_down(&mut self, x: f32, y: f32, char_width: f32) -> bool {
+    pub fn on_pointer_down_with(&mut self, x: f32, y: f32, char_width: f32) -> bool {
         if !self.rect.contains(x, y) { return false; }
         let relative_x = (x - self.text_x + self.state.scroll_offset).max(0.0);
         self.state.set_cursor_from_x(relative_x, char_width, false);
