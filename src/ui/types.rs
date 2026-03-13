@@ -252,6 +252,15 @@ impl Rect {
         }).collect()
     }
 
+    /// Return the smallest rect that contains both `self` and `other`.
+    pub fn union(&self, other: &Rect) -> Rect {
+        let x1 = self.x.min(other.x);
+        let y1 = self.y.min(other.y);
+        let x2 = (self.x + self.width).max(other.x + other.width);
+        let y2 = (self.y + self.height).max(other.y + other.height);
+        Rect { x: x1, y: y1, width: x2 - x1, height: y2 - y1 }
+    }
+
     /// Return a rect of `(w, h)` centered within `self`.
     #[allow(dead_code)]
     pub fn centered_in(self, w: f32, h: f32) -> Rect {

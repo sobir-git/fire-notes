@@ -1,10 +1,8 @@
-#![allow(dead_code)]
 //! Tab management and rename/notes-picker actions.
 
 use crate::app::focus::Focus;
 use crate::app::state::AppResult;
 use crate::tab::Tab;
-use crate::ui::TabBar;
 use crate::logic::AppLogic;
 
 impl AppLogic {
@@ -13,12 +11,13 @@ impl AppLogic {
     pub(crate) fn activate_tab(&mut self, index: usize) {
         self.active_tab = index;
         self.auto_scroll();
-        let tab_titles: Vec<(&str, bool)> = self.tabs.iter().enumerate()
-            .map(|(i, t)| (t.title(), i == self.active_tab))
+        let tab_titles: Vec<(String, bool)> = self.tabs.iter().enumerate()
+            .map(|(i, t)| (t.title().to_string(), i == self.active_tab))
             .collect();
-        let tab_bar = TabBar::new(self.width, self.scale, self.tab_scroll_x, &tab_titles);
+        let owned: Vec<(&str, bool)> = tab_titles.iter().map(|(s, b)| (s.as_str(), *b)).collect();
+        self.ui_tree.relayout_tabs(self.tab_scroll_x, &owned);
         self.tab_scroll_x =
-            tab_bar.scroll_x_to_reveal(index, self.tab_scroll_x);
+            self.ui_tree.tab_bar.scroll_x_to_reveal(index, self.tab_scroll_x);
     }
 
     pub(crate) fn new_tab(&mut self) -> AppResult {
@@ -62,46 +61,27 @@ impl AppLogic {
 
     pub(crate) fn start_rename(&mut self, tab_index: usize) {
         if let Some(tab) = self.tabs.get(tab_index) {
-            use crate::primitives::TextInput as PrimTextInput;
-            let mut inp = PrimTextInput::new(tab.title().to_string());
-            inp.state.select_all();
-            self.rename_input = Some((tab_index, inp));
+            use crate::components::tab_rename::TabRename;
+            use crate::ui::Rect;
+            let rect = Rect::ZERO; // renderer will position it; geometry not needed at logic layer
+            let widget = TabRename::new(tab_index, tab.title(), rect, self.scale);
+            self.inline = Some((tab_index, Box::new(widget)));
             self.focus = Focus::TabRename;
         }
     }
 
     pub(crate) fn confirm_rename(&mut self) -> AppResult {
         if !matches!(self.focus, Focus::TabRename) { return AppResult::Ok; }
-        if let Some((tab_index, inp)) = self.rename_input.take() {
-            let title = inp.state.text().trim().to_string();
-            self.focus = Focus::Editor;
-            if !title.is_empty() {
-                if let Some(tab) = self.tabs.get_mut(tab_index) {
-                    tab.set_title(title);
-                }
-                return AppResult::Redraw;
-            }
-        } else {
-            self.focus = Focus::Editor;
+        self.focus = Focus::Editor;
+        if let Some((tab_index, _)) = self.inline.take() {
+            // title was already committed via InlineResult::Commit in dispatch_inline
+            let _ = tab_index;
         }
-        AppResult::Ok
+        AppResult::Redraw
     }
 
     pub(crate) fn cancel_rename(&mut self) -> AppResult {
         if self.focus.cancel_rename() { return AppResult::Redraw; }
-        AppResult::Ok
-    }
-
-    pub(crate) fn confirm_notes_picker(&mut self) -> AppResult {
-        let path = self.notes_picker.as_ref()
-            .and_then(|p| p.selected_item())
-            .map(|n| n.path.clone());
-        if self.focus.confirm_notes_picker() {
-            self.notes_picker = None;
-            if let Some(path) = path {
-                return self.open_or_switch_to(path);
-            }
-        }
         AppResult::Ok
     }
 

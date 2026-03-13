@@ -1,58 +1,38 @@
-#![allow(dead_code)]
 //! Text editing action handlers (char input, delete, undo/redo, select, line ops).
 
 use crate::app::focus::Focus;
-use crate::app::input_handler::InputHandler;
 use crate::app::state::AppResult;
+use crate::layout::FrameworkEvent;
 use crate::logic::AppLogic;
-use crate::ui::Rect;
 
-/// Delegate an edit method to rename_input if TabRename is active.
-/// Redraw + reset cursor blink on success; returns early either way.
+/// Delegate an edit event to the inline widget if TabRename is active.
 macro_rules! rename_edit {
+    ($self:expr, backspace) => {{
+        if matches!($self.focus, Focus::TabRename) {
+            return $self.dispatch_inline(FrameworkEvent::Backspace);
+        }
+    }};
+    ($self:expr, handle_delete) => {{
+        if matches!($self.focus, Focus::TabRename) {
+            return $self.dispatch_inline(FrameworkEvent::Delete);
+        }
+    }};
+    ($self:expr, handle_char, $ch:expr) => {{
+        if matches!($self.focus, Focus::TabRename) {
+            return $self.dispatch_inline(FrameworkEvent::Char($ch));
+        }
+    }};
     ($self:expr, $method:ident $(, $arg:expr)*) => {{
         if matches!($self.focus, Focus::TabRename) {
-            if let Some((_, fw_input)) = &mut $self.rename_input {
-                let r = InputHandler::$method(&mut fw_input.state $(, $arg)*);
-                if r.was_handled() { $self.reset_cursor_blink(); }
-                return AppResult::Redraw;
-            }
-            return AppResult::Ok;
+            return AppResult::Redraw; // other edit ops ignored while renaming
         }
     }};
 }
 
 impl AppLogic {
-    fn window_rect(&self) -> Rect {
-        Rect { x: 0.0, y: 0.0, width: self.width, height: self.height }
-    }
-
-    /// Re-run the search filter and re-layout the picker after an edit.
-    fn update_picker_filter(&mut self) {
-        let window = self.window_rect();
-        let scale  = self.scale;
-        if let Some(picker) = &mut self.notes_picker {
-            picker.update_filter(window, scale);
-        }
-    }
-
-    /// Ensure the picker input cursor is scrolled into view.
-    fn scroll_picker_cursor_visible(&mut self) {
-        let char_width = self.char_width_hint;
-        if let Some(picker) = &mut self.notes_picker {
-            picker.search.ensure_cursor_visible(char_width);
-        }
-    }
-
     pub(crate) fn handle_char(&mut self, ch: char) -> AppResult {
-        if matches!(self.focus, Focus::NotesPicker) {
-            if let Some(picker) = &mut self.notes_picker {
-                let _ = picker.search.state.handle_char(ch);
-            }
-            self.update_picker_filter();
-            self.reset_cursor_blink();
-            self.scroll_picker_cursor_visible();
-            return AppResult::Redraw;
+        if self.focus.is_overlay() {
+            return self.dispatch_overlay(crate::layout::FrameworkEvent::Char(ch));
         }
         rename_edit!(self, handle_char, ch);
         let line = self.tabs[self.active_tab].cursor_line();
@@ -71,14 +51,8 @@ impl AppLogic {
     }
 
     pub(crate) fn handle_backspace(&mut self) -> AppResult {
-        if matches!(self.focus, Focus::NotesPicker) {
-            if let Some(picker) = &mut self.notes_picker {
-                let _ = picker.search.state.handle_backspace();
-            }
-            self.update_picker_filter();
-            self.reset_cursor_blink();
-            self.scroll_picker_cursor_visible();
-            return AppResult::Redraw;
+        if self.focus.is_overlay() {
+            return self.dispatch_overlay(crate::layout::FrameworkEvent::Backspace);
         }
         rename_edit!(self, handle_backspace);
         self.tabs[self.active_tab].backspace();
@@ -88,14 +62,8 @@ impl AppLogic {
     }
 
     pub(crate) fn handle_delete(&mut self) -> AppResult {
-        if matches!(self.focus, Focus::NotesPicker) {
-            if let Some(picker) = &mut self.notes_picker {
-                let _ = picker.search.state.handle_delete();
-            }
-            self.update_picker_filter();
-            self.reset_cursor_blink();
-            self.scroll_picker_cursor_visible();
-            return AppResult::Redraw;
+        if self.focus.is_overlay() {
+            return self.dispatch_overlay(crate::layout::FrameworkEvent::Delete);
         }
         rename_edit!(self, handle_delete);
         self.tabs[self.active_tab].delete();
@@ -104,15 +72,7 @@ impl AppLogic {
     }
 
     pub(crate) fn handle_delete_word_left(&mut self) -> AppResult {
-        if matches!(self.focus, Focus::NotesPicker) {
-            if let Some(picker) = &mut self.notes_picker {
-                let _ = picker.search.state.handle_delete_word_left();
-            }
-            self.update_picker_filter();
-            self.reset_cursor_blink();
-            self.scroll_picker_cursor_visible();
-            return AppResult::Redraw;
-        }
+        if self.focus.is_overlay() { return AppResult::Ok; }
         rename_edit!(self, handle_delete_word_left);
         self.tabs[self.active_tab].delete_word_left();
         self.tabs[self.active_tab].auto_save();
@@ -121,15 +81,7 @@ impl AppLogic {
     }
 
     pub(crate) fn handle_delete_word_right(&mut self) -> AppResult {
-        if matches!(self.focus, Focus::NotesPicker) {
-            if let Some(picker) = &mut self.notes_picker {
-                let _ = picker.search.state.handle_delete_word_right();
-            }
-            self.update_picker_filter();
-            self.reset_cursor_blink();
-            self.scroll_picker_cursor_visible();
-            return AppResult::Redraw;
-        }
+        if self.focus.is_overlay() { return AppResult::Ok; }
         rename_edit!(self, handle_delete_word_right);
         self.tabs[self.active_tab].delete_word_right();
         self.tabs[self.active_tab].auto_save();
@@ -164,7 +116,7 @@ impl AppLogic {
     }
 
     pub(crate) fn handle_move_lines_up(&mut self) -> AppResult {
-        if matches!(self.focus, Focus::NotesPicker | Focus::TabRename) { return AppResult::Ok; }
+        if matches!(self.focus, Focus::Overlay | Focus::TabRename) { return AppResult::Ok; }
         if self.tabs[self.active_tab].move_lines_up() {
             self.tabs[self.active_tab].auto_save();
             self.auto_scroll();
@@ -174,7 +126,7 @@ impl AppLogic {
     }
 
     pub(crate) fn handle_move_lines_down(&mut self) -> AppResult {
-        if matches!(self.focus, Focus::NotesPicker | Focus::TabRename) { return AppResult::Ok; }
+        if matches!(self.focus, Focus::Overlay | Focus::TabRename) { return AppResult::Ok; }
         if self.tabs[self.active_tab].move_lines_down() {
             self.tabs[self.active_tab].auto_save();
             self.auto_scroll();
@@ -184,7 +136,7 @@ impl AppLogic {
     }
 
     pub(crate) fn toggle_word_wrap(&mut self) -> AppResult {
-        if matches!(self.focus, Focus::NotesPicker | Focus::TabRename) { return AppResult::Ok; }
+        if matches!(self.focus, Focus::Overlay | Focus::TabRename) { return AppResult::Ok; }
         self.tabs[self.active_tab].toggle_word_wrap();
         self.auto_scroll();
         AppResult::Redraw

@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Pure application logic — no GPU, no window, no file dialogs.
 //!
 //! `AppLogic` owns all document state and can be instantiated in tests with
@@ -8,24 +7,40 @@
 //! # Testability contract
 //! - No `femtovg` / `glutin` / `winit` imports anywhere in this module tree.
 //! - `AppLogic::new_headless()` must never touch the filesystem or OS.
-//! - `AppLogic::render_frame()` returns a pure `RenderFrame` value — assert
-//!   on it directly in tests.
+//! - `AppLogic::render()` returns a pure `Node` tree — assert on Tab state
+//!   directly in tests (no rendering required).
 
 mod actions;   // src/logic/actions/mod.rs
-mod snapshot;  // src/logic/snapshot.rs
 
 #[cfg(test)]
 mod tests;
 
+use std::sync::mpsc;
+
 use crate::app::action::Action;
-use crate::app::focus::{Focus, NoteEntry};
+use crate::app::focus::Focus;
 use crate::app::scroll_state::{ScrollDirection, ScrollInput, ScrollState};
 use crate::app::state::AppResult;
-use crate::components::NotesPicker;
 use crate::config::{self, layout, timing};
+use crate::layout::{FrameworkEvent, InlineResult, InlineWidget, Overlay, OverlayResult};
+#[allow(unused_imports)] use InlineResult as _;
 use crate::tab::Tab;
-use crate::primitives::TextInput as PrimTextInput;
+use crate::theme::Theme;
 use crate::ui::{UiTree, WindowRect};
+
+/// Events that background tasks can inject into the UI event loop.
+#[derive(Debug)]
+#[allow(dead_code)]
+pub enum AppEvent {
+    /// Force a redraw (e.g. after an animation step or external data change).
+    Redraw,
+    /// An AI-generated token to append to the active ghost text buffer.
+    AiToken(String),
+    /// Ghost text suggestion ready — replaces any existing ghost text.
+    GhostText(String),
+    /// Clear ghost text.
+    ClearGhostText,
+}
 
 pub struct AppLogic {
     pub(crate) tabs: Vec<Tab>,
@@ -40,10 +55,12 @@ pub struct AppLogic {
     pub(crate) char_width_hint: f32,
 
     pub(crate) focus: Focus,
-    /// Notes picker component — `Some` while the picker is open.
-    pub(crate) notes_picker: Option<NotesPicker>,
-    /// Tab rename input. `Some((tab_index, input))` while renaming.
-    pub(crate) rename_input: Option<(usize, PrimTextInput)>,
+    /// Active theme — passed into overlay.render().
+    pub(crate) theme: Theme,
+    /// Active overlay (picker, dialog…) — `Some` while open.
+    pub(crate) overlay: Option<Box<dyn Overlay>>,
+    /// Active inline widget (tab rename, …) — `(tab_index, widget)`.
+    pub(crate) inline: Option<(usize, Box<dyn InlineWidget>)>,
     /// Retained UI tree — persists across frames so hover state survives.
     pub(crate) ui_tree: UiTree,
     pub(crate) scroll_state: ScrollState,
@@ -66,13 +83,25 @@ pub struct AppLogic {
 
     // ── Flame effect ─────────────────────────────────────────────────────────
     pub(crate) typing_flame_positions: Vec<(usize, usize, std::time::Instant)>,
+
+    // ── Async event channel ───────────────────────────────────────────────────
+    /// Sender half — clone and pass to background tasks.
+    #[allow(dead_code)]
+    pub(crate) event_tx: mpsc::Sender<AppEvent>,
+    /// Receiver half — polled in the platform event loop's `about_to_wait`.
+    pub(crate) event_rx: mpsc::Receiver<AppEvent>,
+
+    // ── Ghost text (AI inline suggestion) ────────────────────────────────────
+    pub(crate) ghost_text: String,
 }
 
 impl AppLogic {
     /// Create a fully isolated, headless instance for testing.
     /// Never touches the filesystem or OS.
+    #[allow(dead_code)]
     pub fn new_headless(width: f32, height: f32, scale: f32) -> Self {
         let now = std::time::Instant::now();
+        let (event_tx, event_rx) = mpsc::channel();
         Self {
             tabs: vec![Tab::new_untitled()],
             active_tab: 0,
@@ -81,8 +110,9 @@ impl AppLogic {
             scale,
             char_width_hint: crate::config::rendering::FALLBACK_CHAR_WIDTH,
             focus: Focus::default(),
-            notes_picker: None,
-            rename_input: None,
+            theme: Theme::dark(),
+            overlay: None,
+            inline: None,
             ui_tree: UiTree::layout(WindowRect::new(width, height), scale),
             scroll_state: ScrollState::new(),
             cursor_visible: true,
@@ -94,6 +124,9 @@ impl AppLogic {
             last_mouse_y: 0.0,
             tab_scroll_x: 0.0,
             typing_flame_positions: Vec::new(),
+            event_tx,
+            event_rx,
+            ghost_text: String::new(),
         }
     }
 
@@ -106,6 +139,7 @@ impl AppLogic {
         scale: f32,
     ) -> Self {
         let now = std::time::Instant::now();
+        let (event_tx, event_rx) = mpsc::channel();
         let mut logic = Self {
             tabs,
             active_tab,
@@ -114,8 +148,9 @@ impl AppLogic {
             scale,
             char_width_hint: crate::config::rendering::FALLBACK_CHAR_WIDTH,
             focus: Focus::default(),
-            notes_picker: None,
-            rename_input: None,
+            theme: Theme::dark(),
+            overlay: None,
+            inline: None,
             ui_tree: UiTree::layout(WindowRect::new(width, height), scale),
             scroll_state: ScrollState::new(),
             cursor_visible: true,
@@ -127,6 +162,9 @@ impl AppLogic {
             last_mouse_y: 0.0,
             tab_scroll_x: 0.0,
             typing_flame_positions: Vec::new(),
+            event_tx,
+            event_rx,
+            ghost_text: String::new(),
         };
         if logic.tabs.is_empty() {
             logic.tabs.push(Tab::new_untitled());
@@ -137,6 +175,26 @@ impl AppLogic {
     // =========================================================================
     // Core lifecycle
     // =========================================================================
+
+    /// Returns a `Sender` that background tasks can use to inject events.
+    #[allow(dead_code)]
+    pub fn event_sender(&self) -> mpsc::Sender<AppEvent> {
+        self.event_tx.clone()
+    }
+
+    /// Drain all pending async events. Returns `true` if a redraw is needed.
+    pub fn poll_events(&mut self) -> bool {
+        let mut redraw = false;
+        while let Ok(event) = self.event_rx.try_recv() {
+            match event {
+                AppEvent::Redraw => { redraw = true; }
+                AppEvent::AiToken(token) => { self.ghost_text.push_str(&token); redraw = true; }
+                AppEvent::GhostText(text) => { self.ghost_text = text; redraw = true; }
+                AppEvent::ClearGhostText  => { self.ghost_text.clear(); redraw = true; }
+            }
+        }
+        redraw
+    }
 
     /// Reset cursor blink (call after user action)
     pub(crate) fn reset_cursor_blink(&mut self) {
@@ -186,8 +244,9 @@ impl AppLogic {
             Action::RenameTab => self.rename_current(),
 
             Action::OpenNotesPicker => AppResult::Ok,
-            Action::ConfirmNotesPicker => self.confirm_notes_picker(),
-            Action::CancelNotesPicker => self.cancel_notes_picker(),
+            Action::ConfirmNotesPicker => self.confirm_overlay(),
+            Action::CancelNotesPicker => self.cancel_overlay(),
+            Action::OpenSlashMenu => self.open_slash_menu(),
 
             Action::Undo => self.handle_undo(),
             Action::Redo => self.handle_redo(),
@@ -219,12 +278,12 @@ impl AppLogic {
             Action::ToggleWordWrap => self.toggle_word_wrap(),
 
             Action::Cancel => {
-                let r = self.cancel_notes_picker();
+                let r = self.cancel_overlay();
                 if r.needs_redraw() { return r; }
                 self.cancel_rename()
             }
             Action::Confirm => {
-                let r = self.confirm_notes_picker();
+                let r = self.confirm_overlay();
                 if r.needs_redraw() { return r; }
                 let r = self.confirm_rename();
                 if r.needs_redraw() { return r; }
@@ -235,34 +294,88 @@ impl AppLogic {
         }
     }
 
-    /// Execute a notes-picker open with a pre-built entry list.
-    pub fn open_notes_picker_with(&mut self, entries: Vec<NoteEntry>) -> AppResult {
-        if entries.is_empty() { return AppResult::Ok; }
-        let window = crate::ui::Rect { x: 0.0, y: 0.0, width: self.width, height: self.height };
-        self.notes_picker = Some(crate::components::NotesPicker::new(entries, window, self.scale));
-        self.focus = Focus::open_notes_picker();
+    /// Open an overlay. The caller constructs the concrete type and boxes it.
+    pub fn open_overlay_with(&mut self, overlay: Box<dyn Overlay>) -> AppResult {
+        self.overlay = Some(overlay);
+        self.focus   = Focus::open_overlay();
         AppResult::Redraw
     }
 
-    pub fn cancel_notes_picker(&mut self) -> AppResult {
-        if self.focus.cancel_notes_picker() {
-            self.notes_picker = None;
+    pub fn cancel_overlay(&mut self) -> AppResult {
+        if self.focus.close_overlay() {
+            self.overlay = None;
             return AppResult::Redraw;
         }
         AppResult::Ok
     }
 
+    /// Dispatch a FrameworkEvent to the active overlay and translate OverlayResult → AppResult.
+    pub fn dispatch_overlay(&mut self, event: FrameworkEvent) -> AppResult {
+        let result = if let Some(o) = &mut self.overlay {
+            o.on_event(event)
+        } else {
+            return AppResult::Ok;
+        };
+        self.handle_overlay_result(result)
+    }
+
+    pub(crate) fn handle_overlay_result(&mut self, result: OverlayResult) -> AppResult {
+        match result {
+            OverlayResult::Nothing  => AppResult::Ok,
+            OverlayResult::Redraw   => AppResult::Redraw,
+            OverlayResult::Close    => self.cancel_overlay(),
+            OverlayResult::OpenPath(path) => {
+                let _ = self.cancel_overlay();
+                self.open_or_switch_to(path)
+            }
+        }
+    }
+
+    fn confirm_overlay(&mut self) -> AppResult {
+        let result = if let Some(o) = &mut self.overlay {
+            o.on_event(FrameworkEvent::Key(crate::app::Key::Enter))
+        } else {
+            return AppResult::Ok;
+        };
+        self.handle_overlay_result(result)
+    }
+
+    /// Dispatch a FrameworkEvent to the active inline widget and handle the result.
+    pub(crate) fn dispatch_inline(&mut self, event: FrameworkEvent) -> AppResult {
+        let result = if let Some((_, w)) = &mut self.inline {
+            w.on_event(event)
+        } else {
+            return AppResult::Ok;
+        };
+        self.handle_inline_result(result)
+    }
+
+    pub(crate) fn handle_inline_result(&mut self, result: InlineResult) -> AppResult {
+        match result {
+            InlineResult::Nothing => AppResult::Ok,
+            InlineResult::Redraw  => { self.reset_cursor_blink(); AppResult::Redraw }
+            InlineResult::Cancel  => {
+                self.inline = None;
+                self.focus  = Focus::Editor;
+                AppResult::Redraw
+            }
+            InlineResult::Commit(title) => {
+                if let Some((tab_index, _)) = self.inline.take() {
+                    if !title.is_empty() {
+                        if let Some(tab) = self.tabs.get_mut(tab_index) {
+                            tab.set_title(title);
+                        }
+                    }
+                }
+                self.focus = Focus::Editor;
+                AppResult::Redraw
+            }
+        }
+    }
+
     /// Insert text from clipboard (called by platform shell after reading clipboard).
     pub fn insert_paste_text(&mut self, text: &str) -> AppResult {
         if matches!(self.focus, Focus::TabRename) {
-            if let Some((_, inp)) = &mut self.rename_input {
-                use crate::app::input_handler::InputHandler;
-                let r = InputHandler::paste(&mut inp.state, text);
-                if r.was_handled() {
-                    self.reset_cursor_blink();
-                    return AppResult::Redraw;
-                }
-            }
             return AppResult::Ok;
         }
         if !text.is_empty() {
@@ -277,8 +390,7 @@ impl AppLogic {
     /// Copy current selection. Returns text for the platform shell to write to clipboard.
     pub fn copy_selection(&self) -> Option<String> {
         if matches!(self.focus, Focus::TabRename) {
-            use crate::app::input_handler::InputHandler;
-            return self.rename_input.as_ref().and_then(|(_, inp)| InputHandler::copy(&inp.state));
+            return None; // inline widget doesn't expose copy yet
         }
         self.tabs[self.active_tab].copy_selection()
     }
@@ -286,10 +398,7 @@ impl AppLogic {
     /// Cut current selection. Returns text for the clipboard.
     pub fn cut_selection(&mut self) -> Option<String> {
         if matches!(self.focus, Focus::TabRename) {
-            use crate::app::input_handler::InputHandler;
-            let text = self.rename_input.as_mut().and_then(|(_, inp)| InputHandler::cut(&mut inp.state));
-            if text.is_some() { self.reset_cursor_blink(); }
-            return text;
+            return None; // inline widget doesn't expose cut yet
         }
         let text = self.tabs[self.active_tab].cut_selection();
         if text.is_some() {
@@ -319,6 +428,41 @@ impl AppLogic {
     /// Update the char width hint (called by platform shell after font load).
     pub fn set_char_width_hint(&mut self, width: f32) {
         self.char_width_hint = width;
+    }
+
+    // =========================================================================
+    // Command palette
+    // =========================================================================
+
+    fn open_slash_menu(&mut self) -> AppResult {
+        use crate::components::slash_menu::{SlashCommand, SlashMenu};
+        use crate::ui::{Rect, WindowRect};
+
+        let commands = vec![
+            SlashCommand { name: "New Tab".into(),      description: "Open a new empty tab".into() },
+            SlashCommand { name: "Save".into(),         description: "Save current file".into() },
+            SlashCommand { name: "Toggle Word Wrap".into(), description: "Toggle word wrap mode".into() },
+            SlashCommand { name: "Close Tab".into(),    description: "Close the active tab".into() },
+        ];
+
+        let window: Rect = WindowRect::new(self.width, self.height).into();
+        let content = self.ui_tree.slot("content");
+        let tab = &self.tabs[self.active_tab];
+        let cursor_line = tab.cursor_line();
+        let cursor_col  = tab.cursor_col();
+        let scroll      = tab.scroll_offset();
+        let lh          = crate::config::layout::LINE_HEIGHT * self.scale;
+        let cw          = self.char_width_hint.max(8.0);
+        let padding     = crate::config::layout::PADDING * self.scale;
+        let anchor = Rect {
+            x:      content.x + padding + cursor_col as f32 * cw,
+            y:      content.y + (cursor_line.saturating_sub(scroll)) as f32 * lh,
+            width:  cw,
+            height: lh,
+        };
+
+        let menu = SlashMenu::new(commands, anchor, window, self.scale);
+        self.open_overlay_with(Box::new(menu))
     }
 
     // =========================================================================
@@ -380,6 +524,7 @@ impl AppLogic {
     /// Sync the retained ui_tree's tab layout from caller-supplied titles.
     ///
     /// Prefer `prepare_ui_tree` when no external title vec is needed.
+    #[allow(dead_code)]
     pub fn sync_ui_tree(&mut self, tab_titles: &[(&str, bool)]) {
         self.ui_tree.relayout_tabs(self.tab_scroll_x, tab_titles);
     }
@@ -397,6 +542,7 @@ impl AppLogic {
         self.ui_tree.on_hover(x, y, total_lines, visible_lines, scroll_offset)
     }
 
+    #[allow(dead_code)]
     pub fn tab_scroll_x(&self) -> f32 { self.tab_scroll_x }
 
     // =========================================================================
@@ -407,6 +553,203 @@ impl AppLogic {
         let active_path = self.tabs.get(self.active_tab).and_then(|t| t.path().cloned());
         let tabs = self.tabs.iter().filter_map(|t| t.export_state()).collect();
         crate::persistence::SessionState { active_path, tabs }
+    }
+
+    // =========================================================================
+    // Render — single Node tree, replaces render_frame() + snapshot.rs
+    // =========================================================================
+
+    /// Produce the full UI scene as a `Node` tree.
+    ///
+    /// This is the **only** render path. The renderer walks this tree and emits
+    /// draw calls. No `RenderFrame`, no snapshot bridging, no per-subsystem
+    /// baking methods.
+    pub fn render(&mut self) -> crate::layout::Node {
+        use crate::layout::Node;
+        use crate::layout::node::{
+            EditorCursor, EditorNode, EditorSelection, FlamePos,
+            RenameOverlayNode, ScrollbarNode, TabBarNode, TabEntry,
+            TextLine, WinButton, WinButtonKind,
+        };
+        use crate::layout::node::Color as NColor;
+
+        self.prepare_ui_tree();
+
+        // ── Geometry from ui_tree ─────────────────────────────────────────
+        let tb      = &self.ui_tree.tab_bar;
+        let ca      = &self.ui_tree.content_area;
+        let scale   = self.scale;
+
+        // ── Tab bar node ──────────────────────────────────────────────────
+        let renaming_tab = self.inline.as_ref().map(|(idx, _)| *idx);
+
+        let tab_bar_font_size = crate::config::rendering::TAB_FONT_SIZE * scale;
+        let tab_bar_baseline  = tb.rect.y + tb.rect.height / 2.0 + tab_bar_font_size * 0.35;
+
+        let tabs: Vec<TabEntry> = tb.scroll_area.tabs.iter().map(|tm| {
+            let t = &self.tabs[tm.index];
+            let title = if Some(tm.index) == renaming_tab {
+                self.inline.as_ref()
+                    .and_then(|(_, w)| w.as_any()
+                        .downcast_ref::<crate::components::tab_rename::TabRename>())
+                    .map(|tr| tr.input.text().to_string())
+                    .unwrap_or_else(|| t.title().to_string())
+            } else {
+                t.title().to_string()
+            };
+            TabEntry {
+                title,
+                rect: tm.rect,
+                is_active:  tm.index == self.active_tab,
+                is_hovered: tb.hovered_tab_index == Some(tm.index),
+            }
+        }).collect();
+
+        let rename = self.inline.as_ref().and_then(|(tab_index, w)| {
+            let tr = w.as_any().downcast_ref::<crate::components::tab_rename::TabRename>()?;
+            // Find the tab rect for text_x/text_y
+            let tm = tb.scroll_area.tabs.iter().find(|t| t.index == *tab_index)?;
+            Some(RenameOverlayNode {
+                tab_index:      *tab_index,
+                text:           tr.input.text().to_string(),
+                cursor:         tr.input.state.cursor,
+                cursor_visible: self.cursor_visible,
+                text_x:         tm.rect.x + tm.rect.width / 2.0, // centering; renderer measures
+                text_y:         tab_bar_baseline,
+            })
+        });
+
+        let win_buttons = vec![
+            WinButton { rect: tb.close_rect,    hovered: tb.hovered_close,    kind: WinButtonKind::Close },
+            WinButton { rect: tb.maximize_rect, hovered: tb.hovered_maximize, kind: WinButtonKind::Maximize },
+            WinButton { rect: tb.minimize_rect, hovered: tb.hovered_minimize, kind: WinButtonKind::Minimize },
+        ];
+
+        let tab_bar_node = Node::TabBar(TabBarNode {
+            rect:            tb.rect,
+            tabs_clip_x:     tb.tabs_clip_x,
+            tabs,
+            new_tab_rect:    tb.new_tab_rect,
+            new_tab_hovered: tb.hovered_plus,
+            win_buttons,
+            rename,
+        });
+
+        // ── Editor node ───────────────────────────────────────────────────
+        let current_tab   = &self.tabs[self.active_tab];
+        let scroll_offset = current_tab.scroll_offset();
+        let total_lines   = current_tab.total_lines();
+        let visible_count = ca.visible_line_count();
+        let scroll_x      = current_tab.scroll_offset_x();
+        let line_height   = ca.text.line_height;
+        let text_padding  = ca.text.text_padding;
+        let doc_top_margin = ca.text.doc_top_margin;
+        let char_width    = self.char_width_hint;
+
+        let lines: Vec<TextLine> = current_tab.content().lines()
+            .enumerate()
+            .skip(scroll_offset)
+            .take(visible_count)
+            .map(|(idx, text)| {
+                let visual = idx - scroll_offset;
+                let y = ca.text.rect.y + doc_top_margin + visual as f32 * line_height;
+                TextLine { line_index: idx, text: text.to_string(), y }
+            })
+            .collect();
+
+        // Cursor
+        let cursor = {
+            let cl = current_tab.cursor_line();
+            let cc = current_tab.cursor_col();
+            let (cx, cy) = if cl >= scroll_offset {
+                let visual = cl - scroll_offset;
+                let y = ca.text.rect.y + doc_top_margin + visual as f32 * line_height;
+                let line_text = current_tab.content().lines().nth(cl).unwrap_or("");
+                let vl = crate::visual_position::VisualLine::new(line_text);
+                let x  = vl.char_col_to_visual_x(cc, text_padding - scroll_x, char_width);
+                (x, y)
+            } else { (0.0, -999.0) };
+            EditorCursor { x: cx, y: cy, line_height, visible: self.cursor_visible }
+        };
+
+        // Selection
+        let selection = current_tab.selection_range_line_col().map(|(start, end)| {
+            let (start_line, start_col) = start;
+            let (end_line, end_col)     = end;
+            let mut rects = Vec::new();
+            for ld in lines.iter() {
+                let li = ld.line_index;
+                if li < start_line || li > end_line { continue; }
+                let sc = if li == start_line { start_col } else { 0 };
+                let line_text = &ld.text;
+                let ec = if li == end_line { end_col.min(line_text.chars().count()) }
+                         else              { line_text.chars().count() };
+                if sc >= ec { continue; }
+                let vl = crate::visual_position::VisualLine::new(line_text);
+                let x1 = vl.char_col_to_visual_x(sc, text_padding - scroll_x, char_width);
+                let x2 = vl.char_col_to_visual_x(ec, text_padding - scroll_x, char_width);
+                let sel_rect = crate::ui::Rect { x: x1, y: ld.y, width: (x2 - x1).max(char_width), height: line_height };
+                rects.push(sel_rect);
+            }
+            EditorSelection { rects }
+        });
+
+        // Scrollbar
+        let scrollbar = if total_lines > visible_count && visible_count > 0 {
+            let s = &ca.scrollbar;
+            s.thumb(total_lines, visible_count, scroll_offset).map(|thumb| ScrollbarNode {
+                track:       s.rect,
+                thumb:       thumb.rect,
+                track_color: NColor::rgba(0.0, 0.0, 0.0, 0.0),
+                thumb_color: NColor::rgba(1.0, 1.0, 1.0,
+                    if ca.scrollbar_hovered { 0.35 } else { 0.20 }),
+            })
+        } else { None };
+
+        // Flames
+        let now = std::time::Instant::now();
+        let mut flames: Vec<FlamePos> = Vec::new();
+        // Selection flames
+        for r in selection.as_ref().map(|s| s.rects.iter()).into_iter().flatten() {
+            let cx = r.x + r.width / 2.0;
+            let cy = r.y + r.height / 2.0;
+            flames.push(FlamePos { cx, cy, bottom: r.y + r.height, age: 0.0 });
+        }
+        // Typing flames
+        for &(line, col, timestamp) in &self.typing_flame_positions {
+            if line < scroll_offset { continue; }
+            let visual = line - scroll_offset;
+            let y = ca.text.rect.y + doc_top_margin + visual as f32 * line_height;
+            if y > ca.rect.y + ca.rect.height { continue; }
+            let line_text = current_tab.content().lines().nth(line).unwrap_or("");
+            let vl = crate::visual_position::VisualLine::new(line_text);
+            let cx = vl.char_col_to_visual_center_x(col, text_padding - scroll_x, char_width);
+            let age = now.duration_since(timestamp).as_secs_f32().min(1.0);
+            flames.push(FlamePos { cx, cy: y + line_height * 0.5, bottom: y + line_height, age });
+        }
+
+        let editor_node = Node::Editor(EditorNode {
+            rect:         ca.rect,
+            text_rect:    ca.text.rect,
+            line_height,
+            text_padding,
+            char_width,
+            scroll_x,
+            word_wrap:    current_tab.word_wrap(),
+            lines,
+            cursor,
+            selection,
+            scrollbar,
+            flames,
+        });
+
+        // ── Overlay ───────────────────────────────────────────────────────
+        let overlay = self.overlay.as_ref().map(|o| o.render(&self.theme));
+
+        // ── Full scene ────────────────────────────────────────────────────
+        let mut scene = vec![tab_bar_node, editor_node];
+        if let Some(o) = overlay { scene.push(o); }
+        Node::layer(scene)
     }
 }
 

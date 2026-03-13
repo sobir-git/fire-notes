@@ -4,6 +4,7 @@
 //! Replaces `ui::TextInput` (state) + `ui::TextInputWidget` (geometry) + `fw::TextInput` (merged).
 
 use crate::layout::Widget;
+use crate::layout::node::{BoxStyle, Color, CursorNode, Node, SelectionNode, TextStyle};
 use crate::ui::{CursorShape, Rect, TextInput as RawState};
 
 // ── Primitive ─────────────────────────────────────────────────────────────────
@@ -88,6 +89,8 @@ impl TextInput {
     // ── State accessors ───────────────────────────────────────────────────────
 
     pub fn text(&self)         -> &str { self.state.text() }
+    pub fn insert(&mut self, c: char)  { self.state.insert_char(c); }
+    pub fn backspace(&mut self)        { use crate::app::input_handler::InputHandler; self.state.handle_backspace(); }
     pub fn is_empty(&self)     -> bool { self.state.text().is_empty() }
     pub fn scroll_offset(&self)-> f32  { self.state.scroll_offset }
     pub fn cursor(&self)       -> usize { self.state.cursor() }
@@ -115,6 +118,135 @@ impl TextInput {
 
     pub fn cursor_shape_at(&self, x: f32, y: f32) -> CursorShape {
         if self.rect.contains(x, y) { CursorShape::Text } else { CursorShape::Default }
+    }
+
+    // ── Node / Component ──────────────────────────────────────────────────────
+
+    /// Declare this input as a `Node` subtree.
+    /// `cursor_visible` — current blink state from the app clock.
+    pub fn render(&self, cursor_visible: bool) -> Node {
+        let text_style = TextStyle {
+            font_size:  self.font_size,
+            color:      Color::rgb(1.0, 1.0, 1.0),
+            baseline_y: self.text_baseline_y,
+            clip_x:     self.rect.x,
+            scroll_x:   self.state.scroll_offset,
+        };
+
+        let cursor_rect = {
+            let byte_pos = self.state.cursor();
+            let chars    = self.state.text()[..byte_pos].chars().count();
+            let x        = self.text_x + chars as f32 * self.char_width - self.state.scroll_offset;
+            let v_pad    = 4.0;
+            Rect { x, y: self.rect.y + v_pad, width: 2.0, height: self.rect.height - v_pad * 2.0 }
+        };
+
+        let mut children = vec![
+            Node::Box {
+                rect:  self.rect,
+                style: BoxStyle::filled(Color::rgba(0.0, 0.0, 0.0, 0.85))
+                    .with_border(Color::rgba(0.4, 0.6, 0.9, 0.7), 1.0)
+                    .with_radius(4.0),
+            },
+        ];
+
+        if let Some(anchor) = self.state.selection_anchor {
+            let cursor = self.state.cursor;
+            let (start, end) = (anchor.min(cursor), anchor.max(cursor));
+            let start_chars = self.state.text()[..start].chars().count();
+            let end_chars   = self.state.text()[..end].chars().count();
+            let sel_x = self.text_x + start_chars as f32 * self.char_width - self.state.scroll_offset;
+            let sel_w = (end_chars - start_chars) as f32 * self.char_width;
+            let v_pad = 3.0;
+            children.push(Node::Selection(SelectionNode {
+                rect:  Rect { x: sel_x, y: self.rect.y + v_pad, width: sel_w, height: self.rect.height - v_pad * 2.0 },
+                color: Color::rgba(0.39, 0.55, 0.82, 0.47),
+            }));
+        }
+
+        let display_text = if self.state.text().is_empty() {
+            "Search notes...".to_string()
+        } else {
+            self.state.text().to_string()
+        };
+        children.push(Node::Text { text: display_text, style: text_style, clip: Some(self.rect) });
+
+        children.push(Node::Cursor(CursorNode {
+            rect:    cursor_rect,
+            color:   Color::rgba(0.4, 0.7, 1.0, 1.0),
+            visible: cursor_visible,
+        }));
+
+        Node::layer(children)
+    }
+
+    /// Theme-aware render — derives colors from theme tokens.
+    pub fn render_themed(&self, theme: &crate::theme::Theme) -> Node {
+        let _ = theme;
+        self.render(false)
+    }
+
+    /// Render at `rect` with geometry computed on-the-fly — no prior `relayout` needed.
+    /// Cursor blink state is always `false` (search inputs don't show cursor).
+    pub fn render_at(&self, rect: Rect, scale: f32) -> Node {
+        let padding          = 8.0 * scale;
+        let font_size        = 14.0 * scale;
+        let text_x           = rect.x + padding;
+        let text_baseline_y  = rect.y + rect.height / 2.0 + font_size * 0.35;
+        let char_width       = self.char_width;
+
+        let text_style = TextStyle {
+            font_size,
+            color:      Color::rgb(1.0, 1.0, 1.0),
+            baseline_y: text_baseline_y,
+            clip_x:     rect.x,
+            scroll_x:   self.state.scroll_offset,
+        };
+
+        let cursor_rect = {
+            let byte_pos = self.state.cursor();
+            let chars    = self.state.text()[..byte_pos].chars().count();
+            let x        = text_x + chars as f32 * char_width - self.state.scroll_offset;
+            let v_pad    = 4.0;
+            Rect { x, y: rect.y + v_pad, width: 2.0, height: rect.height - v_pad * 2.0 }
+        };
+
+        let mut children = vec![
+            Node::Box {
+                rect,
+                style: BoxStyle::filled(Color::rgba(0.0, 0.0, 0.0, 0.85))
+                    .with_border(Color::rgba(0.4, 0.6, 0.9, 0.7), 1.0)
+                    .with_radius(4.0),
+            },
+        ];
+
+        if let Some(anchor) = self.state.selection_anchor {
+            let cursor = self.state.cursor;
+            let (start, end) = (anchor.min(cursor), anchor.max(cursor));
+            let start_chars = self.state.text()[..start].chars().count();
+            let end_chars   = self.state.text()[..end].chars().count();
+            let sel_x = text_x + start_chars as f32 * char_width - self.state.scroll_offset;
+            let sel_w = (end_chars - start_chars) as f32 * char_width;
+            let v_pad = 3.0;
+            children.push(Node::Selection(SelectionNode {
+                rect:  Rect { x: sel_x, y: rect.y + v_pad, width: sel_w, height: rect.height - v_pad * 2.0 },
+                color: Color::rgba(0.39, 0.55, 0.82, 0.47),
+            }));
+        }
+
+        let display_text = if self.state.text().is_empty() {
+            "Search notes...".to_string()
+        } else {
+            self.state.text().to_string()
+        };
+        children.push(Node::Text { text: display_text, style: text_style, clip: Some(rect) });
+        children.push(Node::Cursor(CursorNode {
+            rect:    cursor_rect,
+            color:   Color::rgba(0.4, 0.7, 1.0, 1.0),
+            visible: false,
+        }));
+
+        Node::layer(children)
     }
 
     // ── Geometry helpers ──────────────────────────────────────────────────────

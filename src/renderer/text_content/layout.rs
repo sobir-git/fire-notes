@@ -4,14 +4,14 @@ use std::collections::HashMap;
 
 /// Result of checking if a character position is in a flame zone
 #[derive(Clone, Copy)]
-pub(super) enum FlameHit {
+pub enum FlameHit {
     None,
     Selection,
     Typing(f32), // age factor
 }
 
 /// Build a spatial hash map for O(1) flame position lookups.
-pub(super) fn build_flame_lookup(
+pub fn build_flame_lookup(
     char_positions: &[(f32, f32, f32, f32)],
     char_width: f32,
     line_height: f32,

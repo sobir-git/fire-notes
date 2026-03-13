@@ -1,22 +1,15 @@
-#![allow(dead_code)]
 //! Cursor movement action handlers.
 
 use crate::app::focus::Focus;
-use crate::app::input_handler::{InputHandler, InputResult};
 use crate::app::state::AppResult;
 use crate::logic::AppLogic;
 
-/// Helper: delegate a cursor-movement method to the rename input if TabRename
-/// is active, otherwise return NotHandled so the editor tab handles it.
+/// Helper: while TabRename is active, cursor movement stays inside the inline widget.
 macro_rules! rename_delegate {
     ($self:expr, $method:ident $(, $arg:expr)*) => {{
         if matches!($self.focus, Focus::TabRename) {
-            if let Some((_, fw_input)) = &mut $self.rename_input {
-                let r = InputHandler::$method(&mut fw_input.state $(, $arg)*);
-                $self.reset_cursor_blink();
-                return r.into();
-            }
-            return AppResult::Ok;
+            $self.reset_cursor_blink();
+            return AppResult::Redraw;
         }
     }};
 }
@@ -38,7 +31,9 @@ impl AppLogic {
 
     pub(crate) fn move_cursor_up(&mut self, selecting: bool) -> AppResult {
         if matches!(self.focus, Focus::TabRename) { return AppResult::Ok; }
-        if self.focus.is_notes_picker() { return AppResult::Ok; }
+        if self.focus.is_overlay() {
+            return self.dispatch_overlay(crate::layout::FrameworkEvent::ArrowUp);
+        }
         self.tabs[self.active_tab].move_up(selecting);
         self.auto_scroll();
         AppResult::Redraw
@@ -46,7 +41,9 @@ impl AppLogic {
 
     pub(crate) fn move_cursor_down(&mut self, selecting: bool) -> AppResult {
         if matches!(self.focus, Focus::TabRename) { return AppResult::Ok; }
-        if self.focus.is_notes_picker() { return AppResult::Ok; }
+        if self.focus.is_overlay() {
+            return self.dispatch_overlay(crate::layout::FrameworkEvent::ArrowDown);
+        }
         self.tabs[self.active_tab].move_down(selecting);
         self.auto_scroll();
         AppResult::Redraw
@@ -108,8 +105,4 @@ impl AppLogic {
         AppResult::Redraw
     }
 }
-
-// Suppress unused warning for InputResult which is used inside the macro
-#[allow(unused_imports)]
-use InputResult as _;
 

@@ -163,6 +163,7 @@ fn resolve_char(c: char, ctrl: bool, shift: bool, alt: bool) -> Option<Action> {
         's' if ctrl => Some(Action::Save),
         'o' if ctrl => Some(Action::OpenFile),
         'p' if ctrl => Some(Action::OpenNotesPicker),
+        '/' if ctrl => Some(Action::OpenSlashMenu),
         'r' if ctrl => Some(Action::RenameTab),
         'a' if ctrl => Some(Action::SelectAll),
         'c' if ctrl => Some(Action::Copy),

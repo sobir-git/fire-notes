@@ -10,13 +10,11 @@ use super::super::App;
 
 impl App {
     pub fn drag_at(&mut self, x: f32, y: f32) -> AppResult {
-        // Picker scrollbar drag is tracked inside NotesPicker.
-        if self.logic.focus.is_notes_picker() {
-            if let Some(picker) = &mut self.logic.notes_picker {
-                if picker.list.is_scrollbar_dragging() {
-                    let changed = picker.list.continue_scrollbar_drag(y);
-                    return if changed { AppResult::Redraw } else { AppResult::Ok };
-                }
+        // Overlay drag (e.g. picker scrollbar).
+        if self.logic.focus.is_overlay() {
+            if let Some(o) = &mut self.logic.overlay {
+                let changed = o.on_drag(x, y);
+                return if changed { AppResult::Redraw } else { AppResult::Ok };
             }
         }
 
@@ -40,8 +38,9 @@ impl App {
         }
 
         if self.logic.ui_tree.content_area.is_text_selecting {
-            if self.logic.focus.is_notes_picker() {
-                return self.drag_picker_input(x);
+            if self.logic.focus.is_overlay() {
+                let char_width = self.renderer.get_picker_char_width();
+                return self.logic.dispatch_overlay(crate::layout::FrameworkEvent::PointerDrag { x, char_width });
             } else {
                 return self.handle_text_selection_drag(x, y);
             }
@@ -54,9 +53,7 @@ impl App {
         self.logic.ui_tree.content_area.scrollbar.end_drag();
         self.logic.ui_tree.tab_bar.end_tab_drag();
         self.logic.ui_tree.content_area.is_text_selecting = false;
-        if let Some(picker) = &mut self.logic.notes_picker {
-            picker.list.end_drag();
-        }
+        if let Some(o) = &mut self.logic.overlay { o.end_drag(); }
     }
 
     fn handle_text_selection_drag(&mut self, x: f32, y: f32) -> AppResult {

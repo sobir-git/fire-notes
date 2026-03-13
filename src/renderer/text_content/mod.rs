@@ -1,7 +1,3 @@
-//! Text content and editor area rendering.
+//! Flame-lookup helpers for the node renderer.
 
-mod draw;
 pub mod layout;
-pub(super) mod text;
-
-pub use draw::TextContentRenderer;

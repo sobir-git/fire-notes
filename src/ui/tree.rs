@@ -4,6 +4,8 @@
 //! content using `Rect` primitives, then delegates to each child's `Layout`
 //! impl.  No coordinate arithmetic lives anywhere else.
 
+use std::collections::HashMap;
+
 use crate::config::layout as cfg_layout;
 use super::content_area::ContentArea;
 use super::layout::Layout;
@@ -20,6 +22,9 @@ pub struct UiTree {
     width: f32,
     height: f32,
     scale: f32,
+    /// Named layout slots. Query with `slot("name")`.
+    #[allow(dead_code)]
+    slots: HashMap<&'static str, Rect>,
 }
 
 impl UiTree {
@@ -31,13 +36,32 @@ impl UiTree {
     pub fn layout(window: WindowRect, scale: f32) -> Self {
         let rect: Rect = window.into();
         let (tab_rect, content_rect) = rect.cut_top(cfg_layout::TAB_HEIGHT * scale);
+        let mut slots = HashMap::new();
+        slots.insert("tab_bar", tab_rect);
+        slots.insert("content", content_rect);
+        slots.insert("sidebar", Rect { x: content_rect.x, y: content_rect.y, width: 0.0, height: content_rect.height });
         Self {
             tab_bar:      TabBar::layout(tab_rect, scale),
             content_area: ContentArea::layout(content_rect, scale),
             width:  rect.width,
             height: rect.height,
             scale,
+            slots,
         }
+    }
+
+    /// Look up a named layout slot. Returns `Rect::zero()` if the slot doesn't exist.
+    ///
+    /// Built-in slots: `"tab_bar"`, `"content"`, `"sidebar"`.
+    #[allow(dead_code)]
+    pub fn slot(&self, name: &'static str) -> Rect {
+        self.slots.get(name).copied().unwrap_or(Rect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 })
+    }
+
+    /// Register or update a custom named slot.
+    #[allow(dead_code)]
+    pub fn set_slot(&mut self, name: &'static str, rect: Rect) {
+        self.slots.insert(name, rect);
     }
 
     /// Rebuild tab geometry in-place, preserving all hover state owned by widgets.

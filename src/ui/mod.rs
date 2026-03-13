@@ -8,16 +8,7 @@ mod text_area;
 mod text_input;
 mod tree;
 
-// Re-export public types used by other modules
-#[allow(unused_imports)]
-pub use types::{CursorShape, Rect, WindowRect, ResizeEdge, UiAction, UiDragAction, UiHover, UiNode};
-#[allow(unused_imports)]
-pub use layout::Layout;
-#[allow(unused_imports)]
-pub use content_area::ContentArea;
-pub use tab_bar::TabBar;
-#[allow(unused_imports)]
-pub use text_area::TextArea;
-#[allow(unused_imports)]
-pub use text_input::{TextInput, TextInputWidget};
+// Public API — used across the codebase
+pub use types::{CursorShape, Rect, WindowRect, ResizeEdge, UiAction, UiDragAction, UiNode};
+pub use text_input::TextInput;
 pub use tree::UiTree;

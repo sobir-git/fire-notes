@@ -23,6 +23,34 @@ pub struct Theme {
     pub border: (f32, f32, f32),
     /// Cursor color
     pub cursor: (f32, f32, f32),
+
+    // ── List tokens ───────────────────────────────────────────────────────
+    /// Row text color
+    pub list_row_fg: (f32, f32, f32),
+    /// Selected row text color
+    pub list_sel_fg: (f32, f32, f32),
+    /// Selected row background tint
+    pub list_sel_bg: (f32, f32, f32, f32),
+    /// Accent color (open-file dot, scrollbar thumb)
+    pub list_accent: (f32, f32, f32, f32),
+    /// Empty list placeholder text color
+    pub list_empty_fg: (f32, f32, f32, f32),
+    /// Scrollbar track color
+    pub list_scrollbar_track: (f32, f32, f32, f32),
+
+    // ── Overlay tokens ────────────────────────────────────────────────────
+    /// Panel background
+    pub overlay_bg: (f32, f32, f32, f32),
+    /// Panel border color
+    pub overlay_border: (f32, f32, f32, f32),
+    /// Panel border width in logical pixels
+    pub overlay_border_width: f32,
+    /// Panel corner radius in logical pixels
+    pub overlay_radius: f32,
+    /// Dimmed backdrop behind the panel
+    pub overlay_backdrop: (f32, f32, f32, f32),
+    /// Default font size inside overlays in logical pixels
+    pub overlay_font_size: f32,
 }
 
 impl Theme {
@@ -40,6 +68,20 @@ impl Theme {
             button_fg: (1.0, 0.6, 0.0),         // Flame yellow-orange
             border: (0.2, 0.05, 0.05),          // Deep ember border
             cursor: (1.0, 0.8, 0.0),            // Bright yellow flame
+
+            list_row_fg:          (0.78, 0.78, 0.78),
+            list_sel_fg:          (1.0,  1.0,  1.0),
+            list_sel_bg:          (0.4,  0.7,  1.0,  0.12),
+            list_accent:          (0.4,  0.7,  1.0,  1.0),
+            list_empty_fg:        (0.59, 0.59, 0.59, 0.71),
+            list_scrollbar_track: (0.24, 0.24, 0.24, 0.47),
+
+            overlay_bg:           (0.13, 0.13, 0.15, 1.0),
+            overlay_border:       (0.4,  0.7,  1.0,  0.55),
+            overlay_border_width: 2.0,
+            overlay_radius:       8.0,
+            overlay_backdrop:     (0.0,  0.0,  0.0,  0.47),
+            overlay_font_size:    14.0,
         }
     }
 
@@ -58,6 +100,20 @@ impl Theme {
             button_fg: (0.2, 0.4, 0.8), // Blue accent
             border: (0.85, 0.85, 0.85),
             cursor: (0.2, 0.4, 0.8),         // Blue
+
+            list_row_fg:          (0.2,  0.2,  0.2),
+            list_sel_fg:          (0.0,  0.0,  0.0),
+            list_sel_bg:          (0.2,  0.4,  0.8,  0.12),
+            list_accent:          (0.2,  0.4,  0.8,  1.0),
+            list_empty_fg:        (0.5,  0.5,  0.5,  0.7),
+            list_scrollbar_track: (0.8,  0.8,  0.8,  0.5),
+
+            overlay_bg:           (0.98, 0.98, 0.98, 1.0),
+            overlay_border:       (0.2,  0.4,  0.8,  0.8),
+            overlay_border_width: 1.5,
+            overlay_radius:       8.0,
+            overlay_backdrop:     (0.0,  0.0,  0.0,  0.3),
+            overlay_font_size:    14.0,
         }
     }
 }

@@ -6,7 +6,7 @@ Five rules:
 
 1. **One file per component** — one file tells you everything about one widget. No widget reaches outside its own file for layout, state, or event handling.
 2. **Rects flow down** — a parent subdivides its space and hands sub-rects to children. Children never reach upward for geometry.
-3. **The snapshot is the firewall** — the only boundary between logic and GPU is a plain data struct. Components produce it; the renderer consumes it. Nothing else crosses.
+3. **The Node tree is the firewall** — the only boundary between logic and GPU is a declarative `Node` tree. `AppLogic::render()` produces it; `NodeRenderer` consumes it. No intermediate snapshot structs.
 4. **Widgets are retained** — a widget owns its state AND its geometry. `relayout()` updates geometry without losing state. Geometry is never rebuilt on every event.
 5. **`AppLogic` is always headless** — `src/logic/` never imports `femtovg` or any platform dep. `cargo test` runs the full logic suite with zero GPU.
 
@@ -17,26 +17,31 @@ Five rules:
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  App shell  (src/app/)                                  │
-│  Routes OS events → component methods                   │
-│  Calls renderer.render(frame)                           │
+│  Routes OS events → AppLogic methods                   │
+│  Calls renderer.render(&node, width, height)            │
 ├─────────────────────────────────────────────────────────┤
 │  AppLogic  (src/logic/)                                 │
-│  Owns component instances as fields.                    │
-│  render_frame() delegates to component.snapshot()       │
+│  Owns all state: tabs, focus, overlay, inline widget.   │
+│  render() → Node tree (pure data, no GPU)               │
 │  Zero GPU imports. Fully headless-testable.             │
 ├─────────────────────────────────────────────────────────┤
 │  Components  (src/components/)                          │
-│  One file each. Owns state + layout + hit-test.         │
-│  Exposes snapshot() → pure ViewData struct.             │
-│  #[cfg(feature="gpu")] impl ViewData { fn draw() }      │
+│  One file each. Implements Overlay or InlineWidget.     │
+│  NotesPicker, SlashMenu — Overlay trait                 │
+│  TabRename — InlineWidget trait                         │
 ├─────────────────────────────────────────────────────────┤
 │  Primitives  (src/primitives/)                          │
 │  Button, TextInput, Label, Scrollbar, List              │
-│  One file each. Same contract as components.            │
+│  One file each. render_at(rect, scale) → Node.          │
 ├─────────────────────────────────────────────────────────┤
 │  Layout  (src/layout/)                                  │
 │  Column, Row — pure geometry, no GPU.                   │
-│  Compose primitives. Auto-dispatch hit-testing.         │
+│  floating_rect() — anchored overlay positioning.        │
+│  Overlay / InlineWidget / Component traits.             │
+├─────────────────────────────────────────────────────────┤
+│  NodeRenderer  (src/renderer/node_renderer.rs)          │
+│  Single walker — reads Node tree, calls femtovg.        │
+│  The only file that touches the GPU API.                │
 ├─────────────────────────────────────────────────────────┤
 │  Rect  (src/ui/types.rs)                                │
 │  The only place coordinate arithmetic lives.            │
@@ -47,34 +52,22 @@ Five rules:
 
 ## Component Contract
 
-Every component follows this pattern (convention, not a Rust trait):
+Regular components (tab bar, editor, etc.) own their own state, layout, and
+rendering snapshot:
 
 ```rust
 // src/components/my_component.rs
 
-// 1. State
-pub struct MyComponent {
-    value:    String,
-    hovered:  bool,
-    dirty:    bool,
-}
+pub struct MyComponent { ... }
 
-// 2. Logic (no GPU)
 impl MyComponent {
     pub fn on_pointer_down(&mut self, x: f32, y: f32) -> MyEvent { ... }
-    pub fn on_hover(&mut self, x: f32, y: f32) -> bool { ... }   // returns changed?
-    pub fn snapshot(&self, rect: Rect, scale: f32) -> MyView { ... }
-}
-
-// 3. Draw (GPU, feature-gated — future)
-#[cfg(feature = "gpu")]
-impl MyView {
-    pub fn draw(&self, canvas: &mut Canvas<OpenGl>, theme: &Theme) { ... }
+    pub fn snapshot(&self) -> MyView { ... }   // pure data; renderer reads this
 }
 ```
 
-`MyView` is a plain data struct — `Clone`, `Debug`, no GPU types. Tests call
-`.snapshot()` and assert on the struct directly.
+**Full-screen overlays** (pickers, dialogs) implement the `Overlay` trait instead.
+See _Overlay Trait_ section below.
 
 ---
 
@@ -126,29 +119,74 @@ plain bool or a typed result, skip `EventResponse` and return the natural type.
 
 ---
 
-## Typed Component Events
+## Overlay Trait
 
-Components emit domain events — not raw booleans, not `AppResult`. Callers just match:
+Full-screen overlays (pickers, dialogs, …) implement `Overlay` (`src/layout/mod.rs`):
 
 ```rust
-// PickerEvent defined in components/notes_picker.rs
-pub enum PickerEvent {
-    None,
-    Redraw,
-    Confirmed(NoteEntry),   // carries the selected item — no extra lookups
-    Cancelled,
-}
-
-// Entire click handler in app/notes_picker.rs:
-match picker.on_pointer_down(x, y, char_width) {
-    PickerEvent::None      => AppResult::Ok,
-    PickerEvent::Redraw    => AppResult::Redraw,
-    PickerEvent::Cancelled => self.logic.cancel_notes_picker(),
-    PickerEvent::Confirmed(entry) => self.logic.open_or_switch_to(entry.path),
+pub trait Overlay {
+    fn render(&self, theme: &Theme) -> Node;               // declare UI as a Node tree
+    fn on_event(&mut self, ev: FrameworkEvent) -> OverlayResult;
+    fn on_drag(&mut self, x: f32, y: f32) -> bool;        // scrollbar drag
+    fn end_drag(&mut self);
+    fn contains(&self, x: f32, y: f32) -> bool;
+    fn cursor_shape_at(&self, x: f32, y: f32) -> CursorShape;
 }
 ```
 
-The caller has zero knowledge of which child was hit. All routing lives in the component.
+`OverlayResult` is what every event method returns — no knowledge of `AppResult`:
+
+```rust
+pub enum OverlayResult {
+    Nothing,
+    Redraw,
+    Close,
+    OpenPath(PathBuf),   // overlay completed: open this file
+}
+```
+
+`AppLogic` holds `overlay: Option<Box<dyn Overlay>>`. It never imports the concrete type.
+All routing goes through `dispatch_overlay(FrameworkEvent)` → `handle_overlay_result(OverlayResult)`.
+
+**The only file that names `NotesPicker` by type is `app/notes_picker.rs` (the instantiation site).**
+Everything else is generic:
+
+| File | What it does |
+|---|---|
+| `logic/mod.rs` | `overlay: Option<Box<dyn Overlay>>`, `dispatch_overlay()` |
+| `app/focus/mod.rs` | `Focus::Overlay` variant |
+| `logic/actions/edit_ops.rs` | `is_overlay()` guard → `dispatch_overlay(Backspace/Char)` |
+| `logic/actions/cursor_ops.rs` | `is_overlay()` guard → `dispatch_overlay(ArrowUp/Down)` |
+| `app/mouse/drag.rs` | `o.on_drag(x, y)` / `o.end_drag()` |
+| `app/mouse/click.rs` | `dispatch_overlay(PointerDown)` |
+| `logic/mod.rs` (render) | `overlay.as_ref().map(\|o\| o.render(&self.theme))` |
+
+Adding a second overlay (e.g. Find dialog) = **one new file** implementing `Overlay`.
+Zero other files change.
+
+---
+
+## FrameworkEvent
+
+The typed event enum delivered to overlays and components:
+
+```rust
+pub enum FrameworkEvent {
+    Char(char),
+    Backspace,
+    Delete,
+    ArrowUp,
+    ArrowDown,
+    Key(Key),                                    // escape, enter, etc.
+    PointerDown { x: f32, y: f32, char_width: f32 },
+    PointerMove { x: f32, y: f32 },
+    PointerDrag { x: f32, char_width: f32 },
+    Scroll { lines: isize },
+}
+```
+
+Dispatched from the OS layer through `AppLogic::dispatch_overlay()`. The overlay handles
+what it cares about; everything else returns `OverlayResult::Nothing`.
 
 ---
 
@@ -159,8 +197,8 @@ The caller has zero knowledge of which child was hit. All routing lives in the c
 ```rust
 pub enum Focus {
     Editor,
-    TabRename,    // state lives in: AppLogic.rename_input: Option<(usize, FwTextInput)>
-    NotesPicker,  // state lives in: AppLogic.notes_picker: Option<NotesPicker>
+    TabRename,  // state lives in: AppLogic.rename_input: Option<(usize, TextInput)>
+    Overlay,    // state lives in: AppLogic.overlay: Option<Box<dyn Overlay>>
 }
 ```
 
@@ -196,48 +234,50 @@ match self.layout.hit_slot(x, y) {
 
 ---
 
-## Adding a New Component
+## Adding a New Overlay
 
 One file. No registration. No macro. No codegen.
 
 ```rust
-// src/components/my_dialog.rs
-use crate::layout::Column;
-use crate::primitives::{TextInput, Button};
-use crate::ui::Rect;
+// src/components/find_dialog.rs
+use crate::layout::{Column, FrameworkEvent, Node, Overlay, OverlayResult};
+use crate::primitives::TextInput;
+use crate::ui::{CursorShape, Rect};
 
-pub enum DialogEvent { Submitted(String), Cancelled }
+pub struct FindDialog { input: TextInput, overlay: Rect, scale: f32 }
 
-pub struct MyDialog {
-    input:  TextInput,
-    ok:     Button,
-    cancel: Button,
-    layout: Column,
+impl FindDialog {
+    pub fn new(window: Rect, scale: f32) -> Self { ... }
 }
 
-impl MyDialog {
-    pub fn new(rect: Rect, scale: f32) -> Self {
-        let col = Column::new(rect, scale, &[-40.0, -36.0]);
-        let row = crate::layout::Row::new(col.slot(1), scale, &[1.0, 1.0]);
-        Self {
-            input:  TextInput::new_empty().with_rect(col.slot(0), scale),
-            ok:     Button::new(row.slot(0), scale, "OK"),
-            cancel: Button::new(row.slot(1), scale, "Cancel"),
-            layout: col,
+impl Overlay for FindDialog {
+    fn render(&self) -> Node { /* Node tree */ }
+
+    fn on_event(&mut self, ev: FrameworkEvent) -> OverlayResult {
+        match ev {
+            FrameworkEvent::Char(c)   => { self.input.state.insert_char(c); OverlayResult::Redraw }
+            FrameworkEvent::Backspace => { self.input.state.handle_backspace(); OverlayResult::Redraw }
+            FrameworkEvent::Key(Key::Escape) => OverlayResult::Close,
+            _ => OverlayResult::Nothing,
         }
     }
-    pub fn on_pointer_down(&mut self, x: f32, y: f32) -> DialogEvent {
-        match self.layout.hit_slot(x, y) {
-            Some(0) => { self.input.on_pointer_down_with(x, y, self.input.char_width); DialogEvent::None }
-            Some(1) => /* row dispatch */ DialogEvent::None,
-            _       => DialogEvent::Cancelled,
-        }
+
+    fn on_drag(&mut self, _x: f32, _y: f32) -> bool { false }
+    fn end_drag(&mut self) {}
+    fn contains(&self, x: f32, y: f32) -> bool { self.overlay.contains(x, y) }
+    fn cursor_shape_at(&self, x: f32, y: f32) -> CursorShape {
+        if self.input.rect.contains(x, y) { CursorShape::Text } else { CursorShape::Default }
     }
-    pub fn snapshot(&self) -> MyDialogView { /* read fields off children */ }
 }
 ```
 
-Then in `AppLogic`: add one field, one line in `render_frame()`. No other changes.
+Open it from anywhere with one call:
+
+```rust
+self.logic.open_overlay_with(Box::new(FindDialog::new(window, scale)))
+```
+
+Zero other files change.
 
 ---
 
@@ -290,9 +330,9 @@ A new theme = a new file filling the same tokens with different values. Zero com
 ```
 src/
 ├── components/           ← one file = one component
-│   ├── notes_picker.rs   — owns search input + list + geometry baking
-│   ├── tab_bar.rs        — snapshot baking for the tab bar
-│   └── text_editor.rs    — snapshot baking for the content area
+│   ├── notes_picker.rs   — Overlay: search input + result list
+│   ├── slash_menu.rs     — Overlay: command palette anchored to cursor
+│   └── tab_rename.rs     — InlineWidget: tab title editor
 │
 ├── primitives/           ← one file = one primitive widget
 │   ├── scrollbar.rs
@@ -301,17 +341,20 @@ src/
 │   ├── button.rs
 │   └── label.rs
 │
-├── layout/               ← pure geometry, no GPU
+├── layout/               ← pure geometry + traits, no GPU
+│   ├── node.rs           — Node enum (the declarative UI tree)
 │   ├── column.rs
 │   └── row.rs
 │
 ├── logic/
-│   ├── mod.rs            — AppLogic owns component fields; render_frame() delegates
-│   └── actions/          — keyboard/mouse handlers; call component methods
+│   ├── mod.rs            — AppLogic; render() → Node tree
+│   └── actions/          — keyboard/mouse handlers
 │
-├── renderer/             — walks RenderFrame, calls draw; zero layout logic
-├── render_frame.rs       — pure data snapshot; fields are component ViewData structs
-├── ui/                   — Rect, WindowRect, UiTree, TabBar, ContentArea geometry
+├── renderer/
+│   ├── node_renderer.rs  — single NodeRenderer walks Node tree → femtovg
+│   └── text_content/     — layout helpers (flame lookup, cursor geometry)
+│
+├── ui/                   — Rect, WindowRect, UiTree (hit-testing + hover)
 └── app/                  — OS event routing, clipboard, file I/O
 ```
 
@@ -322,5 +365,7 @@ src/
 - `src/logic/` never imports `femtovg` — enforced by headless tests.
 - `src/ui/types.rs` (`Rect`, `WindowRect`) has zero widget imports.
 - Layout arithmetic exists only inside `Rect` methods and `Column`/`Row` constructors.
-- `render_frame()` is the only function that calls `.snapshot()`.
-- Components never hardcode colors, durations, or easings — all visual values come from `StyleSheet` and animation presets.
+- `AppLogic::render()` is the only function that calls `.render(theme)` on overlays.
+- `AppLogic` never imports a concrete overlay type — only `Box<dyn Overlay>`.
+- `NodeRenderer` is the only file that calls femtovg draw primitives — no per-subsystem renderers.
+- Components never hardcode colors — all visual values flow from `Theme`.

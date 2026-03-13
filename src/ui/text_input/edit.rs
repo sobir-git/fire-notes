@@ -2,6 +2,7 @@
 
 use super::TextInput;
 
+#[allow(dead_code)]
 impl TextInput {
     pub fn insert_char(&mut self, ch: char) {
         if ch.is_control() {

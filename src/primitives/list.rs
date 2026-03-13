@@ -5,6 +5,7 @@
 
 use crate::config::layout as cfg;
 use crate::layout::Widget;
+use crate::layout::node::{BoxStyle, Color, Node, ScrollbarNode, TextStyle};
 use crate::ui::{CursorShape, Rect};
 use super::scrollbar::{Scrollbar, ScrollbarAction};
 
@@ -197,6 +198,7 @@ impl<T> List<T> {
     }
 
     pub fn list_rect(&self) -> Rect { self.list_rect }
+    pub fn rect(&self) -> Rect { self.rect }
 
     /// Iterate visible rows, calling `f(item, geometry)` for each.
     /// Returns the mapped results as a `Vec<R>`.
@@ -312,6 +314,256 @@ impl<T> List<T> {
         } else if self.selected_index >= self.scroll_offset + self.max_visible {
             self.scroll_offset = self.selected_index - self.max_visible + 1;
         }
+    }
+}
+
+// ── Node / Component ──────────────────────────────────────────────────────────
+
+impl<T: Clone> List<T> {
+    /// Declare this list as a `Node` subtree.
+    /// `row_label` — closure mapping an item to `(title, has_indicator)` for display.
+    /// `font_size` — physical pixels.
+    /// `indicator_x` — X of the right-side dot (passed in from the parent layout).
+    pub fn render<F>(&self, font_size: f32, indicator_x: f32, row_label: F) -> Node
+    where
+        F: Fn(&T) -> (String, bool),
+    {
+        let item_h = self.item_height;
+        let accent = Color::rgba(0.4, 0.7, 1.0, 1.0);
+
+        let row_style = TextStyle {
+            font_size,
+            color:      Color::rgb(0.78, 0.78, 0.78),
+            baseline_y: 0.0,
+            clip_x:     self.list_rect.x,
+            scroll_x:   0.0,
+        };
+        let sel_style  = TextStyle { color: Color::rgb(1.0, 1.0, 1.0), ..row_style };
+        let dot_style  = TextStyle { font_size: font_size * 0.8, color: accent, ..row_style };
+
+        self.render_inner(font_size, indicator_x, row_label,
+            row_style, sel_style, dot_style,
+            Color::rgba(0.4, 0.7, 1.0, 0.12),
+            Color::rgba(0.59, 0.59, 0.59, 0.71),
+            Color::rgba(0.24, 0.24, 0.24, 0.47),
+            Color::rgba(0.4, 0.7, 1.0, 0.6),
+            item_h,
+        )
+    }
+
+    /// Theme-aware render — derives all colors from `theme` tokens.
+    pub fn render_themed<F>(&self, theme: &crate::theme::Theme, scale: f32, row_label: F) -> Node
+    where
+        F: Fn(&T) -> (String, bool),
+    {
+        let item_h      = self.item_height;
+        let font_size   = theme.overlay_font_size * scale;
+        let indicator_x = self.list_rect.x + self.list_rect.width - 16.0 * scale;
+
+        let (r, g, b)   = theme.list_row_fg;
+        let (sr, sg, sb) = theme.list_sel_fg;
+        let (ar, ag, ab, aa) = theme.list_accent;
+
+        let row_style = TextStyle {
+            font_size,
+            color:      Color::rgb(r, g, b),
+            baseline_y: 0.0,
+            clip_x:     self.list_rect.x,
+            scroll_x:   0.0,
+        };
+        let sel_style = TextStyle { color: Color::rgb(sr, sg, sb), ..row_style };
+        let dot_style = TextStyle { font_size: font_size * 0.8, color: Color::rgba(ar, ag, ab, aa), ..row_style };
+
+        let (sbr, sbg, sbb, sba) = theme.list_sel_bg;
+        let (er, eg, eb, ea)     = theme.list_empty_fg;
+        let (tr, tg, tb, ta)     = theme.list_scrollbar_track;
+        let thumb_color          = Color::rgba(ar, ag, ab, aa * 0.6);
+
+        self.render_inner(font_size, indicator_x, row_label,
+            row_style, sel_style, dot_style,
+            Color::rgba(sbr, sbg, sbb, sba),
+            Color::rgba(er, eg, eb, ea),
+            Color::rgba(tr, tg, tb, ta),
+            thumb_color,
+            item_h,
+        )
+    }
+
+    /// Render at `rect` with geometry computed on-the-fly — no prior `relayout` needed.
+    /// Uses the same theme tokens as `render_themed`. The stored `list_rect` / `item_height`
+    /// are ignored; everything is derived from `rect` and `scale`.
+    pub fn render_themed_at<F>(&self, rect: Rect, theme: &crate::theme::Theme, scale: f32, row_label: F) -> Node
+    where
+        F: Fn(&T) -> (String, bool),
+    {
+        use crate::config::layout as cfg;
+        let sb_w        = cfg::SCROLLBAR_WIDTH * scale;
+        let item_height = 32.0 * scale;
+        let rects       = rect.split_h(&[1.0, -sb_w]);
+        let list_rect   = rects[0];
+        let sb_rect     = rects[1];
+
+        let font_size   = theme.overlay_font_size * scale;
+        let indicator_x = list_rect.x + list_rect.width - 16.0 * scale;
+
+        let (r, g, b)        = theme.list_row_fg;
+        let (sr, sg, sb_)    = theme.list_sel_fg;
+        let (ar, ag, ab, aa) = theme.list_accent;
+
+        let row_style = TextStyle {
+            font_size,
+            color:      Color::rgb(r, g, b),
+            baseline_y: 0.0,
+            clip_x:     list_rect.x,
+            scroll_x:   0.0,
+        };
+        let sel_style = TextStyle { color: Color::rgb(sr, sg, sb_), ..row_style };
+        let dot_style = TextStyle { font_size: font_size * 0.8, color: Color::rgba(ar, ag, ab, aa), ..row_style };
+
+        let (sbr, sbg, sbb, sba) = theme.list_sel_bg;
+        let (er, eg, eb, ea)     = theme.list_empty_fg;
+        let (tr, tg, tb, ta)     = theme.list_scrollbar_track;
+        let thumb_color          = Color::rgba(ar, ag, ab, aa * 0.6);
+        let sel_bg               = Color::rgba(sbr, sbg, sbb, sba);
+
+        let scroll   = self.scroll_offset;
+        let selected = self.selected_index;
+        let max_vis  = (list_rect.height / item_height).floor() as usize;
+        let visible  = max_vis.min(self.filtered_indices.len()).min(self.max_visible);
+
+        let mut children: Vec<Node> = self.filtered_indices.iter()
+            .skip(scroll)
+            .take(visible)
+            .enumerate()
+            .map(|(display_idx, &item_idx)| {
+                let item = &self.items[item_idx];
+                let (title, has_indicator) = row_label(item);
+                let row_rect = Rect {
+                    x: list_rect.x,
+                    y: list_rect.y + display_idx as f32 * item_height,
+                    width: list_rect.width,
+                    height: item_height,
+                };
+                let baseline_y = row_rect.y + item_height / 2.0 + font_size * 0.35;
+                let center_y   = row_rect.y + item_height * 0.5;
+                let is_selected = display_idx + scroll == selected;
+
+                let mut row_nodes = vec![];
+                if is_selected {
+                    row_nodes.push(Node::Box { rect: row_rect, style: BoxStyle::filled(sel_bg).with_radius(4.0) });
+                }
+                let style = if is_selected { sel_style } else { row_style };
+                row_nodes.push(Node::Text {
+                    text:  title,
+                    style: TextStyle { baseline_y, ..style },
+                    clip:  Some(list_rect),
+                });
+                if has_indicator {
+                    row_nodes.push(Node::Text {
+                        text:  "●".to_string(),
+                        style: TextStyle { baseline_y: center_y, clip_x: indicator_x, ..dot_style },
+                        clip:  None,
+                    });
+                }
+                Node::layer(row_nodes)
+            })
+            .collect();
+
+        if self.filtered_indices.is_empty() {
+            children.push(Node::Text {
+                text:  "No matching notes".to_string(),
+                style: TextStyle {
+                    baseline_y: list_rect.y + item_height * 0.65,
+                    color: Color::rgba(er, eg, eb, ea),
+                    ..row_style
+                },
+                clip: None,
+            });
+        }
+
+        // Scrollbar
+        let total = self.filtered_indices.len();
+        if total > visible && visible > 0 {
+            use crate::primitives::scrollbar::Scrollbar;
+            let mut sb = Scrollbar::new(sb_rect, scale);
+            sb.relayout(sb_rect, scale);
+            if let Some(thumb) = sb.list_thumb(total, visible, scroll) {
+                children.push(Node::Scrollbar(ScrollbarNode {
+                    track: sb_rect,
+                    thumb: thumb.rect,
+                    track_color: Color::rgba(tr, tg, tb, ta),
+                    thumb_color,
+                }));
+            }
+        }
+
+        Node::layer(children)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn render_inner<F>(
+        &self,
+        _font_size: f32,
+        indicator_x: f32,
+        row_label: F,
+        row_style: TextStyle,
+        sel_style: TextStyle,
+        dot_style: TextStyle,
+        sel_bg: Color,
+        empty_fg: Color,
+        track_color: Color,
+        thumb_color: Color,
+        item_h: f32,
+    ) -> Node
+    where
+        F: Fn(&T) -> (String, bool),
+    {
+        let mut children: Vec<Node> = self.visible_rows_snapshot(|item, geo| {
+            let (title, has_indicator) = row_label(item);
+            let mut row_nodes = vec![];
+
+            if geo.is_selected {
+                row_nodes.push(Node::Box {
+                    rect:  geo.rect,
+                    style: BoxStyle::filled(sel_bg).with_radius(4.0),
+                });
+            }
+
+            let style = if geo.is_selected { sel_style } else { row_style };
+            row_nodes.push(Node::Text {
+                text:  title,
+                style: TextStyle { baseline_y: geo.baseline_y, ..style },
+                clip:  Some(self.list_rect),
+            });
+
+            if has_indicator {
+                row_nodes.push(Node::Text {
+                    text:  "●".to_string(),
+                    style: TextStyle { baseline_y: geo.center_y, clip_x: indicator_x, ..dot_style },
+                    clip:  None,
+                });
+            }
+
+            Node::layer(row_nodes)
+        });
+
+        if self.filtered_indices.is_empty() {
+            children.push(Node::Text {
+                text:  "No matching notes".to_string(),
+                style: TextStyle {
+                    baseline_y: self.list_rect.y + item_h * 0.65,
+                    color: empty_fg,
+                    ..row_style
+                },
+                clip:  None,
+            });
+        }
+
+        if let Some((track, thumb)) = self.scrollbar_rects() {
+            children.push(Node::Scrollbar(ScrollbarNode { track, thumb, track_color, thumb_color }));
+        }
+
+        Node::layer(children)
     }
 }
 

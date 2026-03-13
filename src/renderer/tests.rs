@@ -30,16 +30,16 @@ fn make_renderer(ctx: &HeadlessContext) -> Renderer {
 }
 
 /// Render one blank frame using `renderer`, return bottom-up RGBA8 pixels.
-fn render_frame(ctx: &HeadlessContext, renderer: &mut Renderer) -> Vec<u8> {
+fn render_one_frame(ctx: &HeadlessContext, renderer: &mut Renderer) -> Vec<u8> {
     let mut logic = AppLogic::new_headless(ctx.width as f32, ctx.height as f32, 1.0);
-    let frame = logic.render_frame();
-    renderer.render(&frame, None);
+    let node = logic.render();
+    renderer.render(&node, ctx.width as f32, ctx.height as f32);
     ctx.read_pixels()
 }
 
 /// Convenience: build renderer + render one frame.
 fn render_blank(ctx: &HeadlessContext) -> Vec<u8> {
-    render_frame(ctx, &mut make_renderer(ctx))
+    render_one_frame(ctx, &mut make_renderer(ctx))
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -125,8 +125,8 @@ fn second_render_also_correct() {
         }
     };
     let mut renderer = make_renderer(&ctx);
-    render_frame(&ctx, &mut renderer); // warm up font atlas
-    let raw = render_frame(&ctx, &mut renderer); // frame 2
+    render_one_frame(&ctx, &mut renderer); // warm up font atlas
+    let raw = render_one_frame(&ctx, &mut renderer); // frame 2
 
     // Background (content area, center) must still be black.
     let bg = pixel_at(&raw, W, H, W / 2, H / 2);

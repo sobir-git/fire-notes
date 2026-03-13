@@ -270,6 +270,9 @@ impl ApplicationHandler for AppHandler {
             if state.app.tick().needs_redraw() {
                 state.window.request_redraw();
             }
+            if state.app.logic.poll_events() {
+                state.window.request_redraw();
+            }
             if state.app.has_active_animations() {
                 event_loop.set_control_flow(ControlFlow::WaitUntil(
                     Instant::now() + Duration::from_millis(16),

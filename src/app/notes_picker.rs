@@ -1,88 +1,46 @@
-//! Notes picker — app-level operations.
-//!
-//! Thin shell: builds the entry list, opens the picker, routes typed
-//! PickerEvent to business logic. No manual hit-testing or routing here.
+//! Notes picker — the ONE place that knows about NotesPicker.
+//! Constructs it, boxes it, hands it to the generic overlay system.
+//! Everything else routes through Overlay trait — zero NotesPicker coupling.
 
 use std::path::PathBuf;
 
-use crate::components::notes_picker::PickerEvent;
+use crate::components::notes_picker::NotesPicker;
+use crate::layout::FrameworkEvent;
 use crate::persistence;
+use crate::ui::Rect;
 
 use super::focus::NoteEntry;
 use super::state::AppResult;
 use super::App;
 
 impl App {
-    /// Open the notes picker with all available notes.
     pub fn open_notes_picker(&mut self) -> AppResult {
         let all_note_paths = persistence::list_notes().unwrap_or_default();
         let open_paths: Vec<&PathBuf> = self.logic.tabs
-            .iter()
-            .filter_map(|tab| tab.path())
-            .collect();
-        let notes: Vec<NoteEntry> = all_note_paths
-            .into_iter()
-            .map(|path| {
-                let title = persistence::load_note_title(&path).unwrap_or_else(|| {
-                    path.file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("Unknown")
-                        .to_string()
-                });
-                let is_open = open_paths.iter().any(|p| **p == path);
-                NoteEntry { path, title, is_open }
-            })
-            .collect();
+            .iter().filter_map(|tab| tab.path()).collect();
+        let notes: Vec<NoteEntry> = all_note_paths.into_iter().map(|path| {
+            let title = persistence::load_note_title(&path).unwrap_or_else(|| {
+                path.file_name().and_then(|n| n.to_str()).unwrap_or("Unknown").to_string()
+            });
+            let is_open = open_paths.iter().any(|p| **p == path);
+            NoteEntry { path, title, is_open }
+        }).collect();
         if notes.is_empty() { return AppResult::Ok; }
-        self.logic.cursor_shape = crate::ui::CursorShape::Default;
-        self.logic.open_notes_picker_with(notes)
+        let window = Rect { x: 0.0, y: 0.0, width: self.logic.width, height: self.logic.height };
+        let picker = NotesPicker::new(notes, window, self.logic.scale);
+        self.logic.open_overlay_with(Box::new(picker))
     }
 
-    pub fn is_notes_picker_open(&self) -> bool {
-        self.logic.focus.is_notes_picker()
-    }
+    pub fn is_notes_picker_open(&self) -> bool { self.logic.focus.is_overlay() }
 
     pub fn scroll_notes_picker(&mut self, lines: isize) -> AppResult {
-        if let Some(p) = &mut self.logic.notes_picker {
-            if p.on_scroll(lines) { return AppResult::Redraw; }
-        }
-        AppResult::Ok
+        self.logic.dispatch_overlay(FrameworkEvent::Scroll { lines })
     }
 
     pub fn hover_notes_picker(&mut self, x: f32, y: f32) -> AppResult {
-        if let Some(p) = &mut self.logic.notes_picker {
-            let (cursor, changed) = p.on_hover(x, y);
-            self.logic.cursor_shape = cursor;
-            if changed { return AppResult::Redraw; }
+        if let Some(o) = &self.logic.overlay {
+            self.logic.cursor_shape = o.cursor_shape_at(x, y);
         }
-        AppResult::Ok
-    }
-
-    pub fn handle_notes_picker_click(&mut self, x: f32, y: f32) -> AppResult {
-        let char_width = self.renderer.get_picker_char_width();
-        let event = if let Some(p) = &mut self.logic.notes_picker {
-            p.on_pointer_down(x, y, char_width)
-        } else {
-            return AppResult::Ok;
-        };
-        match event {
-            PickerEvent::None     => AppResult::Ok,
-            PickerEvent::Redraw   => AppResult::Redraw,
-            PickerEvent::Cancelled => self.logic.cancel_notes_picker(),
-            PickerEvent::Confirmed(entry) => {
-                self.logic.notes_picker = None;
-                self.logic.focus.confirm_notes_picker();
-                self.logic.open_or_switch_to(entry.path)
-            }
-        }
-    }
-
-    pub(crate) fn drag_picker_input(&mut self, x: f32) -> AppResult {
-        let char_width = self.renderer.get_picker_char_width();
-        if let Some(p) = &mut self.logic.notes_picker {
-            p.on_drag(x, char_width);
-            return AppResult::Redraw;
-        }
-        AppResult::Ok
+        self.logic.dispatch_overlay(FrameworkEvent::PointerMove { x, y })
     }
 }

@@ -20,8 +20,8 @@ pub enum Focus {
     Editor,
     /// Tab title rename input — state lives in `AppLogic.rename_input`
     TabRename,
-    /// Notes picker (quick open) — state lives in `AppLogic.notes_picker`
-    NotesPicker,
+    /// A full-screen overlay is active (picker, dialog, etc.)
+    Overlay,
 }
 
 impl Focus {
@@ -31,17 +31,11 @@ impl Focus {
         if self.is_renaming() { *self = Focus::Editor; true } else { false }
     }
 
-    pub fn is_notes_picker(&self) -> bool { matches!(self, Focus::NotesPicker) }
+    pub fn is_overlay(&self) -> bool { matches!(self, Focus::Overlay) }
 
-    pub fn open_notes_picker() -> Self {
-        Focus::NotesPicker
-    }
+    pub fn open_overlay() -> Self { Focus::Overlay }
 
-    pub fn cancel_notes_picker(&mut self) -> bool {
-        if self.is_notes_picker() { *self = Focus::Editor; true } else { false }
-    }
-
-    pub fn confirm_notes_picker(&mut self) -> bool {
-        if self.is_notes_picker() { *self = Focus::Editor; true } else { false }
+    pub fn close_overlay(&mut self) -> bool {
+        if self.is_overlay() { *self = Focus::Editor; true } else { false }
     }
 }

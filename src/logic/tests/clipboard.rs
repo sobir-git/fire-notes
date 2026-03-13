@@ -2,14 +2,13 @@
 #![allow(unused_must_use)]
 
 use crate::app::action::Action;
-use super::{app, type_str};
+use super::{app, type_str, line, total_lines};
 
 #[test]
 fn insert_paste_text_appends_to_buffer() {
     let mut logic = app();
     logic.insert_paste_text("pasted");
-    let frame = logic.render_frame();
-    assert_eq!(frame.visible_lines[0].text, "pasted");
+    assert_eq!(line(&logic, 0), "pasted");
 }
 
 #[test]
@@ -18,18 +17,16 @@ fn insert_paste_text_respects_cursor_position() {
     type_str(&mut logic, "ac");
     logic.execute(Action::CursorLeft { selecting: false });
     logic.insert_paste_text("b");
-    let frame = logic.render_frame();
-    assert_eq!(frame.visible_lines[0].text, "abc");
+    assert_eq!(line(&logic, 0), "abc");
 }
 
 #[test]
 fn paste_multiline_text_creates_multiple_lines() {
     let mut logic = app();
     logic.insert_paste_text("line1\nline2");
-    let frame = logic.render_frame();
-    assert!(frame.visible_lines.len() >= 2);
-    assert_eq!(frame.visible_lines[0].text, "line1");
-    assert_eq!(frame.visible_lines[1].text, "line2");
+    assert!(total_lines(&logic) >= 2);
+    assert_eq!(line(&logic, 0), "line1");
+    assert_eq!(line(&logic, 1), "line2");
 }
 
 #[test]
@@ -47,8 +44,7 @@ fn cut_selection_clears_buffer() {
     type_str(&mut logic, "hello");
     logic.execute(Action::SelectAll);
     logic.cut_selection();
-    let frame = logic.render_frame();
-    assert_eq!(frame.visible_lines.first().map(|l| l.text.as_str()).unwrap_or(""), "");
+    assert_eq!(line(&logic, 0), "");
 }
 
 #[test]
@@ -66,6 +62,5 @@ fn copy_selection_does_not_modify_buffer() {
     logic.execute(Action::SelectAll);
     let text = logic.copy_selection();
     assert_eq!(text.as_deref(), Some("hello"));
-    let frame = logic.render_frame();
-    assert_eq!(frame.visible_lines[0].text, "hello");
+    assert_eq!(line(&logic, 0), "hello");
 }

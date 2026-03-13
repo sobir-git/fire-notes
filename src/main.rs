@@ -14,7 +14,6 @@ mod logic;
 mod persistence;
 mod platform;
 mod primitives;
-mod render_frame;
 mod renderer;
 mod tab;
 mod text_buffer;

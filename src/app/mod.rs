@@ -94,9 +94,8 @@ impl App {
     }
 
     pub fn render(&mut self) {
-        let frame        = self.logic.render_frame();
-        let rename_input = self.logic.rename_input.as_ref().map(|(_, fw)| &fw.state);
-        self.renderer.render(&frame, rename_input);
+        let node = self.logic.render();
+        self.renderer.render(&node, self.logic.width, self.logic.height);
     }
 
     // =========================================================================

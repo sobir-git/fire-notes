@@ -7,8 +7,9 @@ use super::super::App;
 
 impl App {
     pub fn click_at(&mut self, x: f32, y: f32, selecting: bool) -> AppResult {
-        if self.logic.focus.is_notes_picker() {
-            return self.handle_notes_picker_click(x, y);
+        if self.logic.focus.is_overlay() {
+            let char_width = self.renderer.get_picker_char_width();
+            return self.logic.dispatch_overlay(crate::layout::FrameworkEvent::PointerDown { x, y, char_width });
         }
 
         self.logic.prepare_ui_tree();
