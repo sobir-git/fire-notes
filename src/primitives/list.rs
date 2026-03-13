@@ -8,6 +8,23 @@ use crate::layout::Widget;
 use crate::ui::{CursorShape, Rect};
 use super::scrollbar::{Scrollbar, ScrollbarAction};
 
+// ── Row geometry ────────────────────────────────────────────────────────────
+
+/// Geometry for one visible row, passed to snapshot closures.
+#[derive(Debug, Clone, Copy)]
+pub struct RowGeometry {
+    /// Row bounding rect.
+    pub rect:       crate::ui::Rect,
+    /// Text baseline Y (rect.y + height * 0.65).
+    pub baseline_y: f32,
+    /// Center Y (rect.y + height * 0.5).
+    pub center_y:   f32,
+    /// True if this row is the selected one.
+    pub is_selected: bool,
+    /// 0-based display index within the visible window.
+    pub display_index: usize,
+}
+
 // ── Event type ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
@@ -180,6 +197,38 @@ impl<T> List<T> {
     }
 
     pub fn list_rect(&self) -> Rect { self.list_rect }
+
+    /// Iterate visible rows, calling `f(item, geometry)` for each.
+    /// Returns the mapped results as a `Vec<R>`.
+    /// This is the canonical way to build row snapshot data without
+    /// duplicating the scroll/select/index arithmetic in callers.
+    pub fn visible_rows_snapshot<R, F>(&self, f: F) -> Vec<R>
+    where
+        F: Fn(&T, RowGeometry) -> R,
+    {
+        let scroll   = self.scroll_offset;
+        let selected = self.selected_index;
+        let visible  = self.visible_count();
+        let item_h   = self.item_height;
+
+        self.filtered_indices.iter()
+            .skip(scroll)
+            .take(visible)
+            .enumerate()
+            .filter_map(|(di, &fi)| {
+                let item = self.items.get(fi)?;
+                let y    = self.list_rect.y + di as f32 * item_h;
+                let geo  = RowGeometry {
+                    rect:          Rect { x: self.list_rect.x, y, width: self.list_rect.width, height: item_h },
+                    baseline_y:    y + item_h * 0.65,
+                    center_y:      y + item_h * 0.5,
+                    is_selected:   scroll + di == selected,
+                    display_index: di,
+                };
+                Some(f(item, geo))
+            })
+            .collect()
+    }
 
     // ── Events ────────────────────────────────────────────────────────────────
 

@@ -14,7 +14,7 @@
 use crate::app::focus::NoteEntry;
 use crate::layout::Column;
 use crate::primitives::{List, TextInput};
-use crate::primitives::list::ListPointerResult;
+use crate::primitives::list::{ListPointerResult, RowGeometry};
 use crate::render_frame::{FrameRect, NotesPickerFrameData, NotesPickerRowData};
 use crate::ui::{CursorShape, Rect};
 
@@ -144,26 +144,16 @@ impl NotesPicker {
             (anchor.min(cursor), anchor.max(cursor))
         });
 
-        let scroll_offset  = self.list.scroll_offset();
-        let selected_index = self.list.selected_index();
-        let row_visible    = self.list.visible_count();
-
-        let rows: Vec<NotesPickerRowData> = self.list
-            .filtered_indices().iter()
-            .skip(scroll_offset).take(row_visible).enumerate()
-            .filter_map(|(di, &fi)| {
-                let item  = self.list.items().get(fi)?;
-                let row_y = list_rect.y + di as f32 * item_h;
-                Some(NotesPickerRowData {
-                    title:       item.title.clone(),
-                    is_open:     item.is_open,
-                    is_selected: scroll_offset + di == selected_index,
-                    row_rect:    FrameRect { x: list_rect.x, y: row_y, width: list_rect.width, height: item_h },
-                    baseline_y:  row_y + item_h * 0.65,
-                    center_y:    row_y + item_h * 0.5,
-                })
-            })
-            .collect();
+        let rows: Vec<NotesPickerRowData> = self.list.visible_rows_snapshot(
+            |entry: &NoteEntry, geo: RowGeometry| NotesPickerRowData {
+                title:       entry.title.clone(),
+                is_open:     entry.is_open,
+                is_selected: geo.is_selected,
+                row_rect:    to_frame(geo.rect),
+                baseline_y:  geo.baseline_y,
+                center_y:    geo.center_y,
+            },
+        );
 
         NotesPickerFrameData {
             backdrop_rect:        to_frame(window),
