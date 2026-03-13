@@ -3,20 +3,15 @@
 use femtovg::{Canvas, Color, FontId, Paint, Path, renderer::OpenGl};
 
 use crate::config::rendering;
+use crate::render_frame::{TabBarFrameData, FrameRect};
 use crate::theme::Theme;
-use crate::ui::{TabBar, TextInput};
+use crate::ui::TextInput;
 
-/// Per-frame interaction state for the tab bar.
-/// Groups all hover/rename/cursor fields so `draw()` stays under the arg limit.
-pub struct TabBarInteraction<'a> {
-    pub hovered_tab_index: Option<usize>,
-    pub hovered_plus:      bool,
-    pub renaming_tab:      Option<usize>,
-    pub rename_input:      Option<&'a TextInput>,
-    pub cursor_visible:    bool,
-    pub hovered_minimize:  bool,
-    pub hovered_maximize:  bool,
-    pub hovered_close:     bool,
+/// Per-frame rename overlay state (separate from geometry).  
+pub struct RenameOverlay<'a> {
+    pub tab_index:     usize,
+    pub input:         &'a TextInput,
+    pub cursor_visible: bool,
 }
 
 use super::super::fonts::{self, snap_to_pixel};
@@ -38,31 +33,28 @@ impl<'a> TabBarRenderer<'a> {
         Self { canvas, fonts, theme, scale }
     }
 
-    /// Draw the entire tab bar using the pre-computed `TabBar` layout widget.
-    ///
-    /// All coordinates come from the widget — no raw pixel math here.
+    /// Draw the entire tab bar from pre-baked frame data (no widget refs).
     pub fn draw(
         &mut self,
-        layout: &TabBar,
+        tb: &TabBarFrameData,
         tabs: &[(&str, bool)],
-        ix: &TabBarInteraction<'_>,
+        rename: Option<&RenameOverlay<'_>>,
     ) {
-        let r = &layout.rect;
-        // Clip scrolling tabs to the drag-gap boundary (left of drag zone + controls).
-        let tabs_clip_width = layout.tabs_clip_x - r.x;
+        let r = &tb.rect;
+        let tabs_clip_width = tb.tabs_clip_x - r.x;
 
         self.canvas.save();
         self.canvas.intersect_scissor(r.x, r.y, tabs_clip_width, r.height);
 
-        for tab in &layout.scroll_area.tabs {
+        for tab in &tb.tabs {
             let (title, is_active) = tabs[tab.index];
-            let r = &tab.rect;
+            let tr = &tab.rect;
 
             let mut path = Path::new();
-            path.rect(r.x, r.y, r.width, r.height);
+            path.rect(tr.x, tr.y, tr.width, tr.height);
             let color = if is_active {
                 Color::rgbf(self.theme.tab_active.0, self.theme.tab_active.1, self.theme.tab_active.2)
-            } else if Some(tab.index) == ix.hovered_tab_index {
+            } else if Some(tab.index) == tb.hovered_tab_index {
                 Color::rgbf(self.theme.tab_hover.0, self.theme.tab_hover.1, self.theme.tab_hover.2)
             } else {
                 Color::rgbf(self.theme.tab_inactive.0, self.theme.tab_inactive.1, self.theme.tab_inactive.2)
@@ -71,7 +63,7 @@ impl<'a> TabBarRenderer<'a> {
 
             if is_active {
                 let mut indicator = Path::new();
-                indicator.rect(r.x, r.y, r.width, 2.0 * self.scale);
+                indicator.rect(tr.x, tr.y, tr.width, 2.0 * self.scale);
                 self.canvas.fill_path(
                     &indicator,
                     &Paint::color(Color::rgbf(
@@ -91,20 +83,24 @@ impl<'a> TabBarRenderer<'a> {
             } else {
                 title.len() as f32 * rendering::TAB_CHAR_WIDTH_RATIO * self.scale
             };
-            let text_x = snap_to_pixel(r.x + (r.width - text_width) / 2.0);
-            let text_y = snap_to_pixel(layout.rect.y + layout.rect.height / 2.0 + 5.0 * self.scale);
+            let text_x = snap_to_pixel(tr.x + (tr.width - text_width) / 2.0);
+            let text_y = snap_to_pixel(r.y + r.height / 2.0 + 5.0 * self.scale);
             let _ = self.canvas.fill_text(text_x, text_y, title, &text_paint);
 
-            if Some(tab.index) == ix.renaming_tab {
-                self.draw_rename_overlay(ix.rename_input, ix.cursor_visible, &text_paint, text_x, text_y);
+            if let Some(ren) = rename {
+                if ren.tab_index == tab.index {
+                    self.draw_rename_overlay(Some(ren.input), ren.cursor_visible, &text_paint, text_x, text_y);
+                }
             }
         }
 
         self.canvas.restore();
-        // Plus button is pinned at a fixed position — always draw it.
-        self.draw_new_tab_button(layout, ix.hovered_plus);
-        self.draw_window_controls(layout, ix.hovered_minimize, ix.hovered_maximize, ix.hovered_close);
-        self.draw_bottom_line(layout);
+        self.draw_new_tab_button(&tb.new_tab_rect, tb.hovered_plus);
+        self.draw_window_controls_from_rects(
+            &tb.close_rect, &tb.maximize_rect, &tb.minimize_rect,
+            tb.hovered_close, tb.hovered_maximize, tb.hovered_minimize,
+        );
+        self.draw_bottom_line_from_rect(r);
     }
 
     fn draw_rename_overlay(
@@ -156,8 +152,7 @@ impl<'a> TabBarRenderer<'a> {
         }
     }
 
-    fn draw_new_tab_button(&mut self, layout: &TabBar, hovered: bool) {
-        let r = &layout.new_tab_rect;
+    fn draw_new_tab_button(&mut self, r: &FrameRect, hovered: bool) {
         let mut btn_path = Path::new();
         btn_path.rounded_rect(r.x, r.y, r.width, r.height, 4.0 * self.scale);
         let btn_color = if hovered {
@@ -180,8 +175,7 @@ impl<'a> TabBarRenderer<'a> {
         let _ = self.canvas.fill_text(plus_x, plus_y, "+", &plus_paint);
     }
 
-    pub(super) fn draw_bottom_line(&mut self, layout: &TabBar) {
-        let r = &layout.rect;
+    pub(super) fn draw_bottom_line_from_rect(&mut self, r: &FrameRect) {
         let mut line = Path::new();
         line.rect(r.x, r.y + r.height, r.width, 1.0);
         self.canvas.fill_path(

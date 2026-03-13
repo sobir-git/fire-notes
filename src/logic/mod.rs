@@ -21,9 +21,11 @@ use crate::app::action::Action;
 use crate::app::focus::{Focus, NoteEntry};
 use crate::app::scroll_state::{ScrollDirection, ScrollInput, ScrollState};
 use crate::app::state::AppResult;
-use crate::app::ui_state::UiState;
+use crate::components::NotesPicker;
 use crate::config::{self, layout, timing};
 use crate::tab::Tab;
+use crate::fw::widgets::TextInput as FwTextInput;
+use crate::ui::{UiTree, WindowRect};
 
 pub struct AppLogic {
     pub(crate) tabs: Vec<Tab>,
@@ -38,14 +40,39 @@ pub struct AppLogic {
     pub(crate) char_width_hint: f32,
 
     pub(crate) focus: Focus,
-    pub(crate) ui_state: UiState,
+    /// Notes picker component — `Some` while the picker is open.
+    pub(crate) notes_picker: Option<NotesPicker>,
+    /// Tab rename input. `Some((tab_index, input))` while renaming.
+    pub(crate) rename_input: Option<(usize, FwTextInput)>,
+    /// Retained UI tree — persists across frames so hover state survives.
+    pub(crate) ui_tree: UiTree,
     pub(crate) scroll_state: ScrollState,
+
+    // ── Cursor blink ──────────────────────────────────────────────────────────
+    pub(crate) cursor_visible: bool,
+    pub(crate) last_cursor_blink: std::time::Instant,
+
+    // ── Hover / cursor shape ──────────────────────────────────────────────────
+    pub(crate) hovered_resize_edge: Option<crate::ui::ResizeEdge>,
+    pub(crate) cursor_shape: crate::ui::CursorShape,
+
+    // ── Mouse interaction ─────────────────────────────────────────────────────
+    pub(crate) last_drag_scroll: std::time::Instant,
+    pub(crate) last_mouse_x: f32,
+    pub(crate) last_mouse_y: f32,
+
+    // ── Tab bar scroll ────────────────────────────────────────────────────────
+    pub(crate) tab_scroll_x: f32,
+
+    // ── Flame effect ─────────────────────────────────────────────────────────
+    pub(crate) typing_flame_positions: Vec<(usize, usize, std::time::Instant)>,
 }
 
 impl AppLogic {
     /// Create a fully isolated, headless instance for testing.
     /// Never touches the filesystem or OS.
     pub fn new_headless(width: f32, height: f32, scale: f32) -> Self {
+        let now = std::time::Instant::now();
         Self {
             tabs: vec![Tab::new_untitled()],
             active_tab: 0,
@@ -54,8 +81,19 @@ impl AppLogic {
             scale,
             char_width_hint: crate::config::rendering::FALLBACK_CHAR_WIDTH,
             focus: Focus::default(),
-            ui_state: UiState::new(),
+            notes_picker: None,
+            rename_input: None,
+            ui_tree: UiTree::layout(WindowRect::new(width, height), scale),
             scroll_state: ScrollState::new(),
+            cursor_visible: true,
+            last_cursor_blink: now,
+            hovered_resize_edge: None,
+            cursor_shape: crate::ui::CursorShape::Default,
+            last_drag_scroll: now,
+            last_mouse_x: 0.0,
+            last_mouse_y: 0.0,
+            tab_scroll_x: 0.0,
+            typing_flame_positions: Vec::new(),
         }
     }
 
@@ -67,6 +105,7 @@ impl AppLogic {
         height: f32,
         scale: f32,
     ) -> Self {
+        let now = std::time::Instant::now();
         let mut logic = Self {
             tabs,
             active_tab,
@@ -75,8 +114,19 @@ impl AppLogic {
             scale,
             char_width_hint: crate::config::rendering::FALLBACK_CHAR_WIDTH,
             focus: Focus::default(),
-            ui_state: UiState::new(),
+            notes_picker: None,
+            rename_input: None,
+            ui_tree: UiTree::layout(WindowRect::new(width, height), scale),
             scroll_state: ScrollState::new(),
+            cursor_visible: true,
+            last_cursor_blink: now,
+            hovered_resize_edge: None,
+            cursor_shape: crate::ui::CursorShape::Default,
+            last_drag_scroll: now,
+            last_mouse_x: 0.0,
+            last_mouse_y: 0.0,
+            tab_scroll_x: 0.0,
+            typing_flame_positions: Vec::new(),
         };
         if logic.tabs.is_empty() {
             logic.tabs.push(Tab::new_untitled());
@@ -88,15 +138,26 @@ impl AppLogic {
     // Core lifecycle
     // =========================================================================
 
+    /// Reset cursor blink (call after user action)
+    pub(crate) fn reset_cursor_blink(&mut self) {
+        self.cursor_visible = true;
+        self.last_cursor_blink = std::time::Instant::now();
+    }
+
     /// Advance internal timers. Returns whether a redraw is needed.
     pub fn tick(&mut self) -> AppResult {
         let mut needs_redraw = false;
-        if self.ui_state.tick_cursor_blink(timing::CURSOR_BLINK_MS) {
+        if self.last_cursor_blink.elapsed().as_millis() >= timing::CURSOR_BLINK_MS as u128 {
+            self.cursor_visible = !self.cursor_visible;
+            self.last_cursor_blink = std::time::Instant::now();
             needs_redraw = true;
         }
-        if self.ui_state.cleanup_typing_flames(config::flame::TYPING_FLAME_EXPIRY) {
-            needs_redraw = true;
-        }
+        let had_flames = !self.typing_flame_positions.is_empty();
+        let now = std::time::Instant::now();
+        self.typing_flame_positions.retain(|(_, _, ts)| {
+            now.duration_since(*ts).as_secs_f32() < config::flame::TYPING_FLAME_EXPIRY
+        });
+        if had_flames { needs_redraw = true; }
         if needs_redraw { AppResult::Redraw } else { AppResult::Ok }
     }
 
@@ -104,6 +165,7 @@ impl AppLogic {
         self.width = width;
         self.height = height;
         self.scale = scale;
+        self.ui_tree = UiTree::layout(WindowRect::new(width, height), scale);
     }
 
     // =========================================================================
@@ -176,17 +238,32 @@ impl AppLogic {
     /// Execute a notes-picker open with a pre-built entry list.
     pub fn open_notes_picker_with(&mut self, entries: Vec<NoteEntry>) -> AppResult {
         if entries.is_empty() { return AppResult::Ok; }
-        self.focus = Focus::start_notes_picker(entries);
+        let window = crate::ui::Rect { x: 0.0, y: 0.0, width: self.width, height: self.height };
+        self.notes_picker = Some(crate::components::NotesPicker::new(entries, window, self.scale));
+        self.focus = Focus::open_notes_picker();
         AppResult::Redraw
+    }
+
+    pub fn cancel_notes_picker(&mut self) -> AppResult {
+        if self.focus.cancel_notes_picker() {
+            self.notes_picker = None;
+            return AppResult::Redraw;
+        }
+        AppResult::Ok
     }
 
     /// Insert text from clipboard (called by platform shell after reading clipboard).
     pub fn insert_paste_text(&mut self, text: &str) -> AppResult {
-        use crate::app::input_handler::InputHandler;
-        let result = self.focus.paste(text);
-        if result.was_handled() {
-            self.ui_state.reset_cursor_blink();
-            return result.into();
+        if matches!(self.focus, Focus::TabRename) {
+            if let Some((_, fw_input)) = &mut self.rename_input {
+                use crate::app::input_handler::InputHandler;
+                let r = InputHandler::paste(&mut fw_input.state, text);
+                if r.was_handled() {
+                    self.reset_cursor_blink();
+                    return AppResult::Redraw;
+                }
+            }
+            return AppResult::Ok;
         }
         if !text.is_empty() {
             self.tabs[self.active_tab].paste_text(text);
@@ -199,17 +276,20 @@ impl AppLogic {
 
     /// Copy current selection. Returns text for the platform shell to write to clipboard.
     pub fn copy_selection(&self) -> Option<String> {
-        use crate::app::input_handler::InputHandler;
-        if let Some(text) = self.focus.copy() { return Some(text); }
+        if matches!(self.focus, Focus::TabRename) {
+            use crate::app::input_handler::InputHandler;
+            return self.rename_input.as_ref().and_then(|(_, fw_input)| InputHandler::copy(&fw_input.state));
+        }
         self.tabs[self.active_tab].copy_selection()
     }
 
     /// Cut current selection. Returns text for the clipboard.
     pub fn cut_selection(&mut self) -> Option<String> {
-        use crate::app::input_handler::InputHandler;
-        if let Some(text) = self.focus.cut() {
-            self.ui_state.reset_cursor_blink();
-            return Some(text);
+        if matches!(self.focus, Focus::TabRename) {
+            use crate::app::input_handler::InputHandler;
+            let text = self.rename_input.as_mut().and_then(|(_, fw_input)| InputHandler::cut(&mut fw_input.state));
+            if text.is_some() { self.reset_cursor_blink(); }
+            return text;
         }
         let text = self.tabs[self.active_tab].cut_selection();
         if text.is_some() {
@@ -233,7 +313,7 @@ impl AppLogic {
         let visible = self.visible_line_count();
         let visible_width = self.width - layout::PADDING * 2.0 * self.scale;
         self.tabs[self.active_tab].ensure_cursor_visible(visible, visible_width, self.char_width_hint);
-        self.ui_state.reset_cursor_blink();
+        self.reset_cursor_blink();
     }
 
     /// Update the char width hint (called by platform shell after font load).
@@ -263,9 +343,9 @@ impl AppLogic {
 
     pub fn scroll_tab_bar(&mut self, delta: f32) -> AppResult {
         if delta > 0.0 {
-            self.ui_state.tab_scroll_x = (self.ui_state.tab_scroll_x - delta.abs()).max(0.0);
+            self.tab_scroll_x = (self.tab_scroll_x - delta.abs()).max(0.0);
         } else {
-            self.ui_state.tab_scroll_x = (self.ui_state.tab_scroll_x + delta.abs()).min(1000.0);
+            self.tab_scroll_x = (self.tab_scroll_x + delta.abs()).min(1000.0);
         }
         AppResult::Redraw
     }
@@ -279,22 +359,45 @@ impl AppLogic {
     // =========================================================================
 
     pub fn is_mouse_in_tab_bar(&self) -> bool {
-        self.ui_state.last_mouse_y < layout::TAB_HEIGHT * self.scale
+        self.last_mouse_y < layout::TAB_HEIGHT * self.scale
     }
 
-    /// Build a `UiTree` from current layout state.
+    /// Sync the retained `ui_tree` from the current tab state.
     ///
-    /// All mouse handlers should call this instead of constructing `UiTree::new`
-    /// inline — ensures a single construction site and consistent layout.
-    pub fn build_ui_tree(&self, tab_titles: &[(&str, bool)]) -> crate::ui::UiTree {
-        let picker_len = self.focus.notes_picker_state().map(|(_, list)| list.len());
-        let window = crate::ui::WindowRect::new(self.width, self.height);
-        crate::ui::UiTree::new(window, self.scale, self.ui_state.tab_scroll_x, tab_titles, picker_len)
+    /// Call before any hit-test or render that needs up-to-date geometry.
+    /// Preserves all hover and drag state owned by widgets.
+    pub fn prepare_ui_tree(&mut self) {
+        let tab_scroll_x = self.tab_scroll_x;
+        let titles: Vec<(String, bool)> = self.tabs.iter().enumerate()
+            .map(|(i, t)| (t.title().to_string(), i == self.active_tab))
+            .collect();
+        let tab_info: Vec<(&str, bool)> = titles.iter()
+            .map(|(s, a)| (s.as_str(), *a))
+            .collect();
+        self.ui_tree.relayout_tabs(tab_scroll_x, &tab_info);
     }
 
-    pub fn ui_state(&self) -> &UiState { &self.ui_state }
-    pub fn ui_state_mut(&mut self) -> &mut UiState { &mut self.ui_state }
-    pub fn tab_scroll_x(&self) -> f32 { self.ui_state.tab_scroll_x }
+    /// Sync the retained ui_tree's tab layout from caller-supplied titles.
+    ///
+    /// Prefer `prepare_ui_tree` when no external title vec is needed.
+    pub fn sync_ui_tree(&mut self, tab_titles: &[(&str, bool)]) {
+        self.ui_tree.relayout_tabs(self.tab_scroll_x, tab_titles);
+    }
+
+    /// Update hover state on the retained ui_tree. Returns `(changed, cursor, resize_edge)`.
+    pub fn handle_hover(
+        &mut self,
+        x: f32,
+        y: f32,
+    ) -> (bool, crate::ui::CursorShape, Option<crate::ui::ResizeEdge>) {
+        self.prepare_ui_tree();
+        let total_lines   = self.tabs[self.active_tab].total_lines();
+        let visible_lines = self.visible_line_count();
+        let scroll_offset = self.tabs[self.active_tab].scroll_offset();
+        self.ui_tree.on_hover(x, y, total_lines, visible_lines, scroll_offset)
+    }
+
+    pub fn tab_scroll_x(&self) -> f32 { self.tab_scroll_x }
 
     // =========================================================================
     // Session export
@@ -305,4 +408,39 @@ impl AppLogic {
         let tabs = self.tabs.iter().filter_map(|t| t.export_state()).collect();
         crate::persistence::SessionState { active_path, tabs }
     }
+}
+
+// ── Notes picker layout helpers ───────────────────────────────────────────────
+
+pub(crate) const PICKER_MAX_VISIBLE: usize = 8;
+
+/// Compute picker geometry and relayout both widgets in place.
+/// Mirrors what `PickerLayout::apply` used to do.
+pub(crate) fn picker_relayout(
+    window: crate::ui::Rect,
+    scale: f32,
+    list: &mut crate::fw::widgets::List<crate::app::focus::NoteEntry>,
+    search: &mut crate::fw::widgets::TextInput,
+) {
+    let padding      = 8.0  * scale;
+    let input_height = 36.0 * scale;
+    let item_height  = 32.0 * scale;
+
+    let visible = list.len().min(PICKER_MAX_VISIBLE);
+    let overlay_w = (window.width * 0.6).min(500.0 * scale);
+    let overlay_h = input_height + visible as f32 * item_height + 2.0 * padding;
+    let (_, below_top) = window.cut_top(60.0 * scale);
+    let overlay_rect = below_top.centered_in(overlay_w, overlay_h);
+
+    let (input_rect, list_remainder) =
+        overlay_rect.inset(padding).cut_top(input_height - 4.0 * scale);
+    search.relayout(input_rect, scale);
+
+    let list_rect = crate::ui::Rect {
+        x:      list_remainder.x,
+        y:      list_remainder.y + 4.0 * scale,
+        width:  list_remainder.width,
+        height: visible as f32 * item_height,
+    };
+    list.relayout(list_rect, scale);
 }

@@ -4,8 +4,8 @@
 //! Layout is expressed entirely via `Rect` split primitives — no raw arithmetic.
 
 use crate::config::layout as cfg_layout;
+use crate::fw::widgets::Scrollbar;
 use super::layout::Layout;
-use super::scrollbar::ScrollbarWidget;
 use super::text_area::TextArea;
 use super::types::Rect;
 
@@ -14,16 +14,19 @@ use super::types::Rect;
 /// Split hierarchy:
 ///   window → cut_top(tab_h) → content rect
 ///   content rect → split_h([fill, -sb_w]) → text | scrollbar
-#[derive(Debug, Clone, Copy)]
 pub struct ContentArea {
     /// Full content rect (below tab bar + top padding).
     pub rect: Rect,
     /// Text column widget.
     pub text: TextArea,
-    /// Scrollbar widget.
-    pub scrollbar: ScrollbarWidget,
+    /// Scrollbar widget — owns geometry + drag state.
+    pub scrollbar: Scrollbar,
     /// Scaled line height (kept here for visible_line_count).
     pub line_height: f32,
+    /// Hover state — updated by UiTree::on_hover.
+    pub scrollbar_hovered: bool,
+    /// True while a text selection drag is in progress.
+    pub is_text_selecting: bool,
 }
 
 impl Layout for ContentArea {
@@ -35,13 +38,24 @@ impl Layout for ContentArea {
         Self {
             rect,
             text:      TextArea::layout(cols[0], scale),
-            scrollbar: ScrollbarWidget::layout(cols[1], scale),
+            scrollbar: Scrollbar::new(cols[1], scale),
             line_height,
+            scrollbar_hovered: false,
+            is_text_selecting: false,
         }
     }
 }
 
 impl ContentArea {
+    /// Update scrollbar hover state. Returns `true` if changed.
+    pub fn on_hover(&mut self, x: f32, y: f32, total_lines: usize, visible_lines: usize) -> bool {
+        let hovered = self.scrollbar.hit_test(x, y)
+            && self.scrollbar.is_scrollable(total_lines, visible_lines);
+        let changed = hovered != self.scrollbar_hovered;
+        self.scrollbar_hovered = hovered;
+        changed
+    }
+
     /// Number of fully visible text lines.
     pub fn visible_line_count(&self) -> usize {
         (self.rect.height / self.line_height).floor().max(1.0) as usize

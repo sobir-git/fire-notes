@@ -150,6 +150,15 @@ pub struct TabBar {
     pub maximize_rect: Rect,
     pub close_rect: Rect,
     pub new_tab_rect: Rect,
+    // ── Hover state (owned by widget, updated by on_hover) ────────────────
+    pub hovered_tab_index: Option<usize>,
+    pub hovered_plus: bool,
+    pub hovered_minimize: bool,
+    pub hovered_maximize: bool,
+    pub hovered_close: bool,
+    // ── Drag state ───────────────────────────────────────────────────────
+    /// Index of the tab currently being dragged; `None` when not dragging.
+    pub dragging_tab: Option<usize>,
 }
 
 impl Layout for TabBar {
@@ -200,6 +209,12 @@ impl TabBar {
             close_rect: controls.close,
             new_tab_button,
             controls,
+            hovered_tab_index: None,
+            hovered_plus: false,
+            hovered_minimize: false,
+            hovered_maximize: false,
+            hovered_close: false,
+            dragging_tab: None,
         }
     }
 
@@ -224,6 +239,58 @@ impl TabBar {
             return current_scroll_x + (tab.rect.x + tab.rect.width - right_bound);
         }
         current_scroll_x
+    }
+
+    /// Rebuild geometry from new scroll/tab state, preserving all hover and drag state.
+    ///
+    /// Equivalent to `*self = TabBar::new(...)` but without losing hover/drag state.
+    pub fn relayout_in_place(&mut self, width: f32, scale: f32, tab_scroll_x: f32, tabs: &[(&str, bool)]) {
+        let hover = (
+            self.hovered_tab_index,
+            self.hovered_plus,
+            self.hovered_minimize,
+            self.hovered_maximize,
+            self.hovered_close,
+        );
+        let dragging_tab = self.dragging_tab;
+        *self = Self::new(width, scale, tab_scroll_x, tabs);
+        self.hovered_tab_index = hover.0;
+        self.hovered_plus      = hover.1;
+        self.hovered_minimize  = hover.2;
+        self.hovered_maximize  = hover.3;
+        self.hovered_close     = hover.4;
+        self.dragging_tab      = dragging_tab;
+    }
+
+    /// Record the start of a tab drag.
+    pub fn start_tab_drag(&mut self, tab_index: usize) { self.dragging_tab = Some(tab_index); }
+
+    /// Clear drag state (call on mouse-up).
+    pub fn end_tab_drag(&mut self) { self.dragging_tab = None; }
+
+    /// Returns the index of the tab being dragged, if any.
+    pub fn dragging_tab_index(&self) -> Option<usize> { self.dragging_tab }
+
+    /// Update hover state from pointer position. Returns `true` if anything changed.
+    pub fn on_hover(&mut self, x: f32, y: f32) -> bool {
+        let new_tab   = if self.rect.contains(x, y) { self.scroll_area.hit_test(x, y) } else { None };
+        let new_plus  = self.new_tab_button.hit_test(x, y);
+        let new_min   = self.controls.minimize.contains(x, y);
+        let new_max   = self.controls.maximize.contains(x, y);
+        let new_close = self.controls.close.contains(x, y);
+
+        let changed = new_tab   != self.hovered_tab_index
+            || new_plus  != self.hovered_plus
+            || new_min   != self.hovered_minimize
+            || new_max   != self.hovered_maximize
+            || new_close != self.hovered_close;
+
+        self.hovered_tab_index = new_tab;
+        self.hovered_plus      = new_plus;
+        self.hovered_minimize  = new_min;
+        self.hovered_maximize  = new_max;
+        self.hovered_close     = new_close;
+        changed
     }
 
     pub fn hit_test(&self, x: f32, y: f32) -> UiNode {

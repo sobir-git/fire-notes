@@ -10,38 +10,17 @@ mod notes_picker;
 mod tab_bar;
 mod text_content;
 
-use crate::app::NoteEntry;
-use crate::tab::Tab;
 use crate::theme::Theme;
 use crate::config::rendering;
-use crate::ui::{ListWidget, UiTree, TextInput};
+use crate::render_frame::RenderFrame;
+use crate::ui::TextInput;
 use femtovg::{Canvas, Color, FontId, Paint, renderer::OpenGl};
 use std::time::Instant;
 
 use flame::FlameSystem;
 use notes_picker::NotesPickerRenderer;
-use tab_bar::{TabBarRenderer, TabBarInteraction};
-use text_content::{TextContentRenderer, ScrollbarState};
-
-/// All per-frame state passed to `Renderer::render`.
-/// Groups the 15 previously-decomposed arguments into one struct.
-pub struct RenderFrame<'a> {
-    pub ui_tree:                &'a UiTree,
-    pub tabs:                   &'a [(&'a str, bool)],
-    pub current_tab:            &'a Tab,
-    pub cursor_visible:         bool,
-    pub hovered_tab_index:      Option<usize>,
-    pub hovered_plus:           bool,
-    pub hovered_scrollbar:      bool,
-    pub dragging_scrollbar:     bool,
-    pub renaming_tab:           Option<usize>,
-    pub rename_input:           Option<&'a TextInput>,
-    pub typing_flame_positions: &'a [(usize, usize, Instant)],
-    pub hovered_window_minimize: bool,
-    pub hovered_window_maximize: bool,
-    pub hovered_window_close:    bool,
-    pub notes_picker_state:     Option<(&'a TextInput, &'a ListWidget<NoteEntry>)>,
-}
+use tab_bar::{TabBarRenderer, RenameOverlay};
+use text_content::TextContentRenderer;
 
 pub struct Renderer {
     canvas: Canvas<OpenGl>,
@@ -80,85 +59,55 @@ impl Renderer {
         self.flame_system.has_active_flames()
     }
 
-    pub fn render(&mut self, frame: &RenderFrame<'_>) {
-        let ui_tree                 = frame.ui_tree;
-        let tabs                    = frame.tabs;
-        let current_tab             = frame.current_tab;
-        let cursor_visible          = frame.cursor_visible;
-        let hovered_scrollbar       = frame.hovered_scrollbar;
-        let dragging_scrollbar      = frame.dragging_scrollbar;
-        let typing_flame_positions  = frame.typing_flame_positions;
-        let notes_picker_state      = frame.notes_picker_state;
-        let width  = ui_tree.width();
-        let height = ui_tree.height();
+    pub fn render(
+        &mut self,
+        frame: &RenderFrame,
+        rename_input: Option<&TextInput>,
+    ) {
+        let width  = frame.width;
+        let height = frame.height;
+        let cursor_visible = frame.cursor.visible;
 
-        // Use DPI=1.0, but we compensate by using larger font sizes in physical pixels
-        // This forces femtovg to rasterize glyphs at higher resolution
+        // Build a &[(&str, bool)] slice for the tab bar renderer.
+        let tab_titles_owned: Vec<(&str, bool)> = frame.tabs.iter()
+            .map(|t| (t.title.as_str(), t.is_active))
+            .collect();
+
         self.canvas.set_size(width as u32, height as u32, 1.0);
         self.canvas.clear_rect(
-            0,
-            0,
-            width as u32,
-            height as u32,
+            0, 0, width as u32, height as u32,
             Color::rgbf(self.theme.bg.0, self.theme.bg.1, self.theme.bg.2),
         );
 
         // Draw tab bar
         {
-            let mut tab_bar_renderer = TabBarRenderer::new(
-                &mut self.canvas,
-                &self.fonts,
-                &self.theme,
-                self.scale,
-            );
-            tab_bar_renderer.draw(
-                &ui_tree.tab_bar,
-                tabs,
-                &TabBarInteraction {
-                    hovered_tab_index:  frame.hovered_tab_index,
-                    hovered_plus:       frame.hovered_plus,
-                    renaming_tab:       frame.renaming_tab,
-                    rename_input:       frame.rename_input,
+            let rename_overlay = frame.rename.as_ref().and_then(|ren| {
+                rename_input.map(|inp| RenameOverlay {
+                    tab_index:      ren.tab_index,
+                    input:          inp,
                     cursor_visible,
-                    hovered_minimize:   frame.hovered_window_minimize,
-                    hovered_maximize:   frame.hovered_window_maximize,
-                    hovered_close:      frame.hovered_window_close,
-                },
+                })
+            });
+            let mut tab_bar_renderer = TabBarRenderer::new(
+                &mut self.canvas, &self.fonts, &self.theme, self.scale,
             );
+            tab_bar_renderer.draw(&frame.tab_bar, &tab_titles_owned, rename_overlay.as_ref());
         }
 
         // Draw text content
         {
             let mut text_content = TextContentRenderer::new(
-                &mut self.canvas,
-                &self.fonts,
-                &self.theme,
-                self.scale,
-                self.animation_start,
+                &mut self.canvas, &self.fonts, &self.theme, self.scale, self.animation_start,
             );
-            text_content.draw(
-                current_tab,
-                &ui_tree.content_area,
-                &ScrollbarState {
-                    widget:   &ui_tree.content_area.scrollbar,
-                    hovered:  hovered_scrollbar,
-                    dragging: dragging_scrollbar,
-                },
-                cursor_visible,
-                &mut self.flame_system,
-                typing_flame_positions,
-            );
+            text_content.draw(frame, &mut self.flame_system);
         }
 
         // Draw notes picker overlay if active
-        if let (Some((input, list)), Some(picker_layout)) = (notes_picker_state, &ui_tree.notes_picker) {
-            let mut picker = NotesPickerRenderer::new(
-                &mut self.canvas,
-                &self.fonts,
-                &self.theme,
-                self.scale,
+        if let Some(picker) = &frame.notes_picker {
+            let mut picker_renderer = NotesPickerRenderer::new(
+                &mut self.canvas, &self.fonts, &self.theme, self.scale,
             );
-            picker.draw(input, list, cursor_visible, picker_layout);
+            picker_renderer.draw(picker);
         }
 
         self.canvas.flush();

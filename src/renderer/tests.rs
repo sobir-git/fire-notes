@@ -31,34 +31,9 @@ fn make_renderer(ctx: &HeadlessContext) -> Renderer {
 
 /// Render one blank frame using `renderer`, return bottom-up RGBA8 pixels.
 fn render_frame(ctx: &HeadlessContext, renderer: &mut Renderer) -> Vec<u8> {
-    let logic = AppLogic::new_headless(ctx.width as f32, ctx.height as f32, 1.0);
-    let tab_info: Vec<(&str, bool)> = logic
-        .tabs
-        .iter()
-        .enumerate()
-        .map(|(i, t)| (t.title(), i == logic.active_tab))
-        .collect();
-    let current_tab = &logic.tabs[logic.active_tab];
-    let ui_tree = logic.build_ui_tree(&tab_info);
-
-    renderer.render(&super::RenderFrame {
-        ui_tree:                &ui_tree,
-        tabs:                   &tab_info,
-        current_tab,
-        cursor_visible:         false,
-        hovered_tab_index:      None,
-        hovered_plus:           false,
-        hovered_scrollbar:      false,
-        dragging_scrollbar:     false,
-        renaming_tab:           None,
-        rename_input:           None,
-        typing_flame_positions: &[],
-        hovered_window_minimize: false,
-        hovered_window_maximize: false,
-        hovered_window_close:    false,
-        notes_picker_state:     None,
-    });
-
+    let mut logic = AppLogic::new_headless(ctx.width as f32, ctx.height as f32, 1.0);
+    let frame = logic.render_frame();
+    renderer.render(&frame, None);
     ctx.read_pixels()
 }
 

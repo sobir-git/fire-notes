@@ -5,19 +5,12 @@ use std::time::Instant;
 use femtovg::{Canvas, Color, FontId, Paint, Path, renderer::OpenGl};
 
 use crate::config::rendering;
-use crate::tab::Tab;
+use crate::render_frame::RenderFrame;
 use crate::theme::Theme;
-use crate::ui::{ContentArea, ScrollbarWidget};
 
 use super::super::flame::FlameSystem;
 use super::text::{self as txt, DrawCtx};
 
-/// Scrollbar widget + per-frame interaction state.
-pub struct ScrollbarState<'a> {
-    pub widget:    &'a ScrollbarWidget,
-    pub hovered:   bool,
-    pub dragging:  bool,
-}
 
 pub struct TextContentRenderer<'a> {
     pub(super) canvas: &'a mut Canvas<OpenGl>,
@@ -40,12 +33,8 @@ impl<'a> TextContentRenderer<'a> {
 
     pub fn draw(
         &mut self,
-        tab: &Tab,
-        content_area: &ContentArea,
-        scrollbar: &ScrollbarState<'_>,
-        cursor_visible: bool,
+        frame: &RenderFrame,
         flame_system: &mut FlameSystem,
-        typing_flame_positions: &[(usize, usize, std::time::Instant)],
     ) {
         let mut text_paint = Paint::color(Color::rgbf(self.theme.fg.0, self.theme.fg.1, self.theme.fg.2));
         text_paint.set_font(self.fonts);
@@ -53,15 +42,13 @@ impl<'a> TextContentRenderer<'a> {
         let char_width = txt::measure_char_width(self.canvas, &text_paint, self.scale);
 
         let ctx = DrawCtx {
-            tab,
-            text_area:    &content_area.text,
-            content_rect: &content_area.rect,
+            frame,
             char_width,
         };
 
         // ── Flame positions (selection + typing) ──────────────────────────
         let mut char_positions = txt::collect_selection_positions(&ctx);
-        append_typing_flame_positions(&mut char_positions, &ctx, typing_flame_positions);
+        append_typing_flame_positions(&mut char_positions, &ctx, &frame.flame_positions);
 
         if !char_positions.is_empty() { flame_system.update_legacy(&char_positions, self.scale); }
         else                          { flame_system.clear(); }
@@ -79,16 +66,16 @@ impl<'a> TextContentRenderer<'a> {
         );
 
         // ── Cursor ────────────────────────────────────────────────────────
-        if cursor_visible {
+        if frame.cursor.visible {
             if let Some((cx, cy)) = cursor_rect {
-                txt::draw_cursor(self.canvas, self.theme, self.scale, cx, cy, ctx.text_area.line_height);
+                txt::draw_cursor(self.canvas, self.theme, self.scale, cx, cy, frame.content.line_height);
             }
         }
 
         if !char_positions.is_empty() { flame_system.draw_layer(self.canvas, false); }
 
         // ── Scrollbar ─────────────────────────────────────────────────────
-        self.draw_scrollbar(tab, content_area, scrollbar);
+        self.draw_scrollbar_from_frame(frame);
     }
 
 }
@@ -99,46 +86,42 @@ fn append_typing_flame_positions(
     typing: &[(usize, usize, std::time::Instant)],
 ) {
     let now = Instant::now();
-    let text_lines: Vec<&str> = ctx.tab.content().lines().collect();
-    let scroll_offset = ctx.tab.scroll_offset();
-    let scroll_x      = ctx.tab.scroll_offset_x();
+    let frame         = ctx.frame;
+    let scroll_offset = frame.scroll_offset;
+    let scroll_x      = frame.scroll_offset_x;
+    let bottom        = frame.content.rect.y + frame.content.rect.height;
+    let line_height   = frame.content.line_height;
+    let text_padding  = frame.content.text_padding;
     for &(line, col, timestamp) in typing {
         if line < scroll_offset { continue; }
-        let y = ctx.text_area.line_y(line - scroll_offset);
-        if y > ctx.content_rect.y + ctx.content_rect.height { continue; }
-        let char_x = if line < text_lines.len() {
-            crate::visual_position::VisualLine::new(text_lines[line])
-                .char_col_to_visual_center_x(col, ctx.text_area.text_padding - scroll_x, ctx.char_width)
-        } else {
-            ctx.text_area.text_padding - scroll_x + ctx.char_width * 0.5
-        };
-        let lh = ctx.text_area.line_height;
-        positions.push((char_x, y + lh * 0.5, y + lh,
+        let visual = line - scroll_offset;
+        let y = frame.content.text_rect.y + frame.content.doc_top_margin
+            + visual as f32 * line_height;
+        if y > bottom { continue; }
+        let line_text = frame.visible_lines.iter()
+            .find(|l| l.line_index == line)
+            .map(|l| l.text.as_str())
+            .unwrap_or("");
+        let char_x = crate::visual_position::VisualLine::new(line_text)
+            .char_col_to_visual_center_x(col, text_padding - scroll_x, ctx.char_width);
+        positions.push((char_x, y + line_height * 0.5, y + line_height,
             now.duration_since(timestamp).as_secs_f32().min(1.0)));
     }
 }
 
 impl<'a> TextContentRenderer<'a> {
-    fn draw_scrollbar(
-        &mut self,
-        tab: &Tab,
-        content_area: &ContentArea,
-        scrollbar: &ScrollbarState<'_>,
-    ) {
-        let total_lines = tab.total_lines().max(1);
-        let max_visible = content_area.visible_line_count();
-        if let Some(m) = scrollbar.widget.thumb(total_lines, max_visible, tab.scroll_offset()) {
-            let r = m.rect;
-            let alpha = if scrollbar.dragging { 140u8 } else if scrollbar.hovered { 90 } else { 50 };
-            let color = Paint::color(Color::rgba(
-                (self.theme.fg.0 * 255.0) as u8,
-                (self.theme.fg.1 * 255.0) as u8,
-                (self.theme.fg.2 * 255.0) as u8,
-                alpha,
-            ));
-            let mut path = Path::new();
-            path.rounded_rect(r.x, r.y, r.width, r.height, 4.0);
-            self.canvas.fill_path(&path, &color);
-        }
+    fn draw_scrollbar_from_frame(&mut self, frame: &RenderFrame) {
+        let Some(sb) = &frame.scrollbar_geom else { return; };
+        let r = &sb.thumb_rect;
+        let alpha = if sb.dragging { 140u8 } else if sb.hovered { 90 } else { 50 };
+        let color = Paint::color(Color::rgba(
+            (self.theme.fg.0 * 255.0) as u8,
+            (self.theme.fg.1 * 255.0) as u8,
+            (self.theme.fg.2 * 255.0) as u8,
+            alpha,
+        ));
+        let mut path = Path::new();
+        path.rounded_rect(r.x, r.y, r.width, r.height, 4.0);
+        self.canvas.fill_path(&path, &color);
     }
 }

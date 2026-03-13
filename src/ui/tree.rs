@@ -7,20 +7,16 @@
 use crate::config::layout as cfg_layout;
 use super::content_area::ContentArea;
 use super::layout::Layout;
-use super::notes_picker::NotesPicker;
 use super::tab_bar::TabBar;
 use super::scrollbar::ScrollbarAction;
 use super::types::{CursorShape, Rect, WindowRect, ResizeEdge, UiAction, UiDragAction, UiHover, UiNode};
 
 const RESIZE_BORDER: f32 = 5.0;
 
-#[derive(Debug, Clone)]
 pub struct UiTree {
     pub tab_bar: TabBar,
     /// Content area owns both `text: TextArea` and `scrollbar: ScrollbarWidget`.
     pub content_area: ContentArea,
-    /// Notes picker overlay layout — `Some` when the picker is open.
-    pub notes_picker: Option<NotesPicker>,
     width: f32,
     height: f32,
     scale: f32,
@@ -38,34 +34,24 @@ impl UiTree {
         Self {
             tab_bar:      TabBar::layout(tab_rect, scale),
             content_area: ContentArea::layout(content_rect, scale),
-            notes_picker: None,
             width:  rect.width,
             height: rect.height,
             scale,
         }
     }
 
-    /// Build from window + dynamic tab/picker state.
-    /// `picker_list_len` — `Some(n)` when the notes picker is open with `n` items.
-    pub fn new(
-        window: WindowRect,
-        scale: f32,
-        tab_scroll_x: f32,
-        tabs: &[(&str, bool)],
-        picker_list_len: Option<usize>,
-    ) -> Self {
-        let w = window.width();
-        let h = window.height();
-        let mut tree = Self::layout(window, scale);
-        tree.tab_bar = TabBar::new(w, scale, tab_scroll_x, tabs);
-        tree.notes_picker = picker_list_len
-            .map(|len| NotesPicker::new(w, h, scale, len));
-        tree
+    /// Rebuild tab geometry in-place, preserving all hover state owned by widgets.
+    ///
+    /// Prefer this over creating a new `UiTree` + manually copying hover fields.
+    pub fn relayout_tabs(&mut self, tab_scroll_x: f32, tabs: &[(&str, bool)]) {
+        self.tab_bar.relayout_in_place(self.width, self.scale, tab_scroll_x, tabs);
     }
 
     /// Window width in physical pixels (as laid out).
+    #[allow(dead_code)]
     pub fn width(&self)  -> f32 { self.width }
     /// Window height in physical pixels (as laid out).
+    #[allow(dead_code)]
     pub fn height(&self) -> f32 { self.height }
 
     // ── Resize edge detection ─────────────────────────────────────────────
@@ -91,6 +77,25 @@ impl UiTree {
     }
 
     // ── Public API ────────────────────────────────────────────────────────
+
+    /// Update hover state on widget fields. Returns `(changed, cursor_shape, resize_edge)`.
+    /// Call this when `UiTree` is retained across frames — widgets own their hover state.
+    pub fn on_hover(
+        &mut self,
+        x: f32,
+        y: f32,
+        total_lines: usize,
+        visible_lines: usize,
+        scroll_offset: usize,
+    ) -> (bool, CursorShape, Option<ResizeEdge>) {
+        let tab_changed = self.tab_bar.on_hover(x, y);
+        let sb_changed  = self.content_area.on_hover(x, y, total_lines, visible_lines);
+        let changed = tab_changed || sb_changed;
+
+        // Compute cursor shape and resize edge from the immutable hover result.
+        let result = self.hover(x, y, total_lines, visible_lines, scroll_offset);
+        (changed, result.cursor_shape, result.resize_edge)
+    }
 
     pub fn hover(
         &self,
@@ -134,7 +139,7 @@ impl UiTree {
     }
 
     pub fn click(
-        &self,
+        &mut self,
         x: f32,
         y: f32,
         total_lines: usize,
@@ -164,21 +169,20 @@ impl UiTree {
     }
 
     pub fn drag_scrollbar(
-        &self,
+        &mut self,
         y: f32,
         total_lines: usize,
         visible_lines: usize,
         scroll_offset: usize,
-        drag_offset: f32,
     ) -> UiDragAction {
-        if let Some(ratio) = self.content_area.scrollbar.drag_ratio(y, total_lines, visible_lines, drag_offset, scroll_offset) {
+        if let Some(ratio) = self.content_area.scrollbar.continue_drag(y, total_lines, visible_lines, scroll_offset) {
             return UiDragAction::ScrollbarDrag { ratio };
         }
         UiDragAction::None
     }
 
     pub fn double_click(
-        &self,
+        &mut self,
         x: f32,
         y: f32,
         total_lines: usize,
@@ -189,7 +193,7 @@ impl UiTree {
     }
 
     pub fn triple_click(
-        &self,
+        &mut self,
         x: f32,
         y: f32,
         total_lines: usize,
@@ -200,7 +204,7 @@ impl UiTree {
     }
 
     fn multi_click(
-        &self,
+        &mut self,
         x: f32,
         y: f32,
         total_lines: usize,

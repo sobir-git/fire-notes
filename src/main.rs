@@ -7,10 +7,14 @@
 //! - Binary size: <2MB
 
 mod app;
+mod components;
 mod config;
+mod fw;
+mod layout;
 mod logic;
 mod persistence;
 mod platform;
+mod primitives;
 mod render_frame;
 mod renderer;
 mod tab;

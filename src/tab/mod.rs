@@ -58,6 +58,7 @@ impl Tab {
 
     pub fn content(&self) -> &str { self.buffer.content() }
 
+    #[allow(dead_code)]
     pub fn cursor_position(&self) -> usize { self.buffer.cursor() }
 
     pub fn total_lines(&self) -> usize { self.buffer.len_lines() }

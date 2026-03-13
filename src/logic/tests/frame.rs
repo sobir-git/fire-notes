@@ -6,7 +6,7 @@ use super::{app, type_str};
 
 #[test]
 fn initial_frame_has_one_tab() {
-    let logic = app();
+    let mut logic = app();
     let frame = logic.render_frame();
     assert_eq!(frame.tabs.len(), 1);
     assert!(frame.tabs[0].is_active);
@@ -26,7 +26,7 @@ fn active_tab_flag_matches_active_tab_index() {
 
 #[test]
 fn frame_dimensions_match_headless_size() {
-    let logic = app();
+    let mut logic = app();
     let frame = logic.render_frame();
     assert_eq!(frame.width, 800.0);
     assert_eq!(frame.height, 600.0);
@@ -45,7 +45,7 @@ fn frame_total_lines_matches_content() {
 
 #[test]
 fn scroll_offset_zero_at_start() {
-    let logic = app();
+    let mut logic = app();
     let frame = logic.render_frame();
     assert_eq!(frame.scroll_offset, 0);
 }

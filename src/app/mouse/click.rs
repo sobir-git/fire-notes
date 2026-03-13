@@ -2,63 +2,50 @@
 
 use crate::ui::{UiAction, UiNode};
 
-use crate::app::notes_picker::PickerClickResult;
-
 use super::super::state::AppResult;
-use super::super::ui_state::MouseInteraction;
 use super::super::App;
 
 impl App {
     pub fn click_at(&mut self, x: f32, y: f32, selecting: bool) -> AppResult {
         if self.logic.focus.is_notes_picker() {
-            match self.handle_notes_picker_click(x, y) {
-                PickerClickResult::App(r) => return r,
-                PickerClickResult::StartScrollbarDrag(drag_offset) => {
-                    self.logic.ui_state.mouse_interaction = MouseInteraction::PickerScrollbarDrag { drag_offset };
-                    return AppResult::Ok;
-                }
-            }
+            return self.handle_notes_picker_click(x, y);
         }
 
-        let tab_info = self.tab_titles();
+        self.logic.prepare_ui_tree();
         let total_lines = self.logic.tabs[self.logic.active_tab].total_lines();
         let visible_lines = self.visible_lines();
         let scroll_offset = self.logic.tabs[self.logic.active_tab].scroll_offset();
-        let ui_tree = self.logic.build_ui_tree(&tab_info);
 
-        match ui_tree.click(x, y, total_lines, visible_lines, scroll_offset, selecting) {
+        match self.logic.ui_tree.click(x, y, total_lines, visible_lines, scroll_offset, selecting) {
             UiAction::ActivateTab(i) => {
                 self.logic.activate_tab(i);
-                self.logic.ui_state.mouse_interaction = MouseInteraction::TabDrag { tab_index: i };
+                self.logic.ui_tree.tab_bar.start_tab_drag(i);
                 return AppResult::Redraw;
             }
             UiAction::NewTab => return self.new_tab(),
             UiAction::StartScrollbarDrag { drag_offset } => {
-                self.logic.ui_state.mouse_interaction = MouseInteraction::ScrollbarDrag { drag_offset };
+                self.logic.ui_tree.content_area.scrollbar.start_drag(drag_offset);
                 return AppResult::Ok;
             }
             UiAction::ScrollbarJump { ratio } => {
-                self.logic.ui_state.mouse_interaction = MouseInteraction::None;
                 return self.jump_scrollbar_to_ratio(ratio);
             }
             UiAction::WindowMinimize => return AppResult::WindowMinimize,
             UiAction::WindowMaximize => return AppResult::WindowMaximize,
             UiAction::WindowClose => return AppResult::WindowClose,
             UiAction::WindowDrag => {
-                self.logic.ui_state.mouse_interaction = MouseInteraction::WindowDrag;
                 return AppResult::WindowDrag;
             }
             UiAction::WindowResize(edge) => {
-                self.logic.ui_state.mouse_interaction = MouseInteraction::WindowResize(edge);
                 return AppResult::WindowResize(edge);
             }
             UiAction::None => return AppResult::Ok,
             UiAction::TextClick => {
-                self.logic.ui_state.mouse_interaction = MouseInteraction::TextSelection;
+                self.logic.ui_tree.content_area.is_text_selecting = true;
             }
         }
 
-        let text_area = &ui_tree.content_area.text;
+        let text_area = &self.logic.ui_tree.content_area.text;
         if !selecting && !text_area.hit_test(x, y) && y >= text_area.rect.y { return AppResult::Ok; }
         if !selecting && y < text_area.rect.y { return AppResult::Ok; }
 
@@ -76,18 +63,17 @@ impl App {
 
         self.logic.tabs[self.logic.active_tab].set_cursor_position(clicked_line, clicked_col, selecting);
         if selecting { self.auto_scroll(); }
-        self.logic.ui_state.reset_cursor_blink();
+        self.logic.reset_cursor_blink();
         AppResult::Redraw
     }
 
     pub fn handle_double_click(&mut self, x: f32, y: f32) -> AppResult {
-        let tab_info = self.tab_titles();
+        self.logic.prepare_ui_tree();
         let total_lines = self.logic.tabs[self.logic.active_tab].total_lines();
         let visible_lines = self.visible_lines();
         let scroll_offset = self.logic.tabs[self.logic.active_tab].scroll_offset();
-        let ui_tree = self.logic.build_ui_tree(&tab_info);
 
-        match ui_tree.double_click(x, y, total_lines, visible_lines, scroll_offset) {
+        match self.logic.ui_tree.double_click(x, y, total_lines, visible_lines, scroll_offset) {
             UiAction::ActivateTab(i) => {
                 self.logic.activate_tab(i);
                 AppResult::Redraw
@@ -103,13 +89,12 @@ impl App {
     }
 
     pub fn handle_triple_click(&mut self, x: f32, y: f32) -> AppResult {
-        let tab_info = self.tab_titles();
+        self.logic.prepare_ui_tree();
         let total_lines = self.logic.tabs[self.logic.active_tab].total_lines();
         let visible_lines = self.visible_lines();
         let scroll_offset = self.logic.tabs[self.logic.active_tab].scroll_offset();
-        let ui_tree = self.logic.build_ui_tree(&tab_info);
 
-        match ui_tree.triple_click(x, y, total_lines, visible_lines, scroll_offset) {
+        match self.logic.ui_tree.triple_click(x, y, total_lines, visible_lines, scroll_offset) {
             UiAction::ActivateTab(i) => {
                 self.logic.activate_tab(i);
                 AppResult::Redraw
@@ -125,9 +110,8 @@ impl App {
     }
 
     pub fn right_click_at(&mut self, x: f32, y: f32) -> AppResult {
-        let tab_info = self.tab_titles();
-        let ui_tree = self.logic.build_ui_tree(&tab_info);
-        match ui_tree.hit_test(x, y) {
+        self.logic.prepare_ui_tree();
+        match self.logic.ui_tree.hit_test(x, y) {
             UiNode::Tab(i) => { self.logic.start_rename(i); AppResult::Redraw }
             _ => AppResult::Ok,
         }

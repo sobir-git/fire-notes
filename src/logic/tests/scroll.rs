@@ -14,21 +14,21 @@ fn overflowing_app() -> crate::logic::AppLogic {
 
 #[test]
 fn scrollbar_absent_when_content_fits() {
-    let logic = app();
+    let mut logic = app();
     let frame = logic.render_frame();
     assert!(frame.scrollbar.is_none());
 }
 
 #[test]
 fn scrollbar_present_when_content_overflows() {
-    let logic = overflowing_app();
+    let mut logic = overflowing_app();
     let frame = logic.render_frame();
     assert!(frame.scrollbar.is_some());
 }
 
 #[test]
 fn scrollbar_thumb_height_ratio_is_viewport_fraction() {
-    let logic = overflowing_app();
+    let mut logic = overflowing_app();
     let frame = logic.render_frame();
     let sb = frame.scrollbar.as_ref().expect("scrollbar should exist");
     let total = frame.total_lines as f32;

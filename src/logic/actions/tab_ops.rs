@@ -16,9 +16,9 @@ impl AppLogic {
         let tab_titles: Vec<(&str, bool)> = self.tabs.iter().enumerate()
             .map(|(i, t)| (t.title(), i == self.active_tab))
             .collect();
-        let tab_bar = TabBar::new(self.width, self.scale, self.ui_state.tab_scroll_x, &tab_titles);
-        self.ui_state.tab_scroll_x =
-            tab_bar.scroll_x_to_reveal(index, self.ui_state.tab_scroll_x);
+        let tab_bar = TabBar::new(self.width, self.scale, self.tab_scroll_x, &tab_titles);
+        self.tab_scroll_x =
+            tab_bar.scroll_x_to_reveal(index, self.tab_scroll_x);
     }
 
     pub(crate) fn new_tab(&mut self) -> AppResult {
@@ -62,16 +62,27 @@ impl AppLogic {
 
     pub(crate) fn start_rename(&mut self, tab_index: usize) {
         if let Some(tab) = self.tabs.get(tab_index) {
-            self.focus = Focus::start_rename(tab_index, tab.title());
+            use crate::fw::widgets::TextInput as FwTextInput;
+            let mut fw_input = FwTextInput::new(tab.title().to_string());
+            fw_input.state.select_all();
+            self.rename_input = Some((tab_index, fw_input));
+            self.focus = Focus::TabRename;
         }
     }
 
     pub(crate) fn confirm_rename(&mut self) -> AppResult {
-        if let Some((tab_index, title)) = self.focus.confirm_rename() {
-            if let Some(tab) = self.tabs.get_mut(tab_index) {
-                tab.set_title(title);
+        if !matches!(self.focus, Focus::TabRename) { return AppResult::Ok; }
+        if let Some((tab_index, fw_input)) = self.rename_input.take() {
+            let title = fw_input.state.text().trim().to_string();
+            self.focus = Focus::Editor;
+            if !title.is_empty() {
+                if let Some(tab) = self.tabs.get_mut(tab_index) {
+                    tab.set_title(title);
+                }
+                return AppResult::Redraw;
             }
-            return AppResult::Redraw;
+        } else {
+            self.focus = Focus::Editor;
         }
         AppResult::Ok
     }
@@ -82,24 +93,25 @@ impl AppLogic {
     }
 
     pub(crate) fn confirm_notes_picker(&mut self) -> AppResult {
-        if let Some(path) = self.focus.confirm_notes_picker() {
-            for (i, tab) in self.tabs.iter().enumerate() {
-                if tab.path() == Some(&path) {
-                    self.activate_tab(i);
+        let path = self.notes_picker.as_ref()
+            .and_then(|p| p.selected_item())
+            .map(|n| n.path.clone());
+        if self.focus.confirm_notes_picker() {
+            self.notes_picker = None;
+            if let Some(path) = path {
+                for (i, tab) in self.tabs.iter().enumerate() {
+                    if tab.path() == Some(&path) {
+                        self.activate_tab(i);
+                        return AppResult::Redraw;
+                    }
+                }
+                if let Some(tab) = Tab::from_file(path) {
+                    self.tabs.push(tab);
+                    self.activate_tab(self.tabs.len() - 1);
                     return AppResult::Redraw;
                 }
             }
-            if let Some(tab) = Tab::from_file(path) {
-                self.tabs.push(tab);
-                self.activate_tab(self.tabs.len() - 1);
-                return AppResult::Redraw;
-            }
         }
-        AppResult::Ok
-    }
-
-    pub(crate) fn cancel_notes_picker(&mut self) -> AppResult {
-        if self.focus.cancel_notes_picker() { return AppResult::Redraw; }
         AppResult::Ok
     }
 }

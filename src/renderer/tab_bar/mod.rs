@@ -3,4 +3,4 @@
 mod controls;
 mod draw;
 
-pub use draw::{TabBarRenderer, TabBarInteraction};
+pub use draw::{TabBarRenderer, RenameOverlay};

@@ -10,26 +10,6 @@ pub(super) enum FlameHit {
     Typing(f32), // age factor
 }
 
-/// Calculate cursor line/column from character position
-pub fn get_cursor_line_col(text: &str, cursor_pos: usize) -> (usize, usize) {
-    let mut line = 0;
-    let mut col = 0;
-
-    for (pos, ch) in text.chars().enumerate() {
-        if pos >= cursor_pos {
-            break;
-        }
-        if ch == '\n' {
-            line += 1;
-            col = 0;
-        } else {
-            col += 1;
-        }
-    }
-
-    (line, col)
-}
-
 /// Build a spatial hash map for O(1) flame position lookups.
 pub(super) fn build_flame_lookup(
     char_positions: &[(f32, f32, f32, f32)],

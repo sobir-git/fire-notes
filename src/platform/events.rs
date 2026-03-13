@@ -138,7 +138,7 @@ impl ApplicationHandler for AppHandler {
 
                 use winit::window::CursorIcon;
                 use crate::app::CursorShape;
-                let cursor = match state.app.ui_state().cursor_shape {
+                let cursor = match state.app.logic.cursor_shape {
                     CursorShape::Default   => CursorIcon::Default,
                     CursorShape::Text      => CursorIcon::Text,
                     CursorShape::Pointer   => CursorIcon::Pointer,

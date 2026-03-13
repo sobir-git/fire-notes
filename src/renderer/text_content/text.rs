@@ -3,21 +3,24 @@
 use femtovg::{Canvas, Color, FontId, Paint, Path, renderer::OpenGl};
 
 use crate::config::rendering;
-use crate::tab::Tab;
+use crate::render_frame::RenderFrame;
 use crate::theme::Theme;
-use crate::ui::{Rect, TextArea};
 
 /// All per-frame context needed to draw text content.
 /// Passed by reference to every draw function — replaces long decomposed arg lists.
 pub struct DrawCtx<'a> {
-    pub tab:          &'a Tab,
-    pub text_area:    &'a TextArea,
-    pub content_rect: &'a Rect,
-    pub char_width:   f32,
+    pub frame:      &'a RenderFrame,
+    pub char_width: f32,
 }
 
-use super::layout::{FlameHit, build_flame_lookup, get_cursor_line_col};
+use super::layout::{FlameHit, build_flame_lookup};
 use super::super::fonts::{self, snap_to_pixel};
+
+fn line_y(ctx: &DrawCtx<'_>, visual_line: usize) -> f32 {
+    ctx.frame.content.text_rect.y
+        + ctx.frame.content.doc_top_margin
+        + visual_line as f32 * ctx.frame.content.line_height
+}
 
 pub fn draw_text_lines(
     canvas: &mut Canvas<OpenGl>,
@@ -28,20 +31,21 @@ pub fn draw_text_lines(
     text_paint: &Paint,
     char_positions: &[(f32, f32, f32, f32)],
 ) {
-    let text_area   = ctx.text_area;
-    let line_height = text_area.line_height;
-    let padding     = text_area.text_padding;
-    let scroll_offset = ctx.tab.scroll_offset();
-    let scroll_x      = ctx.tab.scroll_offset_x();
-    let do_wrap       = ctx.tab.word_wrap();
+    let line_height = ctx.frame.content.line_height;
+    let padding     = ctx.frame.content.text_padding;
+    let scroll_x    = ctx.frame.scroll_offset_x;
+    let do_wrap       = ctx.frame.word_wrap;
     let flame_lookup = build_flame_lookup(char_positions, ctx.char_width, line_height);
     let cell_w = ctx.char_width.max(1.0);
     let cell_h = line_height.max(1.0);
-    let mut current_y = text_area.line_y(0);
+    let mut current_y = line_y(ctx, 0);
 
-    let bottom = ctx.content_rect.y + ctx.content_rect.height;
-    let right  = ctx.content_rect.x + ctx.content_rect.width;
-    for line in ctx.tab.content().lines().skip(scroll_offset) {
+    let bottom = ctx.frame.content.rect.y + ctx.frame.content.rect.height;
+    let right  = ctx.frame.content.rect.x + ctx.frame.content.rect.width;
+    for line in ctx.frame.visible_lines.iter().map(|l| l.text.as_str()).chain(
+        // If visible_lines doesn't cover all content (shouldn't happen), skip gracefully.
+        std::iter::empty()
+    ) {
         if current_y > bottom { break; }
         let mut x_offset = if do_wrap { padding } else { padding - scroll_x };
 
@@ -95,17 +99,21 @@ pub fn draw_text_lines(
 }
 
 pub fn calculate_cursor_position(ctx: &DrawCtx<'_>) -> Option<(f32, f32)> {
-    let text   = ctx.tab.content();
-    let scroll_offset = ctx.tab.scroll_offset();
-    let scroll_x      = ctx.tab.scroll_offset_x();
-    let (cursor_line, cursor_col) = get_cursor_line_col(text, ctx.tab.cursor_position());
+    let frame         = ctx.frame;
+    let scroll_offset = frame.scroll_offset;
+    let scroll_x      = frame.scroll_offset_x;
+    let cursor_line   = frame.cursor.line;
+    let cursor_col    = frame.cursor.col;
     if cursor_line < scroll_offset { return None; }
     let visual_line = cursor_line - scroll_offset;
-    let y = ctx.text_area.line_y(visual_line);
-    if y > ctx.content_rect.y + ctx.content_rect.height { return None; }
-    let line_content = text.lines().nth(cursor_line).unwrap_or("");
+    let y = line_y(ctx, visual_line);
+    if y > frame.content.rect.y + frame.content.rect.height { return None; }
+    let line_content = frame.visible_lines.iter()
+        .find(|l| l.line_index == cursor_line)
+        .map(|l| l.text.as_str())
+        .unwrap_or("");
     let vl = crate::visual_position::VisualLine::new(line_content);
-    let x = vl.char_col_to_visual_x(cursor_col, ctx.text_area.text_padding - scroll_x, ctx.char_width);
+    let x = vl.char_col_to_visual_x(cursor_col, frame.content.text_padding - scroll_x, ctx.char_width);
     Some((x, y))
 }
 
@@ -126,35 +134,33 @@ pub fn draw_cursor(
 }
 
 pub fn collect_selection_positions(ctx: &DrawCtx<'_>) -> Vec<(f32, f32, f32, f32)> {
-    let text_area     = ctx.text_area;
-    let line_height   = text_area.line_height;
-    let scroll_offset = ctx.tab.scroll_offset();
-    let scroll_x      = ctx.tab.scroll_offset_x();
+    let frame         = ctx.frame;
+    let line_height   = frame.content.line_height;
+    let scroll_offset = frame.scroll_offset;
+    let scroll_x      = frame.scroll_offset_x;
     let mut positions = Vec::new();
-    if ctx.tab.word_wrap() { return positions; }
-    let Some(((start_line, start_col), (end_line, end_col))) = ctx.tab.selection_range_line_col() else {
-        return positions;
-    };
-    let visible_start = scroll_offset.max(start_line);
-    for (line_idx, line_content) in ctx.tab.content().lines()
-        .enumerate()
-        .skip(visible_start)
-        .take_while(|(idx, _)| *idx <= end_line)
-    {
+    if frame.word_wrap { return positions; }
+    let Some(sel) = &frame.selection else { return positions; };
+    let (start_line, start_col) = sel.start;
+    let (end_line, end_col)     = sel.end;
+    let bottom = frame.content.rect.y + frame.content.rect.height;
+    let right  = frame.content.rect.x + frame.content.rect.width;
+    for ld in frame.visible_lines.iter() {
+        let line_idx = ld.line_index;
+        if line_idx < start_line || line_idx > end_line { continue; }
         let visible_idx = line_idx.saturating_sub(scroll_offset);
-        let y = text_area.line_y(visible_idx);
-        if y > ctx.content_rect.y + ctx.content_rect.height { break; }
+        let y = line_y(ctx, visible_idx);
+        if y > bottom { break; }
         let line_bottom_y = y + line_height;
         let sc = if line_idx == start_line { start_col } else { 0 };
         let ec = if line_idx == end_line {
-            end_col.min(line_content.chars().count())
+            end_col.min(ld.text.chars().count())
         } else {
-            line_content.chars().count()
+            ld.text.chars().count()
         };
-        let vl = crate::visual_position::VisualLine::new(line_content);
+        let vl = crate::visual_position::VisualLine::new(&ld.text);
         for col in sc..ec {
-            let char_x = vl.char_col_to_visual_center_x(col, text_area.text_padding - scroll_x, ctx.char_width);
-            let right = ctx.content_rect.x + ctx.content_rect.width;
+            let char_x = vl.char_col_to_visual_center_x(col, frame.content.text_padding - scroll_x, ctx.char_width);
             if char_x < -ctx.char_width || char_x > right + ctx.char_width { continue; }
             positions.push((char_x, y + line_height * 0.5, line_bottom_y, 0.0));
         }

@@ -2,7 +2,6 @@
 //!
 //! Architecture overview:
 //! - `Focus` - determines which component receives keyboard input
-//! - `UiState` - transient UI state (hover, cursor blink, mouse)
 //! - `App` - coordinates between components, owns tabs and renderer
 
 pub(crate) mod action;
@@ -15,7 +14,6 @@ mod scroll;
 pub(crate) mod scroll_state;
 pub(crate) mod state;
 mod tabs;
-pub(crate) mod ui_state;
 
 use arboard::Clipboard;
 
@@ -24,12 +22,10 @@ use crate::persistence;
 use crate::renderer::Renderer;
 use crate::tab::Tab;
 
-pub use focus::NoteEntry;
 pub use keybindings::{Key, KeyEvent, Modifiers, resolve as resolve_keybinding};
 pub use scroll_state::ScrollInput;
 pub use state::AppResult;
 pub use crate::ui::CursorShape;
-pub use ui_state::{MouseInteraction, UiState};
 
 pub struct App {
     /// GPU renderer — the only thing App owns that AppLogic cannot.
@@ -98,50 +94,9 @@ impl App {
     }
 
     pub fn render(&mut self) {
-        let ui = &self.logic.ui_state;
-        let renaming_tab_index = self.logic.focus.renaming_tab_index();
-        let rename_input = self.logic.focus.rename_input();
-        let notes_picker_state = self.logic.focus.notes_picker_state();
-
-        let tab_info: Vec<(&str, bool)> = self.logic.tabs
-            .iter()
-            .enumerate()
-            .map(|(i, t)| {
-                if Some(i) == renaming_tab_index {
-                    if let Some(input) = rename_input {
-                        (input.text(), i == self.logic.active_tab)
-                    } else {
-                        (t.title(), i == self.logic.active_tab)
-                    }
-                } else {
-                    (t.title(), i == self.logic.active_tab)
-                }
-            })
-            .collect();
-
-        // Build UiTree once per frame — TabBar flows from here to the renderer.
-        let ui_tree = self.logic.build_ui_tree(&tab_info);
-
-        let current_tab = &self.logic.tabs[self.logic.active_tab];
-        let dragging_scrollbar = matches!(ui.mouse_interaction, MouseInteraction::ScrollbarDrag { .. });
-
-        self.renderer.render(&crate::renderer::RenderFrame {
-            ui_tree:                &ui_tree,
-            tabs:                   &tab_info,
-            current_tab,
-            cursor_visible:         ui.cursor_visible,
-            hovered_tab_index:      ui.hovered_tab_index,
-            hovered_plus:           ui.hovered_plus,
-            hovered_scrollbar:      ui.hovered_scrollbar,
-            dragging_scrollbar,
-            renaming_tab:           renaming_tab_index,
-            rename_input,
-            typing_flame_positions: &ui.typing_flame_positions,
-            hovered_window_minimize: ui.hovered_window_minimize,
-            hovered_window_maximize: ui.hovered_window_maximize,
-            hovered_window_close:    ui.hovered_window_close,
-            notes_picker_state,
-        });
+        let frame        = self.logic.render_frame();
+        let rename_input = self.logic.rename_input.as_ref().map(|(_, fw)| &fw.state);
+        self.renderer.render(&frame, rename_input);
     }
 
     // =========================================================================
@@ -158,16 +113,8 @@ impl App {
         self.logic.auto_scroll();
     }
 
-    pub(crate) fn tab_titles(&self) -> Vec<(&str, bool)> {
-        self.logic.tabs
-            .iter()
-            .enumerate()
-            .map(|(i, t)| (t.title(), i == self.logic.active_tab))
-            .collect()
-    }
-
     pub fn has_active_animations(&self) -> bool {
-        self.renderer.has_active_flames() || !self.logic.ui_state.typing_flame_positions.is_empty()
+        self.renderer.has_active_flames() || !self.logic.typing_flame_positions.is_empty()
     }
 
     pub fn handle_scroll_event(&mut self, input: ScrollInput) -> AppResult {
@@ -176,10 +123,6 @@ impl App {
 
     pub fn is_mouse_in_tab_bar(&self) -> bool {
         self.logic.is_mouse_in_tab_bar()
-    }
-
-    pub fn ui_state(&self) -> &UiState {
-        self.logic.ui_state()
     }
 
     pub fn scroll_tab_bar(&mut self, delta: f32) -> AppResult {

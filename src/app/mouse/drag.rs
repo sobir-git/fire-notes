@@ -6,64 +6,72 @@ use crate::config::timing;
 use crate::ui::{UiDragAction, UiNode};
 
 use super::super::state::AppResult;
-use super::super::ui_state::MouseInteraction;
 use super::super::App;
 
 impl App {
     pub fn drag_at(&mut self, x: f32, y: f32) -> AppResult {
-        let tab_info = self.tab_titles();
-        let ui_tree = self.logic.build_ui_tree(&tab_info);
-        match self.logic.ui_state.mouse_interaction {
-            MouseInteraction::None => AppResult::Ok,
-            MouseInteraction::WindowDrag | MouseInteraction::WindowResize(_) => AppResult::Ok,
-            MouseInteraction::TabDrag { tab_index } => {
-                if y < ui_tree.tab_bar.rect.height {
-                    self.reorder_tab_at(x, y, tab_index)
-                } else {
-                    AppResult::Ok
-                }
-            }
-            MouseInteraction::ScrollbarDrag { drag_offset } => {
-                let total_lines = self.logic.tabs[self.logic.active_tab].total_lines();
-                let visible_lines = self.visible_lines();
-                let scroll_offset = self.logic.tabs[self.logic.active_tab].scroll_offset();
-                match ui_tree.drag_scrollbar(y, total_lines, visible_lines, scroll_offset, drag_offset) {
-                    UiDragAction::ScrollbarDrag { ratio } => self.jump_scrollbar_to_ratio(ratio),
-                    UiDragAction::None => AppResult::Ok,
-                }
-            }
-            MouseInteraction::PickerScrollbarDrag { drag_offset } => {
-                self.drag_picker_scrollbar(y, drag_offset)
-            }
-            MouseInteraction::TextSelection => {
-                if self.logic.focus.is_notes_picker() {
-                    self.drag_picker_input(x)
-                } else {
-                    self.handle_text_selection_drag(x, y)
+        // Picker scrollbar drag is tracked inside NotesPicker.
+        if self.logic.focus.is_notes_picker() {
+            if let Some(picker) = &mut self.logic.notes_picker {
+                if picker.list.is_scrollbar_dragging() {
+                    let changed = picker.list.continue_scrollbar_drag(y);
+                    return if changed { AppResult::Redraw } else { AppResult::Ok };
                 }
             }
         }
+
+        // Scrollbar drag — state lives in fw::Scrollbar.
+        if self.logic.ui_tree.content_area.scrollbar.is_dragging() {
+            let total_lines = self.logic.tabs[self.logic.active_tab].total_lines();
+            let visible_lines = self.visible_lines();
+            let scroll_offset = self.logic.tabs[self.logic.active_tab].scroll_offset();
+            return match self.logic.ui_tree.drag_scrollbar(y, total_lines, visible_lines, scroll_offset) {
+                UiDragAction::ScrollbarDrag { ratio } => self.jump_scrollbar_to_ratio(ratio),
+                UiDragAction::None => AppResult::Ok,
+            };
+        }
+
+        // Tab drag — state lives in TabBar.
+        if let Some(tab_index) = self.logic.ui_tree.tab_bar.dragging_tab_index() {
+            if y < self.logic.ui_tree.tab_bar.rect.height {
+                return self.reorder_tab_at(x, y, tab_index);
+            }
+            return AppResult::Ok;
+        }
+
+        if self.logic.ui_tree.content_area.is_text_selecting {
+            if self.logic.focus.is_notes_picker() {
+                return self.drag_picker_input(x);
+            } else {
+                return self.handle_text_selection_drag(x, y);
+            }
+        }
+
+        AppResult::Ok
     }
 
     pub fn end_drag(&mut self) {
-        self.logic.ui_state.mouse_interaction = MouseInteraction::None;
+        self.logic.ui_tree.content_area.scrollbar.end_drag();
+        self.logic.ui_tree.tab_bar.end_tab_drag();
+        self.logic.ui_tree.content_area.is_text_selecting = false;
+        if let Some(picker) = &mut self.logic.notes_picker {
+            picker.list.end_drag();
+        }
     }
 
     fn handle_text_selection_drag(&mut self, x: f32, y: f32) -> AppResult {
-        let tab_info = self.tab_titles();
-        let ui_tree = self.logic.build_ui_tree(&tab_info);
-        let text_area = &ui_tree.content_area.text;
+        let text_area = &self.logic.ui_tree.content_area.text;
 
         // Throttle drag-scroll when pointer leaves the viewport.
         let height = self.visible_lines() as isize;
         let visual_line = text_area.hit_to_visual_line_clamped(y);
         if visual_line < 0 || visual_line >= height {
-            if self.logic.ui_state.last_drag_scroll.elapsed()
+            if self.logic.last_drag_scroll.elapsed()
                 < Duration::from_millis(timing::DRAG_SCROLL_THROTTLE_MS)
             {
                 return AppResult::Ok;
             }
-            self.logic.ui_state.last_drag_scroll = std::time::Instant::now();
+            self.logic.last_drag_scroll = std::time::Instant::now();
         }
 
         let scroll_offset = self.logic.tabs[self.logic.active_tab].scroll_offset();
@@ -80,17 +88,14 @@ impl App {
 
         self.logic.tabs[self.logic.active_tab].set_cursor_position(clicked_line, clicked_col, true);
         self.auto_scroll();
-        self.logic.ui_state.reset_cursor_blink();
+        self.logic.reset_cursor_blink();
         AppResult::Redraw
     }
 
     pub(super) fn reorder_tab_at(&mut self, x: f32, y: f32, from_index: usize) -> AppResult {
         if self.logic.focus.is_renaming() { return AppResult::Ok; }
 
-        let tab_info = self.tab_titles();
-        let ui_tree = self.logic.build_ui_tree(&tab_info);
-
-        if let UiNode::Tab(to_index) = ui_tree.hit_test(x, y) {
+        if let UiNode::Tab(to_index) = self.logic.ui_tree.hit_test(x, y) {
             if to_index != from_index && from_index < self.logic.tabs.len() && to_index < self.logic.tabs.len() {
                 let tab = self.logic.tabs.remove(from_index);
                 self.logic.tabs.insert(to_index, tab);
@@ -103,7 +108,7 @@ impl App {
                     self.logic.active_tab = (self.logic.active_tab + 1).min(self.logic.tabs.len() - 1);
                 }
 
-                self.logic.ui_state.mouse_interaction = MouseInteraction::TabDrag { tab_index: to_index };
+                self.logic.ui_tree.tab_bar.start_tab_drag(to_index);
                 return AppResult::Redraw;
             }
         }

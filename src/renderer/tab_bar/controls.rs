@@ -2,32 +2,31 @@
 
 use femtovg::{Color, Paint, Path};
 
-use crate::ui::TabBar;
+use crate::render_frame::FrameRect;
 
 use super::draw::TabBarRenderer;
 
 impl<'a> TabBarRenderer<'a> {
-    /// Draw window control buttons using pre-computed rects from the `TabBar` layout widget.
-    pub(super) fn draw_window_controls(
+    /// Draw window control buttons from pre-baked FrameRects.
+    pub(super) fn draw_window_controls_from_rects(
         &mut self,
-        layout: &TabBar,
-        hovered_minimize: bool,
-        hovered_maximize: bool,
+        close: &FrameRect,
+        maximize: &FrameRect,
+        minimize: &FrameRect,
         hovered_close: bool,
+        hovered_maximize: bool,
+        hovered_minimize: bool,
     ) {
         let icon_size = 10.0 * self.scale;
 
-        let cr = &layout.close_rect;
-        self.draw_window_button(cr.x, cr.y, cr.width, hovered_close, true);
-        self.draw_close_icon(cr.x, cr.y, cr.width, icon_size);
+        self.draw_window_button(close.x, close.y, close.width, hovered_close, true);
+        self.draw_close_icon(close.x, close.y, close.width, icon_size);
 
-        let mr = &layout.maximize_rect;
-        self.draw_window_button(mr.x, mr.y, mr.width, hovered_maximize, false);
-        self.draw_maximize_icon(mr.x, mr.y, mr.width, icon_size);
+        self.draw_window_button(maximize.x, maximize.y, maximize.width, hovered_maximize, false);
+        self.draw_maximize_icon(maximize.x, maximize.y, maximize.width, icon_size);
 
-        let minr = &layout.minimize_rect;
-        self.draw_window_button(minr.x, minr.y, minr.width, hovered_minimize, false);
-        self.draw_minimize_icon(minr.x, minr.y, minr.width, icon_size);
+        self.draw_window_button(minimize.x, minimize.y, minimize.width, hovered_minimize, false);
+        self.draw_minimize_icon(minimize.x, minimize.y, minimize.width, icon_size);
     }
 
     fn draw_window_button(&mut self, x: f32, y: f32, size: f32, hovered: bool, is_close: bool) {

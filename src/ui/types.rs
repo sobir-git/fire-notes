@@ -106,9 +106,11 @@ impl WindowRect {
     }
 
     /// Width of the window in physical pixels (at scale 1.0 logical).
+    #[allow(dead_code)]
     pub fn width(self) -> f32 { self.0.width }
 
     /// Height of the window in physical pixels.
+    #[allow(dead_code)]
     pub fn height(self) -> f32 { self.0.height }
 }
 
