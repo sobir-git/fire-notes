@@ -78,6 +78,38 @@ impl MyView {
 
 ---
 
+## Widget Trait
+
+Every interactive primitive implements `Widget` (`src/layout/mod.rs`):
+
+```rust
+pub trait Widget {
+    type Event;
+    fn on_pointer_down(&mut self, x: f32, y: f32) -> Self::Event;
+    fn on_hover(&mut self, x: f32, y: f32) -> bool;          // returns needs_redraw
+    fn cursor_shape_at(&self, x: f32, y: f32) -> CursorShape;
+}
+```
+
+- `TextInput::Event = InputEvent` (`Focused` | `Miss`)
+- `List<T>::Event = ListPointerResult` (`Selected` | `Confirmed(usize)` | `Scrolled` | …)
+
+Components hold primitives directly and use `Column::hit_slot` to dispatch:
+
+```rust
+fn on_pointer_down(&mut self, x: f32, y: f32, char_width: f32) -> PickerEvent {
+    match self.layout.hit_slot(x, y) {
+        Some(0) => { self.search.on_pointer_down_with(x, y, char_width); PickerEvent::Redraw }
+        Some(1) => self.list.on_pointer_down(x, y).into_picker_event(&self.list),
+        _       => PickerEvent::None,
+    }
+}
+```
+
+No manual rect-contains checks. No if-else chains. The combinator routes; the component maps.
+
+---
+
 ## Event Return Type
 
 ```rust
@@ -89,8 +121,34 @@ pub enum EventResponse<Msg = ()> {
 }
 ```
 
-`Pass` is the only non-consuming variant. Widgets that don't need polymorphic dispatch
-skip this type and return plain enums — whatever is clearest for the caller.
+`Pass` is the only non-consuming variant. When a component's callers only need a
+plain bool or a typed result, skip `EventResponse` and return the natural type.
+
+---
+
+## Typed Component Events
+
+Components emit domain events — not raw booleans, not `AppResult`. Callers just match:
+
+```rust
+// PickerEvent defined in components/notes_picker.rs
+pub enum PickerEvent {
+    None,
+    Redraw,
+    Confirmed(NoteEntry),   // carries the selected item — no extra lookups
+    Cancelled,
+}
+
+// Entire click handler in app/notes_picker.rs:
+match picker.on_pointer_down(x, y, char_width) {
+    PickerEvent::None      => AppResult::Ok,
+    PickerEvent::Redraw    => AppResult::Redraw,
+    PickerEvent::Cancelled => self.logic.cancel_notes_picker(),
+    PickerEvent::Confirmed(entry) => self.logic.open_or_switch_to(entry.path),
+}
+```
+
+The caller has zero knowledge of which child was hit. All routing lives in the component.
 
 ---
 
@@ -117,24 +175,24 @@ This eliminates borrow-fighting when accessing multiple fields of the same widge
 Negative weight = fixed pixels × scale; positive = flex fill.
 
 ```rust
-// A search dialog — ~12 lines, zero manual geometry
-pub struct SearchDialog {
-    input:  TextInput,
-    list:   List<Item>,
-}
-
-impl SearchDialog {
-    pub fn new(rect: Rect, scale: f32, items: Vec<Item>) -> Self {
-        let col = Column::new(rect, scale, &[-40.0, 1.0]);  // input 40px, list fills rest
-        Self {
-            input: TextInput::new(col.slot(0), scale),
-            list:  List::new(col.slot(1), scale, items),
-        }
-    }
+// NotesPicker layout — 4 lines, zero manual geometry
+fn apply_layout(&mut self, overlay: Rect, scale: f32) {
+    let col = Column::new(overlay.inset(PADDING * scale), scale, &[-INPUT_H, 1.0]);
+    self.search.relayout(col.slot(0), scale);
+    self.list.relayout(col.slot(1), scale);
 }
 ```
 
-No manual geometry. The combinator computes all rects.
+`Column::hit_slot(x, y)` returns the slot index containing the point — components
+use this for event dispatch without writing any `rect.contains` checks.
+
+```rust
+match self.layout.hit_slot(x, y) {
+    Some(0) => /* input was hit */,
+    Some(1) => /* list was hit */,
+    _       => /* outside overlay */,
+}
+```
 
 ---
 
@@ -143,33 +201,43 @@ No manual geometry. The combinator computes all rects.
 One file. No registration. No macro. No codegen.
 
 ```rust
-// src/components/my_widget.rs
+// src/components/my_dialog.rs
+use crate::layout::Column;
+use crate::primitives::{TextInput, Button};
 use crate::ui::Rect;
 
-pub struct MyWidget { label: String, rect: Rect, hovered: bool }
-pub struct MyWidgetView { rect: Rect, label: String, hovered: bool }
-pub enum MyWidgetMsg { Clicked }
+pub enum DialogEvent { Submitted(String), Cancelled }
 
-impl MyWidget {
-    pub fn new(rect: Rect, label: impl Into<String>) -> Self {
-        Self { label: label.into(), rect, hovered: false }
+pub struct MyDialog {
+    input:  TextInput,
+    ok:     Button,
+    cancel: Button,
+    layout: Column,
+}
+
+impl MyDialog {
+    pub fn new(rect: Rect, scale: f32) -> Self {
+        let col = Column::new(rect, scale, &[-40.0, -36.0]);
+        let row = crate::layout::Row::new(col.slot(1), scale, &[1.0, 1.0]);
+        Self {
+            input:  TextInput::new_empty().with_rect(col.slot(0), scale),
+            ok:     Button::new(row.slot(0), scale, "OK"),
+            cancel: Button::new(row.slot(1), scale, "Cancel"),
+            layout: col,
+        }
     }
-    pub fn on_pointer_down(&mut self, x: f32, y: f32) -> Option<MyWidgetMsg> {
-        if self.rect.contains(x, y) { Some(MyWidgetMsg::Clicked) } else { None }
+    pub fn on_pointer_down(&mut self, x: f32, y: f32) -> DialogEvent {
+        match self.layout.hit_slot(x, y) {
+            Some(0) => { self.input.on_pointer_down_with(x, y, self.input.char_width); DialogEvent::None }
+            Some(1) => /* row dispatch */ DialogEvent::None,
+            _       => DialogEvent::Cancelled,
+        }
     }
-    pub fn on_hover(&mut self, x: f32, y: f32) -> bool {
-        let prev = self.hovered;
-        self.hovered = self.rect.contains(x, y);
-        prev != self.hovered
-    }
-    pub fn snapshot(&self) -> MyWidgetView {
-        MyWidgetView { rect: self.rect, label: self.label.clone(), hovered: self.hovered }
-    }
+    pub fn snapshot(&self) -> MyDialogView { /* read fields off children */ }
 }
 ```
 
-Then in `AppLogic`: add `my_widget: MyWidget` and one line in `render_frame()`.
-That is the entire integration cost.
+Then in `AppLogic`: add one field, one line in `render_frame()`. No other changes.
 
 ---
 
