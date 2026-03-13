@@ -36,9 +36,15 @@ impl Column {
     }
 
     pub fn len(&self) -> usize { self.slots.len() }
+    pub fn is_empty(&self) -> bool { self.slots.is_empty() }
 
-    /// Find which slot contains (x, y), returns its index.
+    /// Returns the index of the slot that contains (x, y), if any.
     pub fn hit_slot(&self, x: f32, y: f32) -> Option<usize> {
         self.slots.iter().position(|r| r.contains(x, y))
+    }
+
+    /// Returns `true` if (x, y) falls inside any slot.
+    pub fn contains(&self, x: f32, y: f32) -> bool {
+        self.slots.iter().any(|r| r.contains(x, y))
     }
 }

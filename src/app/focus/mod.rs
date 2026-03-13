@@ -5,7 +5,7 @@ mod input;
 use std::path::PathBuf;
 
 /// A note entry for the notes picker
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NoteEntry {
     pub path: PathBuf,
     pub title: String,

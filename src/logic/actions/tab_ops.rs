@@ -99,18 +99,24 @@ impl AppLogic {
         if self.focus.confirm_notes_picker() {
             self.notes_picker = None;
             if let Some(path) = path {
-                for (i, tab) in self.tabs.iter().enumerate() {
-                    if tab.path() == Some(&path) {
-                        self.activate_tab(i);
-                        return AppResult::Redraw;
-                    }
-                }
-                if let Some(tab) = Tab::from_file(path) {
-                    self.tabs.push(tab);
-                    self.activate_tab(self.tabs.len() - 1);
-                    return AppResult::Redraw;
-                }
+                return self.open_or_switch_to(path);
             }
+        }
+        AppResult::Ok
+    }
+
+    /// Switch to an already-open tab for `path`, or open it as a new tab.
+    pub(crate) fn open_or_switch_to(&mut self, path: std::path::PathBuf) -> AppResult {
+        for (i, tab) in self.tabs.iter().enumerate() {
+            if tab.path() == Some(&path) {
+                self.activate_tab(i);
+                return AppResult::Redraw;
+            }
+        }
+        if let Some(tab) = Tab::from_file(path) {
+            self.tabs.push(tab);
+            self.activate_tab(self.tabs.len() - 1);
+            return AppResult::Redraw;
         }
         AppResult::Ok
     }

@@ -1,8 +1,11 @@
 //! Notes picker — app-level operations.
+//!
+//! Thin shell: builds the entry list, opens the picker, routes typed
+//! PickerEvent to business logic. No manual hit-testing or routing here.
 
 use std::path::PathBuf;
 
-use crate::primitives::list::ListPointerResult;
+use crate::components::notes_picker::PickerEvent;
 use crate::persistence;
 
 use super::focus::NoteEntry;
@@ -39,64 +42,45 @@ impl App {
         self.logic.focus.is_notes_picker()
     }
 
-    /// Scroll the picker list by `lines` (positive = down, negative = up).
     pub fn scroll_notes_picker(&mut self, lines: isize) -> AppResult {
-        if let Some(picker) = &mut self.logic.notes_picker {
-            if picker.scroll_by(lines) { return AppResult::Redraw; }
+        if let Some(p) = &mut self.logic.notes_picker {
+            if p.on_scroll(lines) { return AppResult::Redraw; }
         }
         AppResult::Ok
     }
 
-    /// Handle hover over the picker — update cursor shape and highlight item.
     pub fn hover_notes_picker(&mut self, x: f32, y: f32) -> AppResult {
-        if let Some(picker) = &mut self.logic.notes_picker {
-            self.logic.cursor_shape = picker.cursor_shape_at(x, y);
-            if picker.on_hover(x, y) { return AppResult::Redraw; }
+        if let Some(p) = &mut self.logic.notes_picker {
+            let (cursor, changed) = p.on_hover(x, y);
+            self.logic.cursor_shape = cursor;
+            if changed { return AppResult::Redraw; }
         }
         AppResult::Ok
     }
 
-    /// Handle a mouse click in the picker.
     pub fn handle_notes_picker_click(&mut self, x: f32, y: f32) -> AppResult {
         let char_width = self.renderer.get_picker_char_width();
-
-        // Detect outside click using picker's own overlay_rect.
-        let outside = if let Some(picker) = &self.logic.notes_picker {
-            !picker.overlay_rect().contains(x, y)
+        let event = if let Some(p) = &mut self.logic.notes_picker {
+            p.on_pointer_down(x, y, char_width)
         } else {
             return AppResult::Ok;
         };
-
-        if outside {
-            return self.logic.cancel_notes_picker();
-        }
-
-        // Check search input first.
-        if let Some(picker) = &mut self.logic.notes_picker {
-            if picker.search.on_pointer_down(x, y, char_width) {
-                self.logic.ui_tree.content_area.is_text_selecting = true;
-                return AppResult::Redraw;
+        match event {
+            PickerEvent::None     => AppResult::Ok,
+            PickerEvent::Redraw   => AppResult::Redraw,
+            PickerEvent::Cancelled => self.logic.cancel_notes_picker(),
+            PickerEvent::Confirmed(entry) => {
+                self.logic.notes_picker = None;
+                self.logic.focus.confirm_notes_picker();
+                self.logic.open_or_switch_to(entry.path)
             }
         }
-
-        // Check list.
-        if let Some(picker) = &mut self.logic.notes_picker {
-            match picker.list.on_pointer_down(x, y) {
-                ListPointerResult::ScrollbarDragStart { .. } => return AppResult::Redraw,
-                ListPointerResult::Scrolled                 => return AppResult::Redraw,
-                ListPointerResult::Selected                 => return AppResult::Redraw,
-                ListPointerResult::Confirmed(_)             => return self.logic.confirm_notes_picker(),
-                ListPointerResult::None                     => {}
-            }
-        }
-        AppResult::Ok
     }
 
-    /// Handle picker input drag (text selection within the search field).
     pub(crate) fn drag_picker_input(&mut self, x: f32) -> AppResult {
         let char_width = self.renderer.get_picker_char_width();
-        if let Some(picker) = &mut self.logic.notes_picker {
-            picker.search.on_drag(x, char_width);
+        if let Some(p) = &mut self.logic.notes_picker {
+            p.on_drag(x, char_width);
             return AppResult::Redraw;
         }
         AppResult::Ok
