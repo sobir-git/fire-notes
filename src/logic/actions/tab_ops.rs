@@ -62,18 +62,18 @@ impl AppLogic {
 
     pub(crate) fn start_rename(&mut self, tab_index: usize) {
         if let Some(tab) = self.tabs.get(tab_index) {
-            use crate::fw::widgets::TextInput as FwTextInput;
-            let mut fw_input = FwTextInput::new(tab.title().to_string());
-            fw_input.state.select_all();
-            self.rename_input = Some((tab_index, fw_input));
+            use crate::primitives::TextInput as PrimTextInput;
+            let mut inp = PrimTextInput::new(tab.title().to_string());
+            inp.state.select_all();
+            self.rename_input = Some((tab_index, inp));
             self.focus = Focus::TabRename;
         }
     }
 
     pub(crate) fn confirm_rename(&mut self) -> AppResult {
         if !matches!(self.focus, Focus::TabRename) { return AppResult::Ok; }
-        if let Some((tab_index, fw_input)) = self.rename_input.take() {
-            let title = fw_input.state.text().trim().to_string();
+        if let Some((tab_index, inp)) = self.rename_input.take() {
+            let title = inp.state.text().trim().to_string();
             self.focus = Focus::Editor;
             if !title.is_empty() {
                 if let Some(tab) = self.tabs.get_mut(tab_index) {

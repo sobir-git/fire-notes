@@ -1,49 +1,62 @@
 #![allow(dead_code)]
-//! Notes picker component — state + geometry + snapshot, one file.
+//! Notes picker component — a pure composition of primitives.
 //!
-//! Owns the search input and result list. Produces `NotesPickerFrameData`
-//! for the renderer without any GPU imports. Draw code lives in
-//! `renderer/notes_picker.rs` and consumes the pure frame data.
+//! Structure:
+//!   overlay_rect
+//!     └── Column([-input_h, 1.0])
+//!           ├── slot 0 → TextInput  (search query)
+//!           └── slot 1 → List<NoteEntry>  (filtered results)
+//!
+//! No manual geometry. The component holds two primitives; layout is entirely
+//! delegated to Column. Snapshot reads fields off the primitives directly.
 
 use crate::app::focus::NoteEntry;
-use crate::fw::widgets::{List, TextInput as FwTextInput};
-use crate::logic::{picker_relayout, PICKER_MAX_VISIBLE};
+use crate::layout::Column;
+use crate::primitives::{List, TextInput};
 use crate::render_frame::{FrameRect, NotesPickerFrameData, NotesPickerRowData};
 use crate::ui::{CursorShape, Rect};
 
+const MAX_VISIBLE: usize = 8;
+const INPUT_H:    f32    = 36.0;   // dp
+const ITEM_H:     f32    = 32.0;   // dp
+const PADDING:    f32    = 8.0;    // dp
+const FONT_SIZE:  f32    = 14.0;   // dp
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
-/// Notes picker — owns search widget, list widget, and geometry baking.
+/// Notes picker — a composition of TextInput + List laid out by Column.
 pub struct NotesPicker {
-    pub search: FwTextInput,
+    pub search: TextInput,
     pub list:   List<NoteEntry>,
+    /// Cached overlay rect (recomputed on relayout).
+    overlay:    Rect,
+    scale:      f32,
 }
 
 impl NotesPicker {
-    /// Create and relayout immediately.
     pub fn new(entries: Vec<NoteEntry>, window: Rect, scale: f32) -> Self {
-        let mut list   = List::new(entries);
-        let mut search = FwTextInput::new_empty();
-        list.set_max_visible(PICKER_MAX_VISIBLE);
-        picker_relayout(window, scale, &mut list, &mut search);
-        Self { search, list }
+        let mut list = List::new(entries);
+        list.set_max_visible(MAX_VISIBLE);
+        let search = TextInput::new_empty();
+        let overlay = overlay_rect(window, scale, list.len());
+        let mut s = Self { search, list, overlay, scale };
+        s.apply_layout(overlay, scale);
+        s
     }
 
-    /// Relayout both widgets (call on resize or filter change).
     pub fn relayout(&mut self, window: Rect, scale: f32) {
-        picker_relayout(window, scale, &mut self.list, &mut self.search);
+        self.scale   = scale;
+        self.overlay = overlay_rect(window, scale, self.list.len());
+        self.apply_layout(self.overlay, scale);
     }
 
     // ── State passthrough ─────────────────────────────────────────────────────
 
     pub fn scroll_by(&mut self, lines: isize) -> bool { self.list.scroll_by(lines) }
-
     pub fn select_up(&mut self)   -> bool { self.list.select_up() }
     pub fn select_down(&mut self) -> bool { self.list.select_down() }
-
-    pub fn selected_item(&self) -> Option<&NoteEntry> { self.list.selected_item() }
-
-    pub fn is_empty(&self) -> bool { self.list.is_empty() }
+    pub fn selected_item(&self)   -> Option<&NoteEntry> { self.list.selected_item() }
+    pub fn is_empty(&self)        -> bool { self.list.is_empty() }
 
     pub fn update_filter(&mut self, window: Rect, scale: f32) {
         let query = self.search.text().to_lowercase();
@@ -65,51 +78,23 @@ impl NotesPicker {
         self.list.on_hover(x, y)
     }
 
-    // ── Overlay rect (for outside-click detection) ────────────────────────────
-
-    pub fn overlay_rect(&self, window: Rect, scale: f32) -> Rect {
-        let padding      = 8.0  * scale;
-        let input_height = 36.0 * scale;
-        let item_height  = 32.0 * scale;
-        let visible      = self.list.len().min(PICKER_MAX_VISIBLE);
-        let overlay_w    = (window.width * 0.6).min(500.0 * scale);
-        let overlay_h    = input_height + visible as f32 * item_height + 2.0 * padding;
-        let (_, below_top) = window.cut_top(60.0 * scale);
-        below_top.centered_in(overlay_w, overlay_h)
-    }
+    pub fn overlay_rect(&self) -> Rect { self.overlay }
 
     // ── Snapshot ──────────────────────────────────────────────────────────────
 
-    /// Bake all geometry into a pure data snapshot for the renderer.
-    pub fn snapshot(
-        &self,
-        window: Rect,
-        scale: f32,
-        cursor_visible: bool,
-    ) -> NotesPickerFrameData {
-        let padding      = 8.0  * scale;
-        let input_height = 36.0 * scale;
-        let item_height  = 32.0 * scale;
-        let font_size    = 14.0 * scale;
+    /// Bake into a pure data snapshot. Reads geometry directly off the
+    /// two primitives — no coordinate arithmetic here.
+    pub fn snapshot(&self, window: Rect, cursor_visible: bool) -> NotesPickerFrameData {
+        let scale      = self.scale;
+        let font_size  = FONT_SIZE * scale;
+        let item_h     = ITEM_H * scale;
+        let padding    = PADDING * scale;
+        let list_rect  = self.list.list_rect();
+        let input_rect = self.search.rect;
 
-        let visible_count = self.list.len().min(PICKER_MAX_VISIBLE);
-        let overlay_w = (window.width * 0.6).min(500.0 * scale);
-        let overlay_h = input_height + visible_count as f32 * item_height + 2.0 * padding;
-        let (_, below_top) = window.cut_top(60.0 * scale);
-        let overlay_rect = below_top.centered_in(overlay_w, overlay_h);
-
-        let (input_rect_ui, list_remainder) =
-            overlay_rect.inset(padding).cut_top(input_height - 4.0 * scale);
-        let list_rect = Rect {
-            x:      list_remainder.x,
-            y:      list_remainder.y + 4.0 * scale,
-            width:  list_remainder.width,
-            height: visible_count as f32 * item_height,
-        };
-
-        let indicator_x          = list_rect.x + list_rect.width - 2.0 * padding;
-        let input_text_x         = input_rect_ui.x + padding;
-        let input_text_baseline_y = input_rect_ui.y + input_rect_ui.height * 0.65;
+        let indicator_x           = list_rect.x + list_rect.width - 2.0 * padding;
+        let input_text_x          = self.search.text_x;
+        let input_text_baseline_y = self.search.text_baseline_y;
 
         let input_selection = self.search.state.selection_anchor.map(|anchor| {
             let cursor = self.search.state.cursor;
@@ -127,36 +112,31 @@ impl NotesPicker {
             .take(row_visible)
             .enumerate()
             .filter_map(|(display_idx, &filtered_idx)| {
-                let item = self.list.items().get(filtered_idx)?;
-                let row_y    = list_rect.y + display_idx as f32 * item_height;
-                let row_rect = FrameRect {
-                    x: list_rect.x, y: row_y,
-                    width: list_rect.width, height: item_height,
-                };
+                let item  = self.list.items().get(filtered_idx)?;
+                let row_y = list_rect.y + display_idx as f32 * item_h;
                 Some(NotesPickerRowData {
                     title:       item.title.clone(),
                     is_open:     item.is_open,
                     is_selected: scroll_offset + display_idx == selected_index,
-                    row_rect,
-                    baseline_y:  row_y + item_height * 0.65,
-                    center_y:    row_y + item_height * 0.5,
+                    row_rect:    FrameRect { x: list_rect.x, y: row_y, width: list_rect.width, height: item_h },
+                    baseline_y:  row_y + item_h * 0.65,
+                    center_y:    row_y + item_h * 0.5,
                 })
             })
             .collect();
 
-        let scrollbar = self.list.scrollbar_rects().map(|(track, thumb)| {
-            (to_frame(track), to_frame(thumb))
-        });
+        let scrollbar = self.list.scrollbar_rects()
+            .map(|(track, thumb)| (to_frame(track), to_frame(thumb)));
 
         NotesPickerFrameData {
-            backdrop_rect:         to_frame(window),
-            overlay_rect:          to_frame(overlay_rect),
-            input_rect:            to_frame(input_rect_ui),
+            backdrop_rect:        to_frame(window),
+            overlay_rect:         to_frame(self.overlay),
+            input_rect:           to_frame(input_rect),
             input_text_x,
             input_text_baseline_y,
-            query:                 self.search.text().to_string(),
-            input_scroll_offset:   self.search.scroll_offset(),
-            input_cursor:          self.search.state.cursor,
+            query:                self.search.text().to_string(),
+            input_scroll_offset:  self.search.scroll_offset(),
+            input_cursor:         self.search.state.cursor,
             cursor_visible,
             input_selection,
             font_size,
@@ -164,15 +144,39 @@ impl NotesPicker {
             indicator_x,
             rows,
             scrollbar,
-            no_results:            self.list.is_empty() && !self.search.text().is_empty(),
-            first_row_baseline_y:  list_rect.y + item_height * 0.65,
+            no_results:           self.list.is_empty() && !self.search.text().is_empty(),
+            first_row_baseline_y: list_rect.y + item_h * 0.65,
         }
+    }
+
+    // ── Private ───────────────────────────────────────────────────────────────
+
+    /// Apply Column layout to the two children. Called on construction and relayout.
+    fn apply_layout(&mut self, overlay: Rect, scale: f32) {
+        let padding = PADDING * scale;
+        let inner   = overlay.inset(padding);
+        // Column: fixed input row, list fills the rest
+        let col = Column::new(inner, scale, &[-INPUT_H, 1.0]);
+        self.search.relayout(col.slot(0), scale);
+        self.list.relayout(col.slot(1), scale);
     }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Free helpers ──────────────────────────────────────────────────────────────
+
+/// Compute the centered overlay rect for the picker.
+/// Depends on item count (drives height).
+fn overlay_rect(window: Rect, scale: f32, item_count: usize) -> Rect {
+    let padding   = PADDING * scale;
+    let input_h   = INPUT_H * scale;
+    let item_h    = ITEM_H  * scale;
+    let visible   = item_count.min(MAX_VISIBLE);
+    let overlay_w = (window.width * 0.6).min(500.0 * scale);
+    let overlay_h = input_h + visible as f32 * item_h + 2.0 * padding;
+    let (_, below_top) = window.cut_top(60.0 * scale);
+    below_top.centered_in(overlay_w, overlay_h)
+}
 
 fn to_frame(r: Rect) -> FrameRect {
     FrameRect { x: r.x, y: r.y, width: r.width, height: r.height }
 }
-

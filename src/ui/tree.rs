@@ -8,7 +8,7 @@ use crate::config::layout as cfg_layout;
 use super::content_area::ContentArea;
 use super::layout::Layout;
 use super::tab_bar::TabBar;
-use super::scrollbar::ScrollbarAction;
+use crate::primitives::scrollbar::ScrollbarAction;
 use super::types::{CursorShape, Rect, WindowRect, ResizeEdge, UiAction, UiDragAction, UiHover, UiNode};
 
 const RESIZE_BORDER: f32 = 5.0;

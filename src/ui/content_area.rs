@@ -4,7 +4,7 @@
 //! Layout is expressed entirely via `Rect` split primitives — no raw arithmetic.
 
 use crate::config::layout as cfg_layout;
-use crate::fw::widgets::Scrollbar;
+use crate::primitives::Scrollbar;
 use super::layout::Layout;
 use super::text_area::TextArea;
 use super::types::Rect;

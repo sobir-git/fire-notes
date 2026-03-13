@@ -9,7 +9,6 @@
 mod app;
 mod components;
 mod config;
-mod fw;
 mod layout;
 mod logic;
 mod persistence;

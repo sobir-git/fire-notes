@@ -264,3 +264,39 @@ impl<T> List<T> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_selection() {
+        let mut list: List<&str> = List::new(vec!["a", "b", "c", "d"]);
+        assert_eq!(list.selected_index(), 0);
+        assert!(list.select_down());
+        assert_eq!(list.selected_index(), 1);
+        assert!(list.select_down());
+        assert_eq!(list.selected_index(), 2);
+        assert!(list.select_up());
+        assert_eq!(list.selected_index(), 1);
+        list.select_index(3);
+        assert_eq!(list.selected_index(), 3);
+        assert!(!list.select_down()); // already at end
+        assert_eq!(list.selected_index(), 3);
+    }
+
+    #[test]
+    fn test_filter() {
+        let mut list: List<&str> = List::new(vec!["apple", "banana", "apricot", "cherry"]);
+        assert_eq!(list.len(), 4);
+        list.filter(|s| s.starts_with('a'));
+        assert_eq!(list.len(), 2);
+        assert_eq!(list.selected_index(), 0);
+        assert_eq!(list.selected_item(), Some(&"apple"));
+        assert!(list.select_down());
+        assert_eq!(list.selected_item(), Some(&"apricot"));
+        list.clear_filter();
+        assert_eq!(list.len(), 4);
+        assert_eq!(list.selected_index(), 0);
+    }
+}

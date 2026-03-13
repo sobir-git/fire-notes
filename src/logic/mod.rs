@@ -24,7 +24,7 @@ use crate::app::state::AppResult;
 use crate::components::NotesPicker;
 use crate::config::{self, layout, timing};
 use crate::tab::Tab;
-use crate::fw::widgets::TextInput as FwTextInput;
+use crate::primitives::TextInput as PrimTextInput;
 use crate::ui::{UiTree, WindowRect};
 
 pub struct AppLogic {
@@ -43,7 +43,7 @@ pub struct AppLogic {
     /// Notes picker component — `Some` while the picker is open.
     pub(crate) notes_picker: Option<NotesPicker>,
     /// Tab rename input. `Some((tab_index, input))` while renaming.
-    pub(crate) rename_input: Option<(usize, FwTextInput)>,
+    pub(crate) rename_input: Option<(usize, PrimTextInput)>,
     /// Retained UI tree — persists across frames so hover state survives.
     pub(crate) ui_tree: UiTree,
     pub(crate) scroll_state: ScrollState,
@@ -255,9 +255,9 @@ impl AppLogic {
     /// Insert text from clipboard (called by platform shell after reading clipboard).
     pub fn insert_paste_text(&mut self, text: &str) -> AppResult {
         if matches!(self.focus, Focus::TabRename) {
-            if let Some((_, fw_input)) = &mut self.rename_input {
+            if let Some((_, inp)) = &mut self.rename_input {
                 use crate::app::input_handler::InputHandler;
-                let r = InputHandler::paste(&mut fw_input.state, text);
+                let r = InputHandler::paste(&mut inp.state, text);
                 if r.was_handled() {
                     self.reset_cursor_blink();
                     return AppResult::Redraw;
@@ -278,7 +278,7 @@ impl AppLogic {
     pub fn copy_selection(&self) -> Option<String> {
         if matches!(self.focus, Focus::TabRename) {
             use crate::app::input_handler::InputHandler;
-            return self.rename_input.as_ref().and_then(|(_, fw_input)| InputHandler::copy(&fw_input.state));
+            return self.rename_input.as_ref().and_then(|(_, inp)| InputHandler::copy(&inp.state));
         }
         self.tabs[self.active_tab].copy_selection()
     }
@@ -287,7 +287,7 @@ impl AppLogic {
     pub fn cut_selection(&mut self) -> Option<String> {
         if matches!(self.focus, Focus::TabRename) {
             use crate::app::input_handler::InputHandler;
-            let text = self.rename_input.as_mut().and_then(|(_, fw_input)| InputHandler::cut(&mut fw_input.state));
+            let text = self.rename_input.as_mut().and_then(|(_, inp)| InputHandler::cut(&mut inp.state));
             if text.is_some() { self.reset_cursor_blink(); }
             return text;
         }
@@ -410,37 +410,3 @@ impl AppLogic {
     }
 }
 
-// ── Notes picker layout helpers ───────────────────────────────────────────────
-
-pub(crate) const PICKER_MAX_VISIBLE: usize = 8;
-
-/// Compute picker geometry and relayout both widgets in place.
-/// Mirrors what `PickerLayout::apply` used to do.
-pub(crate) fn picker_relayout(
-    window: crate::ui::Rect,
-    scale: f32,
-    list: &mut crate::fw::widgets::List<crate::app::focus::NoteEntry>,
-    search: &mut crate::fw::widgets::TextInput,
-) {
-    let padding      = 8.0  * scale;
-    let input_height = 36.0 * scale;
-    let item_height  = 32.0 * scale;
-
-    let visible = list.len().min(PICKER_MAX_VISIBLE);
-    let overlay_w = (window.width * 0.6).min(500.0 * scale);
-    let overlay_h = input_height + visible as f32 * item_height + 2.0 * padding;
-    let (_, below_top) = window.cut_top(60.0 * scale);
-    let overlay_rect = below_top.centered_in(overlay_w, overlay_h);
-
-    let (input_rect, list_remainder) =
-        overlay_rect.inset(padding).cut_top(input_height - 4.0 * scale);
-    search.relayout(input_rect, scale);
-
-    let list_rect = crate::ui::Rect {
-        x:      list_remainder.x,
-        y:      list_remainder.y + 4.0 * scale,
-        width:  list_remainder.width,
-        height: visible as f32 * item_height,
-    };
-    list.relayout(list_rect, scale);
-}

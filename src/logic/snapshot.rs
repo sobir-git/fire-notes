@@ -69,7 +69,7 @@ impl AppLogic {
         // ── Notes picker (full geometry bake) ────────────────────────────
         let notes_picker = self.notes_picker.as_ref().map(|p| {
             let window = crate::ui::Rect { x: 0.0, y: 0.0, width: self.width, height: self.height };
-            p.snapshot(window, self.scale, self.cursor_visible)
+            p.snapshot(window, self.cursor_visible)
         });
 
         // ── Rename ────────────────────────────────────────────────────────

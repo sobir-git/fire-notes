@@ -17,7 +17,7 @@ pub fn snapshot(ca: &ContentArea) -> ContentFrameData {
         line_height:    ca.text.line_height,
         text_padding:   ca.text.text_padding,
         doc_top_margin: ca.text.doc_top_margin,
-        scrollbar_rect: to_frame(ca.scrollbar.rect()),
+        scrollbar_rect: to_frame(ca.scrollbar.rect),
     }
 }
 

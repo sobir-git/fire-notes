@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use crate::fw::widgets::list::ListPointerResult;
+use crate::primitives::list::ListPointerResult;
 use crate::persistence;
 
 use super::focus::NoteEntry;
@@ -62,11 +62,7 @@ impl App {
 
         // Detect outside click using picker's own overlay_rect.
         let outside = if let Some(picker) = &self.logic.notes_picker {
-            let window = crate::ui::Rect {
-                x: 0.0, y: 0.0,
-                width: self.logic.width, height: self.logic.height,
-            };
-            !picker.overlay_rect(window, self.logic.scale).contains(x, y)
+            !picker.overlay_rect().contains(x, y)
         } else {
             return AppResult::Ok;
         };
