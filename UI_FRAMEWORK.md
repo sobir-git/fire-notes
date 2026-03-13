@@ -177,7 +177,9 @@ pub enum FrameworkEvent {
     Delete,
     ArrowUp,
     ArrowDown,
-    Key(Key),                                    // escape, enter, etc.
+    ArrowLeft,
+    ArrowRight,
+    Key(Key),                                    // escape, enter, home, end, etc.
     PointerDown { x: f32, y: f32, char_width: f32 },
     PointerMove { x: f32, y: f32 },
     PointerDrag { x: f32, char_width: f32 },
@@ -251,12 +253,16 @@ impl FindDialog {
 }
 
 impl Overlay for FindDialog {
-    fn render(&self) -> Node { /* Node tree */ }
+    fn render(&self, theme: &Theme) -> Node { /* Node tree */ }
 
     fn on_event(&mut self, ev: FrameworkEvent) -> OverlayResult {
         match ev {
-            FrameworkEvent::Char(c)   => { self.input.state.insert_char(c); OverlayResult::Redraw }
-            FrameworkEvent::Backspace => { self.input.state.handle_backspace(); OverlayResult::Redraw }
+            FrameworkEvent::Char(c)          => { self.input.insert(c);         OverlayResult::Redraw }
+            FrameworkEvent::Backspace        => { self.input.backspace();        OverlayResult::Redraw }
+            FrameworkEvent::ArrowLeft        => { self.input.move_left(false);   OverlayResult::Redraw }
+            FrameworkEvent::ArrowRight       => { self.input.move_right(false);  OverlayResult::Redraw }
+            FrameworkEvent::Key(Key::Home)   => { self.input.move_to_start(false); OverlayResult::Redraw }
+            FrameworkEvent::Key(Key::End)    => { self.input.move_to_end(false);   OverlayResult::Redraw }
             FrameworkEvent::Key(Key::Escape) => OverlayResult::Close,
             _ => OverlayResult::Nothing,
         }
@@ -329,14 +335,20 @@ A new theme = a new file filling the same tokens with different values. Zero com
 
 ```
 src/
+├── lib.rs                — re-exports all modules (enables src/bin/ binaries)
+│
+├── bin/
+│   └── widget_demo.rs    — interactive primitive testbed (cargo run --bin widget-demo)
+│
 ├── components/           ← one file = one component
 │   ├── notes_picker.rs   — Overlay: search input + result list
 │   ├── slash_menu.rs     — Overlay: command palette anchored to cursor
 │   └── tab_rename.rs     — InlineWidget: tab title editor
 │
 ├── primitives/           ← one file = one primitive widget
+│   ├── text_input.rs     — insert/backspace/Left/Right/Home/End/selection/scroll
+│   ├── text_input_tests.rs — 35 QA tests (logic + unicode + scroll)
 │   ├── scrollbar.rs
-│   ├── text_input.rs
 │   ├── list.rs
 │   ├── button.rs
 │   └── label.rs

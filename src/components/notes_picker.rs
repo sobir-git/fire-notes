@@ -28,7 +28,7 @@ impl Overlay for NotesPicker {
     fn render(&self, theme: &Theme) -> Node {
         let [search_rect, list_rect] = self.slots();
         overlay_panel(self.window, self.scale, self.list.len(), theme, vec![
-            self.search.render_at(search_rect, self.scale),
+            self.search.render_at(search_rect, self.scale, "Search notes...", true),
             self.list.render_themed_at(list_rect, theme, self.scale, |e: &NoteEntry| (e.title.clone(), e.is_open)),
         ])
     }
@@ -36,10 +36,14 @@ impl Overlay for NotesPicker {
     fn on_event(&mut self, ev: FrameworkEvent) -> OverlayResult {
         use OverlayResult::*;
         match ev {
-            FrameworkEvent::Char(c)     => { self.search.insert(c);   self.filter(); Redraw }
-            FrameworkEvent::Backspace   => { self.search.backspace(); self.filter(); Redraw }
-            FrameworkEvent::ArrowUp     => { self.list.select_up();   Redraw }
-            FrameworkEvent::ArrowDown   => { self.list.select_down(); Redraw }
+            FrameworkEvent::Char(c)     => { self.search.insert(c);        self.filter(); Redraw }
+            FrameworkEvent::Backspace   => { self.search.backspace();       self.filter(); Redraw }
+            FrameworkEvent::ArrowLeft   => { self.search.move_left(false);  Redraw }
+            FrameworkEvent::ArrowRight  => { self.search.move_right(false); Redraw }
+            FrameworkEvent::Key(Key::Home)  => { self.search.move_to_start(false); Redraw }
+            FrameworkEvent::Key(Key::End)   => { self.search.move_to_end(false);   Redraw }
+            FrameworkEvent::ArrowUp     => { self.list.select_up();        Redraw }
+            FrameworkEvent::ArrowDown   => { self.list.select_down();      Redraw }
             FrameworkEvent::Key(Key::Enter)  => self.list.selected_item().map(|e| OpenPath(e.path.clone())).unwrap_or(Nothing),
             FrameworkEvent::Key(Key::Escape) => Close,
             FrameworkEvent::PointerDown { x, y, char_width } => {

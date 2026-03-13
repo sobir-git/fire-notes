@@ -49,6 +49,10 @@ pub enum FrameworkEvent {
     ArrowUp,
     /// Arrow down.
     ArrowDown,
+    /// Arrow left.
+    ArrowLeft,
+    /// Arrow right.
+    ArrowRight,
     /// Any other key press.
     Key(crate::app::Key),
     /// Pointer pressed at (x, y).

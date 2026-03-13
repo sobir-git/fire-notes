@@ -45,7 +45,7 @@ impl Overlay for SlashMenu {
     fn render(&self, theme: &Theme) -> Node {
         let [sr, lr] = self.slots();
         overlay_panel(self.window, self.scale, self.list.len(), theme, vec![
-            self.search.render_at(sr, self.scale),
+            self.search.render_at(sr, self.scale, "Search commands...", true),
             self.list.render_themed_at(lr, theme, self.scale, |c: &SlashCommand| (c.name.clone(), false)),
         ])
     }
@@ -53,10 +53,14 @@ impl Overlay for SlashMenu {
     fn on_event(&mut self, ev: FrameworkEvent) -> OverlayResult {
         use OverlayResult::*;
         match ev {
-            FrameworkEvent::Char(c)              => { self.search.insert(c);   self.filter(); Redraw }
-            FrameworkEvent::Backspace            => { self.search.backspace(); self.filter(); Redraw }
-            FrameworkEvent::ArrowUp              => { self.list.select_up();   Redraw }
-            FrameworkEvent::ArrowDown            => { self.list.select_down(); Redraw }
+            FrameworkEvent::Char(c)              => { self.search.insert(c);        self.filter(); Redraw }
+            FrameworkEvent::Backspace            => { self.search.backspace();       self.filter(); Redraw }
+            FrameworkEvent::ArrowLeft            => { self.search.move_left(false);  Redraw }
+            FrameworkEvent::ArrowRight           => { self.search.move_right(false); Redraw }
+            FrameworkEvent::Key(Key::Home)       => { self.search.move_to_start(false); Redraw }
+            FrameworkEvent::Key(Key::End)        => { self.search.move_to_end(false);   Redraw }
+            FrameworkEvent::ArrowUp              => { self.list.select_up();        Redraw }
+            FrameworkEvent::ArrowDown            => { self.list.select_down();      Redraw }
             FrameworkEvent::Key(Key::Escape)     => Close,
             FrameworkEvent::Key(Key::Enter)      => Close, // command execution is handled by the caller via OverlayResult::OpenPath or a future OverlayResult::Action variant
             FrameworkEvent::PointerDown { x, y, .. } => if !self.contains(x, y) { Close } else { Redraw }

@@ -89,11 +89,18 @@ impl TextInput {
     // ── State accessors ───────────────────────────────────────────────────────
 
     pub fn text(&self)         -> &str { self.state.text() }
-    pub fn insert(&mut self, c: char)  { self.state.insert_char(c); }
-    pub fn backspace(&mut self)        { use crate::app::input_handler::InputHandler; self.state.handle_backspace(); }
+    pub fn insert(&mut self, c: char)  { self.state.insert_char(c); self.ensure_cursor_visible(self.char_width); }
+    pub fn backspace(&mut self)        { use crate::app::input_handler::InputHandler; self.state.handle_backspace(); self.ensure_cursor_visible(self.char_width); }
     pub fn is_empty(&self)     -> bool { self.state.text().is_empty() }
     pub fn scroll_offset(&self)-> f32  { self.state.scroll_offset }
     pub fn cursor(&self)       -> usize { self.state.cursor() }
+
+    pub fn move_left(&mut self, selecting: bool)       { self.state.move_left(selecting);       self.ensure_cursor_visible(self.char_width); }
+    pub fn move_right(&mut self, selecting: bool)      { self.state.move_right(selecting);      self.ensure_cursor_visible(self.char_width); }
+    pub fn move_word_left(&mut self, selecting: bool)  { self.state.move_word_left(selecting);  self.ensure_cursor_visible(self.char_width); }
+    pub fn move_word_right(&mut self, selecting: bool) { self.state.move_word_right(selecting); self.ensure_cursor_visible(self.char_width); }
+    pub fn move_to_start(&mut self, selecting: bool)   { self.state.move_to_start(selecting);   self.ensure_cursor_visible(self.char_width); }
+    pub fn move_to_end(&mut self, selecting: bool)     { self.state.move_to_end(selecting);     self.ensure_cursor_visible(self.char_width); }
 
     // ── Events ────────────────────────────────────────────────────────────────
 
@@ -181,14 +188,13 @@ impl TextInput {
     }
 
     /// Theme-aware render — derives colors from theme tokens.
-    pub fn render_themed(&self, theme: &crate::theme::Theme) -> Node {
+    pub fn render_themed(&self, theme: &crate::theme::Theme, cursor_visible: bool) -> Node {
         let _ = theme;
-        self.render(false)
+        self.render(cursor_visible)
     }
 
     /// Render at `rect` with geometry computed on-the-fly — no prior `relayout` needed.
-    /// Cursor blink state is always `false` (search inputs don't show cursor).
-    pub fn render_at(&self, rect: Rect, scale: f32) -> Node {
+    pub fn render_at(&self, rect: Rect, scale: f32, placeholder: &str, cursor_visible: bool) -> Node {
         let padding          = 8.0 * scale;
         let font_size        = 14.0 * scale;
         let text_x           = rect.x + padding;
@@ -235,7 +241,7 @@ impl TextInput {
         }
 
         let display_text = if self.state.text().is_empty() {
-            "Search notes...".to_string()
+            placeholder.to_string()
         } else {
             self.state.text().to_string()
         };
@@ -243,7 +249,7 @@ impl TextInput {
         children.push(Node::Cursor(CursorNode {
             rect:    cursor_rect,
             color:   Color::rgba(0.4, 0.7, 1.0, 1.0),
-            visible: false,
+            visible: cursor_visible,
         }));
 
         Node::layer(children)

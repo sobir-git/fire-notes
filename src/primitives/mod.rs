@@ -8,6 +8,7 @@ pub mod label;
 pub mod list;
 pub mod scrollbar;
 pub mod text_input;
+mod text_input_tests;
 
 pub use button::Button;
 pub use label::Label;

@@ -280,13 +280,17 @@ impl AppLogic {
             Action::Cancel => {
                 let r = self.cancel_overlay();
                 if r.needs_redraw() { return r; }
-                self.cancel_rename()
+                if matches!(self.focus, Focus::TabRename) {
+                    return self.dispatch_inline(FrameworkEvent::Key(crate::app::Key::Escape));
+                }
+                AppResult::Ok
             }
             Action::Confirm => {
                 let r = self.confirm_overlay();
                 if r.needs_redraw() { return r; }
-                let r = self.confirm_rename();
-                if r.needs_redraw() { return r; }
+                if matches!(self.focus, Focus::TabRename) {
+                    return self.dispatch_inline(FrameworkEvent::Key(crate::app::Key::Enter));
+                }
                 self.handle_char('\n')
             }
 
@@ -709,11 +713,16 @@ impl AppLogic {
         // Flames
         let now = std::time::Instant::now();
         let mut flames: Vec<FlamePos> = Vec::new();
-        // Selection flames
+        // Selection flames — one spawn point per character column across each selection rect
+        let cw = char_width.max(1.0);
         for r in selection.as_ref().map(|s| s.rects.iter()).into_iter().flatten() {
-            let cx = r.x + r.width / 2.0;
-            let cy = r.y + r.height / 2.0;
-            flames.push(FlamePos { cx, cy, bottom: r.y + r.height, age: 0.0 });
+            let bottom = r.y + r.height;
+            let cy     = r.y + r.height * 0.5;
+            let n_chars = (r.width / cw).ceil() as usize;
+            for i in 0..n_chars.max(1) {
+                let cx = r.x + (i as f32 + 0.5) * cw;
+                flames.push(FlamePos { cx, cy, bottom, age: 0.0 });
+            }
         }
         // Typing flames
         for &(line, col, timestamp) in &self.typing_flame_positions {

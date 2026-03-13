@@ -26,8 +26,12 @@ impl InlineWidget for TabRename {
     fn on_event(&mut self, ev: FrameworkEvent) -> InlineResult {
         use InlineResult::*;
         match ev {
-            FrameworkEvent::Char(c)              => { self.input.insert(c);     Redraw }
-            FrameworkEvent::Backspace            => { self.input.backspace();   Redraw }
+            FrameworkEvent::Char(c)              => { self.input.insert(c);             Redraw }
+            FrameworkEvent::Backspace            => { self.input.backspace();           Redraw }
+            FrameworkEvent::ArrowLeft            => { self.input.move_left(false);      Redraw }
+            FrameworkEvent::ArrowRight           => { self.input.move_right(false);     Redraw }
+            FrameworkEvent::Key(Key::Home)       => { self.input.move_to_start(false);  Redraw }
+            FrameworkEvent::Key(Key::End)        => { self.input.move_to_end(false);    Redraw }
             FrameworkEvent::Key(Key::Enter)      => Commit(self.input.text().trim().to_string()),
             FrameworkEvent::Key(Key::Escape)     => Cancel,
             FrameworkEvent::PointerDown { x, y, char_width } => {

@@ -129,19 +129,21 @@ impl TextInput {
     pub(super) fn find_word_boundary_right(&self) -> usize {
         let text = &self.text[self.cursor..];
         let mut chars = text.char_indices().peekable();
-        while let Some(&(_, ch)) = chars.peek() {
+        // If sitting on whitespace, skip it first so we reach the next word.
+        let starts_on_whitespace = chars.peek().map(|&(_, ch)| ch.is_whitespace()).unwrap_or(false);
+        if starts_on_whitespace {
+            while let Some(&(_, ch)) = chars.peek() {
+                if !ch.is_whitespace() { break; }
+                chars.next();
+            }
+        }
+        // Now advance through the word, stopping at the first whitespace (end of word).
+        let mut last_word_end = chars.peek().map(|&(idx, _)| self.cursor + idx).unwrap_or(self.text.len());
+        for (idx, ch) in chars {
             if ch.is_whitespace() { break; }
-            chars.next();
+            last_word_end = self.cursor + idx + ch.len_utf8();
         }
-        while let Some(&(_, ch)) = chars.peek() {
-            if !ch.is_whitespace() { break; }
-            chars.next();
-        }
-        if let Some(&(idx, _)) = chars.peek() {
-            self.cursor + idx
-        } else {
-            self.text.len()
-        }
+        last_word_end
     }
 
     pub fn set_cursor_from_x(&mut self, x: f32, char_width: f32, selecting: bool) {

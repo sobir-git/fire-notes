@@ -76,7 +76,12 @@ impl ApplicationHandler for AppHandler {
                     );
                     let scale = state.window.scale_factor() as f32;
                     state.app.resize(size.width as f32, size.height as f32, scale);
-                    state.window.request_redraw();
+                    // Render immediately — avoids one-frame lag on Wayland where the
+                    // compositor resizes the surface before the next RedrawRequested.
+                    state.app.render();
+                    state.gl_surface
+                        .swap_buffers(&state.gl_context)
+                        .expect("Failed to swap buffers");
                 }
             }
 

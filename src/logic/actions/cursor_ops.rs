@@ -4,26 +4,36 @@ use crate::app::focus::Focus;
 use crate::app::state::AppResult;
 use crate::logic::AppLogic;
 
-/// Helper: while TabRename is active, cursor movement stays inside the inline widget.
+/// Helper: while TabRename is active, silently consume cursor movement
+/// (left/right are dispatched explicitly below; up/down/etc. are consumed).
 macro_rules! rename_delegate {
-    ($self:expr, $method:ident $(, $arg:expr)*) => {{
+    ($self:expr) => {{
         if matches!($self.focus, Focus::TabRename) {
-            $self.reset_cursor_blink();
-            return AppResult::Redraw;
+            return AppResult::Ok;
         }
     }};
 }
 
 impl AppLogic {
     pub(crate) fn move_cursor_left(&mut self, selecting: bool) -> AppResult {
-        rename_delegate!(self, move_left, selecting);
+        if matches!(self.focus, Focus::TabRename) {
+            return self.dispatch_inline(crate::layout::FrameworkEvent::ArrowLeft);
+        }
+        if self.focus.is_overlay() {
+            return self.dispatch_overlay(crate::layout::FrameworkEvent::ArrowLeft);
+        }
         self.tabs[self.active_tab].move_left(selecting);
         self.auto_scroll();
         AppResult::Redraw
     }
 
     pub(crate) fn move_cursor_right(&mut self, selecting: bool) -> AppResult {
-        rename_delegate!(self, move_right, selecting);
+        if matches!(self.focus, Focus::TabRename) {
+            return self.dispatch_inline(crate::layout::FrameworkEvent::ArrowRight);
+        }
+        if self.focus.is_overlay() {
+            return self.dispatch_overlay(crate::layout::FrameworkEvent::ArrowRight);
+        }
         self.tabs[self.active_tab].move_right(selecting);
         self.auto_scroll();
         AppResult::Redraw
@@ -50,42 +60,46 @@ impl AppLogic {
     }
 
     pub(crate) fn move_cursor_word_left(&mut self, selecting: bool) -> AppResult {
-        rename_delegate!(self, move_word_left, selecting);
+        rename_delegate!(self);
         self.tabs[self.active_tab].move_word_left(selecting);
         self.auto_scroll();
         AppResult::Redraw
     }
 
     pub(crate) fn move_cursor_word_right(&mut self, selecting: bool) -> AppResult {
-        rename_delegate!(self, move_word_right, selecting);
+        rename_delegate!(self);
         self.tabs[self.active_tab].move_word_right(selecting);
         self.auto_scroll();
         AppResult::Redraw
     }
 
     pub(crate) fn move_cursor_to_line_start(&mut self, selecting: bool) -> AppResult {
-        rename_delegate!(self, move_to_line_start, selecting);
+        if matches!(self.focus, Focus::TabRename) {
+            return self.dispatch_inline(crate::layout::FrameworkEvent::Key(crate::app::Key::Home));
+        }
         self.tabs[self.active_tab].move_to_line_start(selecting);
         self.auto_scroll();
         AppResult::Redraw
     }
 
     pub(crate) fn move_cursor_to_line_end(&mut self, selecting: bool) -> AppResult {
-        rename_delegate!(self, move_to_line_end, selecting);
+        if matches!(self.focus, Focus::TabRename) {
+            return self.dispatch_inline(crate::layout::FrameworkEvent::Key(crate::app::Key::End));
+        }
         self.tabs[self.active_tab].move_to_line_end(selecting);
         self.auto_scroll();
         AppResult::Redraw
     }
 
     pub(crate) fn move_cursor_to_start(&mut self, selecting: bool) -> AppResult {
-        rename_delegate!(self, move_to_start, selecting);
+        rename_delegate!(self);
         self.tabs[self.active_tab].move_to_start(selecting);
         self.auto_scroll();
         AppResult::Redraw
     }
 
     pub(crate) fn move_cursor_to_end(&mut self, selecting: bool) -> AppResult {
-        rename_delegate!(self, move_to_end, selecting);
+        rename_delegate!(self);
         self.tabs[self.active_tab].move_to_end(selecting);
         self.auto_scroll();
         AppResult::Redraw
