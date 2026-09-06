@@ -1,0 +1,30 @@
+{
+  "backend": "Xvfb / Mesa software GL",
+  "idle_seconds": 2,
+  "idle_cpu_ticks": 0,
+  "rss_kib": 131320,
+  "resize_event_to_swap_ms": {
+    "samples": 63,
+    "p50": 4.343,
+    "p95": 8.984,
+    "max": 13.22
+  },
+  "date": "2026-09-07",
+  "binary": "target/release/fire-notes",
+  "binary_bytes": 7992904,
+  "binary_sha256": "5a42c29dd059733c0daf1e19de60f333e18faacc881de9e9aede77b1aacaea2f",
+  "checks": [
+    "editing and paragraph breaks",
+    "autosave",
+    "undo and redo",
+    "independent tabs",
+    "search",
+    "reopen closed note",
+    "command palette",
+    "external file opening",
+    "narrow layout",
+    "save before close",
+    "session restoration",
+    "shortcuts with no open tabs"
+  ]
+}
