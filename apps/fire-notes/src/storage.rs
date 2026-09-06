@@ -27,23 +27,13 @@ impl Note {
         if body.len() as u64 > MAX_NOTE_BYTES {
             return Err("Notes are limited to 2 MiB in this prototype".into());
         }
-        let (title, body) = if let Some(heading) = body.strip_prefix("# ") {
-            let (title, body) = heading.split_once('\n').unwrap_or((heading, ""));
-            (
-                title.to_owned(),
-                body.strip_prefix('\n').unwrap_or(body).to_owned(),
-            )
-        } else {
-            (
-                path.file_stem()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned(),
-                body,
-            )
-        };
-        if body.len() > MAX_BODY_BYTES || title.len() > MAX_TITLE_BYTES {
-            return Err("This prototype supports a 2 MiB body and a 4 KiB title".into());
+        let title = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        if body.len() > MAX_BODY_BYTES {
+            return Err("Notes are limited to 2 MiB in this prototype".into());
         }
         Ok(Self {
             path: path.to_owned(),
@@ -51,21 +41,46 @@ impl Note {
             body: body.into(),
         })
     }
-    pub fn markdown(&self) -> String {
-        format!(
-            "# {}\n\n{}",
-            self.title.replace(['\n', '\r'], " "),
-            self.body
-        )
-    }
     pub fn bytes(&self) -> usize {
         self.title.len() + self.body.len() + self.path.as_os_str().len()
+    }
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct NoteView {
+    pub caret: usize,
+    pub anchor: Option<usize>,
+    pub x: f32,
+    pub y: f32,
+    pub wrap: bool,
+}
+impl From<&fire_ui_widgets::EditorState> for NoteView {
+    fn from(s: &fire_ui_widgets::EditorState) -> Self {
+        Self {
+            caret: s.caret.byte,
+            anchor: s.anchor,
+            x: s.scroll.x,
+            y: s.scroll.y,
+            wrap: s.wrap,
+        }
+    }
+}
+impl From<&NoteView> for fire_ui_widgets::EditorState {
+    fn from(s: &NoteView) -> Self {
+        Self {
+            caret: fire_ui::Caret::at(s.caret),
+            anchor: s.anchor,
+            scroll: fire_ui::Point::new(s.x, s.y),
+            wrap: s.wrap,
+        }
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Session {
     pub tabs: Vec<PathBuf>,
     pub active: Option<PathBuf>,
+    pub titles: BTreeMap<PathBuf, String>,
+    pub views: BTreeMap<PathBuf, NoteView>,
+    pub position: Option<(i32, i32)>,
     pub width: f32,
     pub height: f32,
 }
@@ -74,8 +89,11 @@ impl Default for Session {
         Self {
             tabs: vec![],
             active: None,
-            width: 1100.,
-            height: 820.,
+            titles: BTreeMap::new(),
+            views: BTreeMap::new(),
+            position: None,
+            width: 600.,
+            height: 400.,
         }
     }
 }
@@ -94,7 +112,7 @@ pub fn scan(directory: &Path) -> Result<Vec<Note>, String> {
             && entry
                 .path()
                 .extension()
-                .is_some_and(|e| e == "md" || e == "txt")
+                .is_some_and(|e| e == "md" || e == "markdown" || e == "txt")
         {
             paths.push(entry.path());
         }
@@ -103,22 +121,11 @@ pub fn scan(directory: &Path) -> Result<Vec<Note>, String> {
     paths
         .iter()
         .map(|path| {
-            let mut prefix = vec![];
-            fs::File::open(path)
-                .and_then(|f| f.take(4096).read_to_end(&mut prefix))
-                .map_err(|e| e.to_string())?;
-            let prefix = String::from_utf8_lossy(&prefix);
-            let title = prefix
-                .lines()
-                .next()
-                .and_then(|l| l.strip_prefix("# "))
-                .map(str::to_owned)
-                .unwrap_or_else(|| {
-                    path.file_stem()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .into_owned()
-                });
+            let title = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
             Ok(Note {
                 path: path.clone(),
                 title: title.into(),
@@ -257,9 +264,9 @@ mod tests {
             title: Arc::from("A thought"),
             body: Arc::from("Café\nПривет\n\n"),
         };
-        atomic_write(&note.path, note.markdown().as_bytes()).unwrap();
+        atomic_write(&note.path, note.body.as_bytes()).unwrap();
         let loaded = Note::load(&note.path).unwrap();
-        assert_eq!(loaded.title, note.title);
+        assert_eq!(&*loaded.title, "note.md");
         assert_eq!(loaded.body, note.body);
         fs::remove_dir_all(d).unwrap();
     }

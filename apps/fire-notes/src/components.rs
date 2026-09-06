@@ -8,17 +8,18 @@ pub fn label(text: impl Into<Arc<str>>, size: f32, color: Color) -> Element<Labe
         foreground: Some(color),
     }))
 }
-pub fn button(text: &str) -> Element<Button<Label>> {
-    Button::new(label(text, 14., Color::hex(0xeee9df)), text)
-}
 pub fn place<W: Widget>(cx: &mut Layout<'_>, child: Child<W>, rect: Rect) {
     cx.measure(child, Constraints::tight(rect.size()));
     cx.place(child, Point::new(rect.x, rect.y));
 }
 pub fn paper() -> Theme {
     Theme {
-        background: Color::hex(0x191d1a),
-        font_size: 17.,
+        background: Color::hex(0),
+        foreground: Color(1., 0.9, 0.8, 1.),
+        accent: Color(1., 0.8, 0., 1.),
+        selection: Color(0.39, 0.55, 0.82, 0.35),
+        radius: 0.,
+        font_size: 16.,
         inset: 0.,
         ..Theme::default()
     }
@@ -29,22 +30,23 @@ pub enum PageOutput {
     Body(Arc<str>),
     LimitReached,
     Close,
+    Palette(Rect),
+    State(EditorState),
 }
 impl Data for PageOutput {
     fn bytes(&self) -> usize {
         std::mem::size_of::<Self>()
             + match self {
                 Self::Title(s) | Self::Body(s) => s.len(),
-                Self::Close | Self::LimitReached => 0,
+                Self::Close | Self::LimitReached | Self::Palette(_) | Self::State(_) => 0,
             }
     }
 }
 #[derive(Clone, Debug)]
 pub enum PageCommand {
-    Title(EditorOutput),
     Body(EditorOutput),
     Focus,
-    Rename,
+    Palette,
     Wrap(bool),
     Close,
 }
@@ -52,35 +54,26 @@ impl Data for PageCommand {
     fn bytes(&self) -> usize {
         std::mem::size_of::<Self>()
             + match self {
-                Self::Title(o) | Self::Body(o) => o.bytes(),
+                Self::Body(o) => o.bytes(),
                 _ => 0,
             }
     }
 }
 pub struct Page {
-    title: Child<Editor>,
     body: Child<Editor>,
 }
 impl Page {
-    pub fn new(title: Arc<str>, body: Arc<str>) -> Element<Self> {
+    pub fn new(_title: Arc<str>, body: Arc<str>, state: EditorState) -> Element<Self> {
         Element::build(|c| Self {
-            title: c.connect(
-                Element::leaf(
-                    Editor::field(title.to_string())
-                        .max_bytes(crate::storage::MAX_TITLE_BYTES)
-                        .chrome(false)
-                        .caret_blink(false)
-                        .placeholder("Untitled"),
-                ),
-                |o| PageCommand::Title(o.clone()),
-            ),
             body: c.connect(
                 Element::leaf(
                     Editor::new(body.to_string())
-                        .max_bytes(crate::storage::MAX_BODY_BYTES)
+                        .restore(state)
+                        .padding(16., 8.)
+                        .decoration(crate::flames::Flames::default())
                         .chrome(false)
                         .caret_blink(false)
-                        .placeholder("Start writing…"),
+                        .max_bytes(crate::storage::MAX_BODY_BYTES),
                 ),
                 |o| PageCommand::Body(o.clone()),
             ),
@@ -90,43 +83,30 @@ impl Page {
 impl Widget for Page {
     type Command = PageCommand;
     type Output = PageOutput;
-    fn lifecycle(&mut self, cx: &mut Update<'_, Self>, e: Lifecycle) {
-        if e == Lifecycle::Mount {
-            let _ = cx.set_environment(
-                self.title,
-                Rc::new(Theme {
-                    font_size: 30.,
-                    ..paper()
-                }),
-                true,
-            );
+    fn lifecycle(&mut self, cx: &mut Update<'_, Self>, event: Lifecycle) {
+        if event == Lifecycle::Mount {
             let _ = cx.set_environment(self.body, Rc::new(paper()), true);
         }
     }
     fn update(&mut self, cx: &mut Update<'_, Self>, command: PageCommand) {
         match command {
-            PageCommand::Title(EditorOutput::LimitReached)
-            | PageCommand::Body(EditorOutput::LimitReached) => {
-                let _ = cx.emit(PageOutput::LimitReached);
-            }
-            PageCommand::Title(EditorOutput::Changed { text, .. }) => {
-                let _ = cx.emit(PageOutput::Title(text));
+            PageCommand::Body(EditorOutput::StateChanged(state)) => {
+                let _ = cx.emit(PageOutput::State(state));
             }
             PageCommand::Body(EditorOutput::Changed { text, .. }) => {
                 let _ = cx.emit(PageOutput::Body(text));
             }
+            PageCommand::Body(EditorOutput::LimitReached) => {
+                let _ = cx.emit(PageOutput::LimitReached);
+            }
+            PageCommand::Palette => {
+                let _ = cx.send(self.body, Edit::ReportCursor);
+            }
+            PageCommand::Body(EditorOutput::Cursor(rect)) => {
+                let _ = cx.emit(PageOutput::Palette(rect));
+            }
             PageCommand::Focus => {
                 let _ = cx.focus_child(self.body);
-            }
-            PageCommand::Rename => {
-                let _ = cx.focus_child(self.title);
-                let _ = cx.send(
-                    self.title,
-                    Edit::Select {
-                        anchor: 0,
-                        caret: usize::MAX,
-                    },
-                );
             }
             PageCommand::Wrap(w) => {
                 let _ = cx.send(self.body, Edit::Wrap(w));
@@ -138,275 +118,10 @@ impl Widget for Page {
         }
     }
     fn layout(&mut self, cx: &mut Layout<'_>, c: Constraints) -> Metrics {
-        place(cx, self.title, Rect::new(0., 0., c.max.width, 52.));
-        place(
-            cx,
-            self.body,
-            Rect::new(0., 78., c.max.width, (c.max.height - 78.).max(0.)),
-        );
+        place(cx, self.body, Rect::from_size(c.max));
         Metrics::new(c.max)
     }
 }
-#[derive(Clone, Debug)]
-pub enum TabAction {
-    Select(usize),
-    Close(usize),
-}
-impl Data for TabAction {
-    fn bytes(&self) -> usize {
-        std::mem::size_of::<Self>()
-    }
-}
-#[derive(Clone, Debug)]
-pub struct TabState {
-    pub title: Arc<str>,
-    pub active: bool,
-}
-impl Data for TabState {
-    fn bytes(&self) -> usize {
-        std::mem::size_of::<Self>() + self.title.len()
-    }
-}
-struct Tab {
-    id: usize,
-    title: Child<Label>,
-    state: TabState,
-    pressed: Option<u32>,
-}
-impl Tab {
-    fn new(id: usize, state: TabState) -> Element<Self> {
-        Element::build(|c| Self {
-            id,
-            title: c.add(label(state.title.clone(), 14., Color::hex(0xd9dfd3))),
-            state,
-            pressed: None,
-        })
-    }
-}
-impl Widget for Tab {
-    type Command = TabState;
-    type Output = TabAction;
-    fn update(&mut self, cx: &mut Update<'_, Self>, s: TabState) {
-        let _ = cx.send(self.title, s.title.to_string());
-        self.state = s;
-        cx.repaint();
-    }
-    fn focusable(&self) -> bool {
-        true
-    }
-    fn layout(&mut self, cx: &mut Layout<'_>, c: Constraints) -> Metrics {
-        place(
-            cx,
-            self.title,
-            Rect::new(15., 13., (c.max.width - 50.).max(0.), 22.),
-        );
-        Metrics::new(c.max)
-    }
-    fn lifecycle(&mut self, _: &mut Update<'_, Self>, e: Lifecycle) {
-        if matches!(e, Lifecycle::CaptureLost(_) | Lifecycle::Focus(false)) {
-            self.pressed = None;
-        }
-    }
-    fn input(&mut self, cx: &mut Update<'_, Self>, phase: Phase, input: &Input) {
-        if phase == Phase::Preview {
-            return;
-        }
-        match input {
-            Input::Button {
-                pointer,
-                button: 1,
-                down: true,
-                ..
-            } => {
-                self.pressed = Some(*pointer);
-                let _ = cx.capture(*pointer);
-                let _ = cx.focus();
-                cx.stop();
-            }
-            Input::Button {
-                pointer,
-                button: 1,
-                down: false,
-                position,
-            } if self.pressed == Some(*pointer) => {
-                self.pressed = None;
-                let _ = cx.release(*pointer);
-                if cx.bounds().contains(*position) {
-                    let _ = cx.emit(if position.x > cx.bounds().width - 31. {
-                        TabAction::Close(self.id)
-                    } else {
-                        TabAction::Select(self.id)
-                    });
-                }
-                cx.stop();
-            }
-            Input::Key {
-                key: Key::Enter | Key::Character(' '),
-                down: true,
-                repeat: false,
-                ..
-            } => {
-                let _ = cx.emit(TabAction::Select(self.id));
-                cx.stop();
-            }
-            _ => {}
-        }
-    }
-    fn paint(&self, cx: &mut Paint<'_>) {
-        if self.state.active || cx.hovered {
-            cx.painter.rect(
-                cx.bounds,
-                6.,
-                Color::hex(if self.state.active {
-                    0x30392f
-                } else {
-                    0x242c25
-                })
-                .into(),
-            );
-        }
-        if self.state.active {
-            cx.painter.rect(
-                Rect::new(12., cx.bounds.height - 2., cx.bounds.width - 24., 2.),
-                1.,
-                Color::hex(0xe9ae73).into(),
-            );
-        }
-        let x = cx.bounds.width - 19.;
-        let y = cx.bounds.height / 2.;
-        cx.painter.path(
-            &[
-                Path::Move(Point::new(x - 3., y - 3.)),
-                Path::Line(Point::new(x + 3., y + 3.)),
-                Path::Move(Point::new(x + 3., y - 3.)),
-                Path::Line(Point::new(x - 3., y + 3.)),
-            ],
-            Color::hex(0x91a28f).into(),
-            Some(1.2),
-        );
-        if cx.focused {
-            cx.painter
-                .stroke(cx.bounds.inset(0.5), 6., 1., Color::hex(0x788c71));
-        }
-    }
-    fn semantics(&self) -> Semantics {
-        Semantics {
-            role: Role::Button,
-            label: self.state.title.to_string(),
-            selected: self.state.active,
-            ..Semantics::default()
-        }
-    }
-    fn accessibility(&mut self, cx: &mut Update<'_, Self>, action: SemanticAction) {
-        match action {
-            SemanticAction::Activate => {
-                let _ = cx.emit(TabAction::Select(self.id));
-            }
-            SemanticAction::Focus => {
-                let _ = cx.focus();
-            }
-        }
-    }
-}
-pub enum TabsCommand {
-    Sync(Vec<(usize, Arc<str>)>, Option<usize>),
-    Action(TabAction),
-}
-impl Data for TabsCommand {
-    fn bytes(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + match self {
-                Self::Sync(items, _) => items.iter().map(|(_, t)| t.len() + 24).sum(),
-                _ => 0,
-            }
-    }
-}
-pub struct Tabs {
-    children: Vec<(usize, Arc<str>, Child<Tab>)>,
-    active: Option<usize>,
-}
-impl Tabs {
-    pub fn new(items: Vec<(usize, Arc<str>)>, active: Option<usize>) -> Element<Self> {
-        Element::build(|c| Self {
-            children: items
-                .into_iter()
-                .map(|(id, title)| {
-                    let child = c.connect(
-                        Tab::new(
-                            id,
-                            TabState {
-                                title: title.clone(),
-                                active: Some(id) == active,
-                            },
-                        ),
-                        |a| TabsCommand::Action(a.clone()),
-                    );
-                    (id, title, child)
-                })
-                .collect(),
-            active,
-        })
-    }
-}
-impl Widget for Tabs {
-    type Command = TabsCommand;
-    type Output = TabAction;
-    fn update(&mut self, cx: &mut Update<'_, Self>, command: TabsCommand) {
-        match command {
-            TabsCommand::Action(a) => {
-                let _ = cx.emit(a);
-            }
-            TabsCommand::Sync(items, active) => {
-                self.children.retain(|(id, _, child)| {
-                    if items.iter().any(|(key, _)| key == id) {
-                        true
-                    } else {
-                        cx.remove(*child).is_err()
-                    }
-                });
-                let mut next = vec![];
-                for (id, title) in items {
-                    let state = TabState {
-                        title: title.clone(),
-                        active: Some(id) == active,
-                    };
-                    if let Some((_, _, child)) = self.children.iter().find(|(key, _, _)| *key == id)
-                    {
-                        let _ = cx.send(*child, state);
-                        next.push((id, title, *child));
-                    } else if let Ok(child) =
-                        cx.insert(Tab::new(id, state), |a| TabsCommand::Action(a.clone()))
-                    {
-                        next.push((id, title, child));
-                    }
-                }
-                self.children = next;
-                self.active = active;
-                cx.relayout();
-            }
-        }
-    }
-    fn layout(&mut self, cx: &mut Layout<'_>, c: Constraints) -> Metrics {
-        let widths: Vec<_> = self
-            .children
-            .iter()
-            .map(|(_, t, _)| (t.chars().count() as f32 * 8. + 55.).clamp(125., 220.))
-            .collect();
-        let right = self
-            .children
-            .iter()
-            .position(|(id, _, _)| Some(*id) == self.active)
-            .map(|i| widths[..=i].iter().sum::<f32>() + i as f32 * 6.)
-            .unwrap_or(0.);
-        let mut x = -(right - c.max.width).max(0.);
-        for ((_, _, child), w) in self.children.iter().zip(widths) {
-            place(cx, *child, Rect::new(x, 0., w, c.max.height));
-            x += w + 6.;
-        }
-        Metrics::new(c.max)
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Choice {
     Note(usize),
@@ -415,7 +130,6 @@ pub enum Choice {
     Rename,
     Wrap,
     Close,
-    Open,
 }
 impl Data for Choice {
     fn bytes(&self) -> usize {
@@ -428,8 +142,29 @@ pub enum PickerMode {
     Commands,
     File,
 }
-type RowFactory = Box<dyn Fn(&Choice) -> Element<Label>>;
-type NoteList = VirtualList<Choice, Label, RowFactory>;
+#[derive(Clone)]
+pub struct PickerItem {
+    pub key: Choice,
+    pub title: Arc<str>,
+    pub open: bool,
+}
+pub enum PickerCommand {
+    Show(Vec<PickerItem>, PickerMode),
+    Position(Rect),
+    Query(EditorOutput),
+    List(ListOutput<Choice, std::convert::Infallible>),
+}
+impl Data for PickerCommand {
+    fn bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + match self {
+                Self::Show(v, _) => v.iter().map(|i| i.title.len() + 32).sum(),
+                Self::Query(o) => o.bytes(),
+                Self::List(o) => o.bytes(),
+                _ => 0,
+            }
+    }
+}
 #[derive(Clone, Debug)]
 pub enum PickerOutput {
     Selected(Choice),
@@ -439,105 +174,159 @@ pub enum PickerOutput {
 impl Data for PickerOutput {
     fn bytes(&self) -> usize {
         std::mem::size_of::<Self>()
-            + match self {
-                Self::Open(s) => s.capacity(),
-                _ => 0,
+            + if let Self::Open(s) = self {
+                s.capacity()
+            } else {
+                0
             }
     }
 }
-pub enum PickerCommand {
-    Show(Vec<(Choice, Arc<str>)>, PickerMode),
-    Query(EditorOutput),
-    List(ListOutput<Choice, std::convert::Infallible>),
+struct PickerRow {
+    title: Arc<str>,
+    paragraph: Option<Arc<Paragraph>>,
+    open: bool,
 }
-impl Data for PickerCommand {
-    fn bytes(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + match self {
-                Self::Show(v, _) => v.iter().map(|(_, t)| t.len() + 24).sum(),
-                Self::Query(o) => o.bytes(),
-                Self::List(o) => o.bytes(),
-            }
+impl PickerRow {
+    fn new(item: &PickerItem) -> Element<Self> {
+        Element::build(|_| Self {
+            title: item.title.clone(),
+            paragraph: None,
+            open: item.open,
+        })
+    }
+}
+impl Widget for PickerRow {
+    type Command = std::convert::Infallible;
+    type Output = std::convert::Infallible;
+    fn layout(&mut self, cx: &mut Layout<'_>, c: Constraints) -> Metrics {
+        if self.paragraph.is_none() {
+            self.paragraph = Some(cx.paragraph(TextRequest {
+                text: self.title.clone(),
+                style: TextStyle { size: 14., font: 0 },
+                width: None,
+                revision: 0,
+            }));
+        }
+        Metrics::new(c.max)
+    }
+    fn paint(&self, cx: &mut Paint<'_>) {
+        if let Some(p) = &self.paragraph {
+            let selected = cx.environment::<ListRowState>().is_some_and(|s| s.selected);
+            cx.painter.paragraph(
+                p,
+                Point::new(8., 6.),
+                if selected {
+                    Color::hex(0xffffff)
+                } else {
+                    Color(0.78, 0.78, 0.78, 1.)
+                }
+                .into(),
+            );
+        }
+        if self.open {
+            cx.painter.rect(
+                Rect::new(cx.bounds.width - 14., 14., 4., 4.),
+                2.,
+                Color(0.4, 0.7, 1., 1.).into(),
+            );
+        }
+    }
+}
+type RowFactory = Box<dyn Fn(&Choice) -> Element<PickerRow>>;
+type NoteList = VirtualList<Choice, PickerRow, RowFactory>;
+fn list(items: &[PickerItem]) -> Element<NoteList> {
+    let entries: HashMap<_, _> = items.iter().cloned().map(|i| (i.key, i)).collect();
+    let keys = items.iter().map(|i| i.key).collect();
+    let factory: RowFactory = Box::new(move |key| PickerRow::new(&entries[key]));
+    Element::leaf(VirtualList::new(keys, 32., factory).select_on_hover(true))
+}
+fn overlay_theme() -> Theme {
+    Theme {
+        background: Color(0.07, 0.07, 0.09, 1.),
+        panel: Color(0.13, 0.13, 0.15, 1.),
+        border: Color(0.4, 0.7, 1., 0.55),
+        foreground: Color::hex(0xffffff),
+        muted: Color(0.4, 0.4, 0.4, 1.),
+        accent: Color(0.4, 0.7, 1., 1.),
+        selection: Color(0.4, 0.7, 1., 0.12),
+        font_size: 14.,
+        inset: 8.,
+        radius: 4.,
+        ..Theme::default()
     }
 }
 pub struct Picker {
     search: Child<Editor>,
     list: Child<NoteList>,
-    heading: Child<Label>,
-    help: Child<Label>,
-    items: Vec<(Choice, Arc<str>)>,
+    empty: Child<Label>,
+    items: Vec<PickerItem>,
     query: String,
     mode: PickerMode,
     panel: Rect,
-}
-fn list(items: &[(Choice, Arc<str>)]) -> Element<NoteList> {
-    let titles: HashMap<_, _> = items.iter().cloned().collect();
-    let keys = items.iter().map(|(id, _)| *id).collect();
-    let factory: RowFactory = Box::new(move |id| {
-        label(
-            format!("  {}", titles.get(id).map_or("Untitled", |s| s.as_ref())),
-            16.,
-            Color::hex(0xe5e9df),
-        )
-    });
-    Element::leaf(VirtualList::new(keys, 42., factory))
+    anchor: Rect,
 }
 impl Picker {
     pub fn new() -> Element<Self> {
         Element::build(|c| Self {
             search: c.connect(
-                Element::leaf(Editor::field("").caret_blink(false).placeholder("Search…")),
+                Element::leaf(
+                    Editor::field("")
+                        .caret_blink(false)
+                        .placeholder("Search notes...")
+                        .padding(8., 7.),
+                ),
                 |o| PickerCommand::Query(o.clone()),
             ),
             list: c.connect(list(&[]), |o| PickerCommand::List(o.clone())),
-            heading: c.add(label("Find a note", 24., Color::hex(0xf0eee4))),
-            help: c.add(label(
-                "Enter to open  ·  Escape to return",
-                12.,
-                Color::hex(0x9aa893),
+            empty: c.add(label(
+                "No matching notes",
+                14.,
+                Color(0.59, 0.59, 0.59, 0.71),
             )),
             items: vec![],
             query: String::new(),
             mode: PickerMode::Notes,
             panel: Rect::default(),
+            anchor: Rect::default(),
         })
     }
     fn filtered(&self) -> Vec<Choice> {
-        let query = self.query.to_lowercase();
+        let q = self.query.to_lowercase();
         self.items
             .iter()
-            .filter(|(_, title)| title.to_lowercase().contains(&query))
-            .map(|(id, _)| *id)
+            .filter(|i| i.title.to_lowercase().contains(&q))
+            .map(|i| i.key)
             .collect()
+    }
+    fn select_first(&self, cx: &mut Update<'_, Self>) {
+        if let Some(first) = self.filtered().first() {
+            let _ = cx.send(self.list, ListCommand::ScrollTo(*first));
+        }
     }
 }
 impl Widget for Picker {
     type Command = PickerCommand;
     type Output = PickerOutput;
-    fn update(&mut self, cx: &mut Update<'_, Self>, command: PickerCommand) {
-        match command {
-            PickerCommand::Show(items, file) => {
+    fn lifecycle(&mut self, cx: &mut Update<'_, Self>, e: Lifecycle) {
+        if e == Lifecycle::Mount {
+            let _ = cx.set_environment(self.search, Rc::new(overlay_theme()), true);
+        }
+    }
+    fn update(&mut self, cx: &mut Update<'_, Self>, c: PickerCommand) {
+        match c {
+            PickerCommand::Position(r) => self.anchor = r,
+            PickerCommand::Show(items, mode) => {
                 self.items = items;
-                self.mode = file;
+                self.mode = mode;
                 self.query.clear();
                 let _ = cx.send(self.search, Edit::Set(String::new()));
                 let _ = cx.send(
-                    self.heading,
-                    match file {
-                        PickerMode::File => "Open a file",
-                        PickerMode::Notes => "Find a note",
-                        PickerMode::Commands => "Commands",
-                    }
-                    .into(),
-                );
-                let _ = cx.send(
-                    self.help,
-                    if file == PickerMode::File {
-                        "Enter a path to a Markdown or text file"
-                    } else {
-                        "Enter to open  ·  Escape to return"
-                    }
-                    .into(),
+                    self.search,
+                    Edit::Placeholder(Arc::from(match mode {
+                        PickerMode::Notes => "Search notes...",
+                        PickerMode::Commands => "Search commands...",
+                        PickerMode::File => "Enter a file path...",
+                    })),
                 );
                 if cx.remove(self.list).is_ok() {
                     if let Ok(child) =
@@ -546,32 +335,51 @@ impl Widget for Picker {
                         self.list = child;
                     }
                 }
-                // Visibility of the newly inserted list is applied in the next layout/mount turn.
+                let _ = cx.focus_child(self.search);
                 cx.request_frame();
                 cx.relayout();
-                let _ = cx.focus_child(self.search);
             }
             PickerCommand::Query(EditorOutput::Changed { text, .. }) => {
                 self.query = text.to_string();
                 if self.mode != PickerMode::File {
-                    let _ = cx.send(self.list, ListCommand::Keys(self.filtered()));
+                    let keys = self.filtered();
+                    let _ = cx.send(self.list, ListCommand::Keys(keys));
+                    self.select_first(cx);
                 }
+                let _ = cx.show(
+                    self.empty,
+                    self.mode != PickerMode::File && self.filtered().is_empty(),
+                );
+                cx.relayout();
             }
             PickerCommand::Query(EditorOutput::Submitted) => {
                 if self.mode == PickerMode::File {
                     let _ = cx.emit(PickerOutput::Open(self.query.clone()));
-                } else if let Some(id) = self.filtered().first() {
-                    let _ = cx.emit(PickerOutput::Selected(*id));
+                } else {
+                    let _ = cx.send(self.list, ListCommand::Activate);
                 }
             }
-            PickerCommand::List(ListOutput::Selected(id)) => {
-                let _ = cx.emit(PickerOutput::Selected(id));
+            PickerCommand::List(ListOutput::Selected(key)) => {
+                let _ = cx.emit(PickerOutput::Selected(key));
             }
             _ => {}
         }
     }
     fn frame(&mut self, cx: &mut Update<'_, Self>, _: FrameTime) {
         let _ = cx.show(self.list, self.mode != PickerMode::File);
+        let _ = cx.show(
+            self.empty,
+            self.mode != PickerMode::File && self.filtered().is_empty(),
+        );
+        let _ = cx.set_environment(
+            self.list,
+            Rc::new(Theme {
+                radius: 0.,
+                ..overlay_theme()
+            }),
+            false,
+        );
+        self.select_first(cx);
     }
     fn input(&mut self, cx: &mut Update<'_, Self>, phase: Phase, input: &Input) {
         match input {
@@ -579,16 +387,22 @@ impl Widget for Picker {
                 key: Key::Escape,
                 down: true,
                 ..
-            } if phase == Phase::Preview => {
+            } if matches!(phase, Phase::Preview | Phase::Target) => {
                 let _ = cx.emit(PickerOutput::Close);
                 cx.stop();
             }
             Input::Key {
-                key: Key::Down,
+                key: Key::Up | Key::Down,
                 down: true,
                 ..
             } if phase == Phase::Preview && self.mode != PickerMode::File => {
-                let _ = cx.focus_child(self.list);
+                let delta = if matches!(input, Input::Key { key: Key::Up, .. }) {
+                    -1
+                } else {
+                    1
+                };
+                let _ = cx.send(self.list, ListCommand::Navigate(delta));
+                cx.stop();
             }
             Input::Button {
                 button: 1,
@@ -603,40 +417,57 @@ impl Widget for Picker {
         }
     }
     fn layout(&mut self, cx: &mut Layout<'_>, c: Constraints) -> Metrics {
-        let w = (c.max.width - 40.).clamp(0., 600.);
-        let h = if self.mode == PickerMode::File {
-            225.
+        let rows = if self.mode == PickerMode::File {
+            0
         } else {
-            (c.max.height - 80.).clamp(225., 510.)
+            self.filtered().len().clamp(1, 8)
         };
-        let x = (c.max.width - w) / 2.;
-        let y = ((c.max.height - h) / 2.).max(20.);
+        let commands = self.mode == PickerMode::Commands;
+        let w = ((c.max.width * if commands { 0.5 } else { 0.6 }).min(if commands {
+            400.
+        } else {
+            500.
+        }) + 16.)
+            .min(c.max.width - 16.);
+        let h = (36. + rows as f32 * 32. + 32.).min(c.max.height - 32.);
+        let (x, y) = if commands {
+            let x = (self.anchor.x - 8.).clamp(8., (c.max.width - w - 8.).max(8.));
+            let below = self.anchor.y + self.anchor.height - 12.;
+            let y = if below + h <= c.max.height - 8. {
+                below
+            } else {
+                self.anchor.y - h - 4.
+            };
+            (x, y.clamp(8., (c.max.height - h - 8.).max(8.)))
+        } else {
+            (
+                (c.max.width - w) / 2.,
+                ((c.max.height - h) / 2. + 30.).min(c.max.height - h - 8.),
+            )
+        };
         self.panel = Rect::new(x, y, w, h);
-        place(cx, self.heading, Rect::new(x + 26., y + 24., w - 52., 34.));
-        place(cx, self.search, Rect::new(x + 26., y + 80., w - 52., 46.));
+        place(cx, self.search, Rect::new(x + 8., y + 8., w - 16., 36.));
         place(
             cx,
             self.list,
-            Rect::new(x + 26., y + 146., w - 52., (h - 202.).max(0.)),
+            Rect::new(x + 8., y + 44., w - 28., (h - 68.).max(0.)),
         );
-        place(cx, self.help, Rect::new(x + 26., y + h - 36., w - 52., 22.));
+        place(cx, self.empty, Rect::new(x + 16., y + 52., w - 32., 21.));
         Metrics::new(c.max)
     }
     fn paint(&self, cx: &mut Paint<'_>) {
         cx.painter
-            .rect(cx.bounds, 0., Color::hex(0x050905).alpha(0.78).into());
+            .rect(self.panel, 8., Color(0.13, 0.13, 0.15, 1.).into());
         cx.painter
-            .rect(self.panel, 14., Color::hex(0x242b24).into());
-        cx.painter
-            .stroke(self.panel.inset(0.5), 14., 1., Color::hex(0x54634f));
+            .stroke(self.panel, 8., 2., Color(0.4, 0.7, 1., 0.55));
     }
     fn semantics(&self) -> Semantics {
         Semantics {
             role: Role::Dialog,
-            label: if self.mode == PickerMode::File {
-                "Open a file"
-            } else {
-                "Find a note"
+            label: match self.mode {
+                PickerMode::Notes => "Find a note",
+                PickerMode::Commands => "Commands",
+                PickerMode::File => "Open a file",
             }
             .into(),
             ..Semantics::default()

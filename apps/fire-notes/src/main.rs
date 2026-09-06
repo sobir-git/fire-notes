@@ -1,11 +1,14 @@
 mod components;
+mod flames;
 mod storage;
+mod tabs;
 use components::*;
 use fire_ui::*;
 use fire_ui_native::{run_with, WindowOptions};
 use fire_ui_widgets::*;
 use std::{collections::BTreeSet, path::PathBuf, sync::Arc};
 use storage::{Note, Save, Session, Writer};
+use tabs::*;
 
 struct Record {
     note: Note,
@@ -13,36 +16,38 @@ struct Record {
     page: Option<Child<Page>>,
     revision: u64,
     saved: u64,
+    view: EditorState,
 }
 struct Notes {
     directory: PathBuf,
     records: Vec<Record>,
     open: Vec<usize>,
     active: Option<usize>,
-    brand: Child<Label>,
-    new_button: Child<Button<Label>>,
-    find_button: Child<Button<Label>>,
-    commands_button: Child<Button<Label>>,
+    new_button: Child<ChromeButton>,
+    minimize: Child<ChromeButton>,
+    maximize: Child<ChromeButton>,
+    close: Child<ChromeButton>,
     tabs: Child<Tabs>,
     footer: Child<Label>,
     empty: Child<Label>,
     picker: Child<Picker>,
     anchor: Child<Label>,
     focus_pending: Option<usize>,
+    rename_pending: Option<usize>,
     pending_saves: BTreeSet<usize>,
     open_task: TaskSlot,
-    wrap: bool,
     closing: bool,
     size: Size,
+    position: Option<(i32, i32)>,
 }
 enum Message {
-    New,
-    Find(PickerMode),
+    Chrome(ChromeAction),
     Tabs(TabAction),
     Page(usize, PageOutput),
     Pick(PickerOutput),
     Loaded(Option<usize>, Result<Note, String>),
     Saved(usize, u64, Result<(), String>),
+    FileSelected(Option<usize>, Result<Option<PathBuf>, String>),
 }
 impl Data for Message {
     fn bytes(&self) -> usize {
@@ -52,11 +57,14 @@ impl Data for Message {
                 Self::Pick(o) => o.bytes(),
                 Self::Loaded(_, Ok(n)) => n.bytes(),
                 Self::Loaded(_, Err(e)) | Self::Saved(_, _, Err(e)) => e.capacity(),
+                Self::FileSelected(_, Ok(Some(path))) => path.as_os_str().len(),
+                Self::FileSelected(_, Err(e)) => e.len(),
                 _ => 0,
             }
     }
 }
 enum Output {
+    PickFile(Ticket<Notes>, Option<(usize, Arc<str>)>),
     Save(Save),
     Load {
         ticket: Ticket<Notes>,
@@ -70,6 +78,7 @@ impl Data for Output {
             + match self {
                 Self::Save(s) => s.content.len() + s.path.as_os_str().len(),
                 Self::Load { path, .. } => path.as_os_str().len(),
+                Self::PickFile(_, save) => save.as_ref().map_or(0, |(_, title)| title.len()),
             }
     }
 }
@@ -78,6 +87,14 @@ impl Notes {
         let mut records: Vec<_> = notes
             .into_iter()
             .map(|note| Record {
+                view: session
+                    .views
+                    .get(&note.path)
+                    .map(EditorState::from)
+                    .unwrap_or(EditorState {
+                        wrap: false,
+                        ..EditorState::default()
+                    }),
                 note,
                 loaded: false,
                 page: None,
@@ -86,7 +103,7 @@ impl Notes {
             })
             .collect();
         let mut open = vec![];
-        for path in session.tabs.iter().take(16) {
+        for path in &session.tabs {
             let id = records
                 .iter()
                 .position(|r| r.note.path == *path)
@@ -101,10 +118,21 @@ impl Notes {
                         page: None,
                         revision: 0,
                         saved: 0,
+                        view: session.views.get(path).map(EditorState::from).unwrap_or(
+                            EditorState {
+                                wrap: false,
+                                ..EditorState::default()
+                            },
+                        ),
                     });
                     records.len() - 1
                 });
-            if let Ok(note) = Note::load(path) {
+            if let Ok(mut note) = Note::load(path) {
+                note.title = session
+                    .titles
+                    .get(path)
+                    .map(|s| Arc::from(s.as_str()))
+                    .unwrap_or(records[id].note.title.clone());
                 records[id].note = note;
                 records[id].loaded = true;
                 if !open.contains(&id) {
@@ -113,7 +141,8 @@ impl Notes {
             }
         }
         if open.is_empty() && !records.is_empty() {
-            if let Ok(note) = Note::load(&records[0].note.path) {
+            if let Ok(mut note) = Note::load(&records[0].note.path) {
+                note.title = records[0].note.title.clone();
                 records[0].note = note;
                 records[0].loaded = true;
                 open.push(0);
@@ -132,6 +161,7 @@ impl Notes {
                     Page::new(
                         records[id].note.title.clone(),
                         records[id].note.body.clone(),
+                        records[id].view.clone(),
                     ),
                     move |o| Message::Page(id, o.clone()),
                 ));
@@ -151,11 +181,18 @@ impl Notes {
                 open,
                 active,
                 tabs,
-                brand: c.add(label("Fire Notes", 22., Color::hex(0xf0c99e))),
-                new_button: c.connect(button("New note"), |_| Message::New),
-                find_button: c.connect(button("Find"), |_| Message::Find(PickerMode::Notes)),
-                commands_button: c
-                    .connect(button("Commands"), |_| Message::Find(PickerMode::Commands)),
+                new_button: c.connect(ChromeButton::new(ChromeAction::New), |a| {
+                    Message::Chrome(*a)
+                }),
+                minimize: c.connect(ChromeButton::new(ChromeAction::Minimize), |a| {
+                    Message::Chrome(*a)
+                }),
+                maximize: c.connect(ChromeButton::new(ChromeAction::Maximize), |a| {
+                    Message::Chrome(*a)
+                }),
+                close: c.connect(ChromeButton::new(ChromeAction::Close), |a| {
+                    Message::Chrome(*a)
+                }),
                 footer: c.add(label("Saved locally", 12., Color::hex(0x91a18b))),
                 empty: c.add(label(
                     "A little room for your next idea.\n\nCreate a note, or find one with Ctrl P.",
@@ -165,16 +202,24 @@ impl Notes {
                 picker: c.connect(Picker::new(), |o| Message::Pick(o.clone())),
                 anchor: c.add(Element::leaf(Label::new(""))),
                 focus_pending: active,
+                rename_pending: None,
                 pending_saves: BTreeSet::new(),
                 open_task: TaskSlot::new(),
-                wrap: true,
                 closing: false,
                 size: Size::new(session.width, session.height),
+                position: session.position,
             }
         })
     }
     fn status(&self, cx: &mut Update<'_, Self>, text: impl Into<String>) {
-        let _ = cx.send(self.footer, text.into());
+        let text = text.into();
+        let visible = text.starts_with("Could")
+            || text.contains("failed")
+            || text.contains("busy")
+            || text.contains("limit")
+            || text.starts_with("Close a tab");
+        let _ = cx.show(self.footer, visible);
+        let _ = cx.send(self.footer, text);
     }
     fn sync_tabs(&self, cx: &mut Update<'_, Self>) {
         let _ = cx.send(
@@ -196,6 +241,17 @@ impl Notes {
                 .map(|id| self.records[*id].note.path.clone())
                 .collect(),
             active: self.active.map(|id| self.records[id].note.path.clone()),
+            titles: self
+                .records
+                .iter()
+                .map(|r| (r.note.path.clone(), r.note.title.to_string()))
+                .collect(),
+            views: self
+                .records
+                .iter()
+                .map(|r| (r.note.path.clone(), storage::NoteView::from(&r.view)))
+                .collect(),
+            position: self.position,
             width: self.size.width,
             height: self.size.height,
         };
@@ -215,7 +271,7 @@ impl Notes {
                 id,
                 revision: record.revision,
                 path: record.note.path.clone(),
-                content: record.note.markdown().into(),
+                content: record.note.body.clone(),
             };
             if cx.emit(Output::Save(job)).is_err() {
                 cx.request_frame();
@@ -229,13 +285,6 @@ impl Notes {
             return;
         }
         if self.records[id].page.is_none() {
-            if self.open.len() >= 16 {
-                self.status(
-                    cx,
-                    "Close a tab before opening another. Notes stay in your library.",
-                );
-                return;
-            }
             if !self.records[id].loaded {
                 self.load(cx, Some(id), self.records[id].note.path.clone());
                 return;
@@ -243,6 +292,7 @@ impl Notes {
             let element = Page::new(
                 self.records[id].note.title.clone(),
                 self.records[id].note.body.clone(),
+                self.records[id].view.clone(),
             );
             match cx.insert(element, move |o| Message::Page(id, o.clone())) {
                 Ok(page) => self.records[id].page = Some(page),
@@ -279,11 +329,8 @@ impl Notes {
         }
     }
     fn create(&mut self, cx: &mut Update<'_, Self>) {
-        if self.open.len() >= 16 {
-            self.status(cx, "Close a tab before creating another.");
-            return;
-        }
-        let note = storage::new_note(&self.directory);
+        let mut note = storage::new_note(&self.directory);
+        note.title = Arc::from(format!("Untitled-{}", self.records.len() + 1));
         let id = self.records.len();
         self.records.push(Record {
             note,
@@ -291,12 +338,19 @@ impl Notes {
             page: None,
             revision: 1,
             saved: 0,
+            view: EditorState {
+                wrap: false,
+                ..EditorState::default()
+            },
         });
         self.pending_saves.insert(id);
         self.display(cx, id);
         self.flush(cx);
     }
     fn close_tab(&mut self, cx: &mut Update<'_, Self>, id: usize) {
+        if self.open.len() <= 1 {
+            return;
+        }
         if let Some(page) = self.records.get_mut(id).and_then(|r| r.page.take()) {
             if cx.remove(page).is_err() {
                 self.records[id].page = Some(page);
@@ -327,34 +381,28 @@ impl Notes {
     }
     fn show_picker(&mut self, cx: &mut Update<'_, Self>, mode: PickerMode) {
         let items = if mode == PickerMode::Commands {
-            vec![
-                (
-                    Choice::New,
-                    Arc::from("New note                         Ctrl N"),
-                ),
-                (
-                    Choice::Open,
-                    Arc::from("Open a file                       Ctrl O"),
-                ),
-                (
-                    Choice::Save,
-                    Arc::from("Save note                         Ctrl S"),
-                ),
-                (Choice::Rename, Arc::from("Rename note")),
-                (
-                    Choice::Wrap,
-                    Arc::from("Toggle word wrap                 Alt Z"),
-                ),
-                (
-                    Choice::Close,
-                    Arc::from("Close tab                         Ctrl W"),
-                ),
+            [
+                (Choice::New, "New Tab"),
+                (Choice::Save, "Save"),
+                (Choice::Wrap, "Toggle Word Wrap"),
+                (Choice::Close, "Close Tab"),
             ]
+            .into_iter()
+            .map(|(key, title)| PickerItem {
+                key,
+                title: Arc::from(title),
+                open: false,
+            })
+            .collect()
         } else {
             self.records
                 .iter()
                 .enumerate()
-                .map(|(id, r)| (Choice::Note(id), r.note.title.clone()))
+                .map(|(id, r)| PickerItem {
+                    key: Choice::Note(id),
+                    title: r.note.title.clone(),
+                    open: self.open.contains(&id),
+                })
                 .collect()
         };
         let _ = cx.send(self.picker, PickerCommand::Show(items, mode));
@@ -366,11 +414,18 @@ impl Notes {
         let _ = cx.close_modal();
         let _ = cx.show(self.picker, false);
     }
+    fn save_as(&self, cx: &mut Update<'_, Self>) {
+        if let (Some(id), Ok(ticket)) = (self.active, cx.replace_task(self.open_task)) {
+            let _ = cx.emit(Output::PickFile(
+                ticket,
+                Some((id, self.records[id].note.title.clone())),
+            ));
+        }
+    }
     fn choose(&mut self, cx: &mut Update<'_, Self>, choice: Choice) {
         match choice {
             Choice::Note(id) => self.display(cx, id),
             Choice::New => self.create(cx),
-            Choice::Open => self.show_picker(cx, PickerMode::File),
             Choice::Save => {
                 if let Some(id) = self.active {
                     self.pending_saves.insert(id);
@@ -378,25 +433,19 @@ impl Notes {
                 }
             }
             Choice::Rename => {
-                if let Some(page) = self.active.and_then(|id| self.records[id].page) {
-                    let _ = cx.send(page, PageCommand::Rename);
+                if let Some(id) = self.active {
+                    let _ = cx.send(self.tabs, TabsCommand::Rename(id));
                 }
             }
             Choice::Wrap => {
-                self.wrap = !self.wrap;
-                for r in &self.records {
-                    if let Some(page) = r.page {
-                        let _ = cx.send(page, PageCommand::Wrap(self.wrap));
+                if let Some(id) = self.active {
+                    let state = &mut self.records[id];
+                    state.view.wrap = !state.view.wrap;
+                    if let Some(page) = state.page {
+                        let _ = cx.send(page, PageCommand::Wrap(state.view.wrap));
                     }
+                    self.save_session(cx);
                 }
-                self.status(
-                    cx,
-                    if self.wrap {
-                        "Word wrap on"
-                    } else {
-                        "Word wrap off"
-                    },
-                );
             }
             Choice::Close => {
                 if let Some(page) = self.active.and_then(|id| self.records[id].page) {
@@ -413,6 +462,7 @@ impl Widget for Notes {
         match event {
             Lifecycle::Mount => {
                 let _ = cx.show(self.picker, false);
+                let _ = cx.show(self.footer, false);
                 let _ = cx.anchor(self.picker, Some(self.anchor));
                 let _ = cx.show(self.empty, self.active.is_none());
                 for (id, r) in self.records.iter().enumerate() {
@@ -421,6 +471,10 @@ impl Widget for Notes {
                     }
                 }
                 cx.request_frame();
+            }
+            Lifecycle::Moved { x, y } => {
+                self.position = Some((x, y));
+                self.save_session(cx);
             }
             Lifecycle::Resized => {
                 self.size = cx.bounds().size();
@@ -431,13 +485,86 @@ impl Widget for Notes {
     }
     fn update(&mut self, cx: &mut Update<'_, Self>, message: Message) {
         match message {
-            Message::New => self.create(cx),
-            Message::Find(mode) => self.show_picker(cx, mode),
-            Message::Tabs(TabAction::Select(id)) => self.display(cx, id),
-            Message::Tabs(TabAction::Close(id)) => {
-                if let Some(page) = self.records[id].page {
-                    let _ = cx.send(page, PageCommand::Close);
+            Message::FileSelected(None, Ok(Some(path))) => self.load(cx, None, path),
+            Message::FileSelected(Some(id), Ok(Some(path))) => {
+                if self
+                    .records
+                    .iter()
+                    .enumerate()
+                    .any(|(other, r)| other != id && r.note.path == path)
+                {
+                    self.status(cx, "Could not save: this file belongs to another note");
+                    return;
                 }
+                let r = &mut self.records[id];
+                r.note.path = path;
+                r.note.title = Arc::from(
+                    r.note
+                        .path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .as_ref(),
+                );
+                r.revision += 1;
+                self.pending_saves.insert(id);
+                self.sync_tabs(cx);
+                self.save_session(cx);
+                self.flush(cx);
+            }
+            Message::FileSelected(_, Ok(None)) => {}
+            Message::FileSelected(_, Err(e)) => {
+                self.status(cx, format!("Could not open file dialog: {e}"))
+            }
+            Message::Chrome(action) => match action {
+                ChromeAction::New => self.create(cx),
+                ChromeAction::Close => {
+                    let _ = cx.close_window();
+                }
+                ChromeAction::Minimize => {
+                    let _ = cx.window(WindowAction::Minimize);
+                }
+                ChromeAction::Maximize => {
+                    let _ = cx.window(WindowAction::ToggleMaximized);
+                }
+            },
+            Message::Tabs(TabAction::Window(action)) => {
+                let _ = cx.window(action);
+            }
+            Message::Tabs(TabAction::BeginRename(id)) => {
+                self.display(cx, id);
+                self.rename_pending = Some(id);
+            }
+            Message::Tabs(TabAction::Rename(id, title)) => {
+                self.update(cx, Message::Page(id, PageOutput::Title(title)))
+            }
+            Message::Tabs(TabAction::RenameDone(id)) => self.display(cx, id),
+            Message::Tabs(TabAction::Reorder(id, other)) => {
+                if let (Some(a), Some(b)) = (
+                    self.open.iter().position(|x| *x == id),
+                    self.open.iter().position(|x| *x == other),
+                ) {
+                    self.open.swap(a, b);
+                    self.sync_tabs(cx);
+                    self.save_session(cx);
+                    cx.relayout();
+                }
+            }
+            Message::Tabs(TabAction::Select(id)) => self.display(cx, id),
+            Message::Page(id, PageOutput::State(state)) => {
+                self.records[id].view = state;
+            }
+            Message::Page(_, PageOutput::Palette(rect)) => {
+                let _ = cx.send(
+                    self.picker,
+                    PickerCommand::Position(Rect::new(
+                        rect.x,
+                        rect.y + 40.,
+                        rect.width,
+                        rect.height,
+                    )),
+                );
+                self.show_picker(cx, PickerMode::Commands);
             }
             Message::Page(id, PageOutput::Close) => self.close_tab(cx, id),
             Message::Page(_, PageOutput::LimitReached) => {
@@ -457,11 +584,17 @@ impl Widget for Notes {
                         }
                     }
                     PageOutput::Body(body) => r.note.body = body,
-                    PageOutput::Close | PageOutput::LimitReached => unreachable!(),
+                    PageOutput::Close
+                    | PageOutput::LimitReached
+                    | PageOutput::Palette(_)
+                    | PageOutput::State(_) => {
+                        unreachable!()
+                    }
                 };
                 r.revision += 1;
                 self.pending_saves.insert(id);
                 self.sync_tabs(cx);
+                self.save_session(cx);
                 self.status(cx, "Saving…");
                 self.flush(cx);
             }
@@ -488,9 +621,15 @@ impl Widget for Notes {
                         page: None,
                         revision: 0,
                         saved: 0,
+                        view: EditorState {
+                            wrap: false,
+                            ..EditorState::default()
+                        },
                     });
                 } else if self.records[id].revision == self.records[id].saved {
+                    let title = self.records[id].note.title.clone();
                     self.records[id].note = note;
+                    self.records[id].note.title = title;
                     self.records[id].loaded = true;
                 }
                 self.display(cx, id);
@@ -534,13 +673,17 @@ impl Widget for Notes {
     fn frame(&mut self, cx: &mut Update<'_, Self>, _: FrameTime) {
         if let Some(id) = self.focus_pending.take() {
             if let Some(page) = self.records[id].page {
-                let _ = cx.send(page, PageCommand::Focus);
-                let _ = cx.send(page, PageCommand::Wrap(self.wrap));
+                if self.rename_pending.take() == Some(id) {
+                    let _ = cx.send(self.tabs, TabsCommand::Rename(id));
+                } else {
+                    let _ = cx.send(page, PageCommand::Focus);
+                }
             }
         }
         self.flush(cx);
     }
     fn close_requested(&mut self, cx: &mut Update<'_, Self>) -> bool {
+        self.save_session(cx);
         let dirty: Vec<_> = self
             .records
             .iter()
@@ -558,9 +701,66 @@ impl Widget for Notes {
         false
     }
     fn input(&mut self, cx: &mut Update<'_, Self>, phase: Phase, input: &Input) {
+        if phase == Phase::Target {
+            if let Input::FileDropped(path) = input {
+                self.hide_picker(cx);
+                self.load(cx, None, path.clone());
+                cx.stop();
+                return;
+            }
+        }
+        if phase == Phase::Bubble
+            && matches!(
+                input,
+                Input::Key {
+                    key: Key::Escape,
+                    down: true,
+                    ..
+                }
+            )
+        {
+            let _ = cx.close_window();
+            cx.stop();
+            return;
+        }
         if !matches!(phase, Phase::Preview | Phase::Target) {
             return;
         }
+        if let Input::Button {
+            button: 1,
+            down: true,
+            position,
+            ..
+        } = input
+        {
+            let b = cx.bounds();
+            let left = position.x < 4.;
+            let right = position.x > b.width - 4.;
+            let top = position.y < 4.;
+            let bottom = position.y > b.height - 4.;
+            let edge = match (left, right, top, bottom) {
+                (true, _, true, _) => Some(ResizeEdge::NorthWest),
+                (_, true, true, _) => Some(ResizeEdge::NorthEast),
+                (true, _, _, true) => Some(ResizeEdge::SouthWest),
+                (_, true, _, true) => Some(ResizeEdge::SouthEast),
+                (true, _, _, _) => Some(ResizeEdge::West),
+                (_, true, _, _) => Some(ResizeEdge::East),
+                (_, _, true, _) => Some(ResizeEdge::North),
+                (_, _, _, true) => Some(ResizeEdge::South),
+                _ => None,
+            };
+            if let Some(edge) = edge {
+                let _ = cx.window(WindowAction::Resize(edge));
+                cx.stop();
+                return;
+            }
+            if phase == Phase::Target && position.y < 40. {
+                let _ = cx.window(WindowAction::Drag);
+                cx.stop();
+                return;
+            }
+        }
+
         if let Input::Key {
             key,
             down: true,
@@ -572,9 +772,26 @@ impl Widget for Notes {
             if modifiers.command() {
                 match key {
                     Key::Character('n') => self.create(cx),
+                    Key::Character('r') => self.choose(cx, Choice::Rename),
+                    Key::Character(c @ '1'..='9') => {
+                        if let Some(id) = self.open.get((*c as u8 - b'1') as usize).copied() {
+                            self.display(cx, id);
+                        }
+                    }
                     Key::Character('p') => self.show_picker(cx, PickerMode::Notes),
-                    Key::Character('o') => self.show_picker(cx, PickerMode::File),
-                    Key::Character('/') => self.show_picker(cx, PickerMode::Commands),
+                    Key::Character('o') => {
+                        if modifiers.shift {
+                            self.show_picker(cx, PickerMode::File);
+                        } else if let Ok(ticket) = cx.replace_task(self.open_task) {
+                            let _ = cx.emit(Output::PickFile(ticket, None));
+                        }
+                    }
+                    Key::Character('/') => {
+                        if let Some(page) = self.active.and_then(|id| self.records[id].page) {
+                            let _ = cx.send(page, PageCommand::Palette);
+                        }
+                    }
+                    Key::Character('s') if modifiers.shift => self.save_as(cx),
                     Key::Character('s') => self.choose(cx, Choice::Save),
                     Key::Character('w') => self.choose(cx, Choice::Close),
                     Key::Character('q') => {
@@ -607,61 +824,51 @@ impl Widget for Notes {
     fn layout(&mut self, cx: &mut Layout<'_>, c: Constraints) -> Metrics {
         let w = c.max.width;
         let h = c.max.height;
-        place(cx, self.brand, Rect::new(28., 22., 125., 32.));
+        let available = (w - 172.).max(0.);
+        let tabs_width = self
+            .open
+            .iter()
+            .map(|id| tab_width(&self.records[*id].note.title) + 1.)
+            .sum::<f32>();
+        place(cx, self.tabs, Rect::new(0., 0., available, 40.));
         place(
             cx,
             self.new_button,
-            Rect::new((w - 143.).max(0.), 16., 115., 42.),
+            Rect::new((tabs_width + 8.).min(available + 8.), 6., 28., 28.),
         );
-        let find_w = if w < 700. { 135. } else { 230. };
-        place(
-            cx,
-            self.find_button,
-            Rect::new(
-                (w - find_w - 160.).max(165.),
-                16.,
-                (w - 325.).clamp(85., find_w),
-                42.,
-            ),
-        );
-        place(
-            cx,
-            self.commands_button,
-            Rect::new(205., 16., if w >= 860. { 125. } else { 0. }, 42.),
-        );
-        place(cx, self.tabs, Rect::new(28., 77., (w - 56.).max(0.), 46.));
-        let width = (w - 64.).clamp(0., 850.);
-        let x = (w - width) / 2.;
+        place(cx, self.minimize, Rect::new(w - 100., 6., 28., 28.));
+        place(cx, self.maximize, Rect::new(w - 68., 6., 28., 28.));
+        place(cx, self.close, Rect::new(w - 36., 6., 28., 28.));
         for r in &self.records {
             if let Some(page) = r.page {
-                place(cx, page, Rect::new(x, 159., width, (h - 219.).max(0.)));
+                place(cx, page, Rect::new(0., 40., w, (h - 40.).max(0.)));
             }
         }
         place(
             cx,
             self.empty,
-            Rect::new(x, 175., width, (h - 250.).max(0.)),
+            Rect::new(16., 56., (w - 32.).max(0.), (h - 56.).max(0.)),
         );
         place(
             cx,
             self.footer,
-            Rect::new(28., (h - 33.).max(0.), (w - 56.).max(0.), 22.),
+            Rect::new(16., (h - 26.).max(40.), (w - 32.).max(0.), 22.),
         );
-        place(cx, self.anchor, Rect::new(0., 0., 0., 0.));
-        place(cx, self.picker, Rect::new(0., 0., w, h));
+        place(cx, self.anchor, Rect::default());
+        place(cx, self.picker, Rect::from_size(c.max));
         Metrics::new(c.max)
     }
     fn paint(&self, cx: &mut Paint<'_>) {
-        cx.painter.rect(cx.bounds, 0., paper().background.into());
+        cx.painter.rect(cx.bounds, 0., Color::hex(0).into());
         cx.painter.rect(
-            Rect::new(0., 0., cx.bounds.width, 69.),
+            Rect::new(0., 0., cx.bounds.width, 40.),
             0.,
-            Color::hex(0x202721).into(),
+            Color(0.05, 0.02, 0.02, 1.).into(),
         );
         cx.painter.rect(
-            Rect::new(28., 135., (cx.bounds.width - 56.).max(0.), 1.),
+            Rect::new(0., 40., cx.bounds.width, 1.),
             0.,
-            Color::hex(0x354131).into(),
+            Color(0.2, 0.05, 0.05, 1.).into(),
         );
     }
 }
@@ -689,8 +896,12 @@ fn start() -> Result<(), String> {
     let mut library = storage::scan(&directory)?;
     directory = std::fs::canonicalize(&directory).map_err(|e| e.to_string())?;
     if library.is_empty() {
-        let note=Note{path:directory.join("welcome.md"),title:Arc::from("Welcome to Fire Notes"),body:Arc::from("Your notes save automatically as Markdown files.\n\nCtrl N starts a note. Ctrl P finds one. Ctrl W closes a tab without deleting its note.\n\nEdit the title above to rename this note, or start writing here.")};
-        storage::atomic_write(&note.path, note.markdown().as_bytes())?;
+        let note = Note {
+            path: directory.join("note-1.md"),
+            title: Arc::from("Untitled-1"),
+            body: Arc::from(""),
+        };
+        storage::atomic_write(&note.path, note.body.as_bytes())?;
         library.push(note);
     }
     for note in &mut library {
@@ -698,15 +909,25 @@ fn start() -> Result<(), String> {
     }
     let session = storage::session(&directory);
     let size = Size::new(
-        session.width.clamp(520., 2000.),
-        session.height.clamp(480., 1600.),
+        session.width.clamp(420., 2000.),
+        session.height.clamp(360., 1600.),
     );
+    for note in &mut library {
+        if let Some(title) = session.titles.get(&note.path) {
+            note.title = Arc::from(title.as_str());
+        }
+    }
     let root = Notes::new(directory, library, &session);
     let mut writer: Option<Writer> = None;
     run_with(
         root,
         WindowOptions {
             title: "Fire Notes".into(),
+            decorations: false,
+            position: session.position,
+            font: Some(PathBuf::from(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            )),
             size,
             background: paper().background,
             limits: Limits {
@@ -715,6 +936,27 @@ fn start() -> Result<(), String> {
             },
         },
         move |output, wake| match output {
+            Output::PickFile(ticket, save) => {
+                let wake = wake.clone();
+                std::thread::spawn(move || {
+                    let result = if let Some((_, title)) = &save {
+                        fire_ui_native::save_file(title, &[("Markdown", &["md"])])
+                    } else {
+                        fire_ui_native::open_file(&[("Markdown", &["md", "markdown", "txt"])])
+                    };
+                    let mut message = Message::FileSelected(save.map(|(id, _)| id), result);
+                    loop {
+                        match wake.complete(ticket, message) {
+                            Ok(()) => break,
+                            Err((Error::Full, returned)) => {
+                                message = returned;
+                                std::thread::sleep(std::time::Duration::from_millis(2));
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                });
+            }
             Output::Save(save) => {
                 let writer = writer.get_or_insert_with(|| {
                     let wake = wake.clone();
@@ -785,7 +1027,7 @@ mod tests {
     fn failed_save_keeps_window_open_until_latest_revision_is_acknowledged() {
         let mut ui = app();
         settle(&mut ui);
-        assert!(ui.send(Message::New).is_ok());
+        assert!(ui.send(Message::Chrome(ChromeAction::New)).is_ok());
         settle(&mut ui);
         assert!(ui
             .send(Message::Page(
@@ -816,7 +1058,7 @@ mod tests {
     fn closing_and_reopening_before_save_completion_keeps_latest_body() {
         let mut ui = app();
         settle(&mut ui);
-        assert!(ui.send(Message::New).is_ok());
+        assert!(ui.send(Message::Chrome(ChromeAction::New)).is_ok());
         settle(&mut ui);
         assert!(ui
             .send(Message::Page(
@@ -824,6 +1066,8 @@ mod tests {
                 PageOutput::Body(Arc::from("unsaved idea"))
             ))
             .is_ok());
+        settle(&mut ui);
+        assert!(ui.send(Message::Chrome(ChromeAction::New)).is_ok());
         settle(&mut ui);
         assert!(ui.send(Message::Page(0, PageOutput::Close)).is_ok());
         settle(&mut ui);
@@ -834,5 +1078,33 @@ mod tests {
         assert!(!outputs.iter().any(|o| matches!(o, Output::Load { .. })));
         assert!(ui.root().records[0].page.is_some());
         assert_eq!(&*ui.root().records[0].note.body, "unsaved idea");
+    }
+    #[test]
+    fn file_drop_reaches_the_app_when_unfocused_and_modal_is_open() {
+        let mut ui = app();
+        settle(&mut ui);
+        assert!(ui.send(Message::Chrome(ChromeAction::New)).is_ok());
+        settle(&mut ui);
+        ui.dispatch(
+            Input::Key {
+                key: Key::Character('p'),
+                physical: 1,
+                down: true,
+                repeat: false,
+                modifiers: Modifiers {
+                    control: true,
+                    ..Modifiers::default()
+                },
+            },
+            &mut TestText,
+        );
+        settle(&mut ui);
+        ui.window_focus(false);
+        let path = PathBuf::from("/test/dropped.md");
+        ui.dispatch(Input::FileDropped(path.clone()), &mut TestText);
+        let outputs = settle(&mut ui);
+        assert!(outputs
+            .iter()
+            .any(|o| matches!(o,Output::Load{path:p,..} if *p==path)));
     }
 }

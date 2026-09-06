@@ -1,30 +1,36 @@
 {
+  "binary_sha256": "ac3d56b6b6939732697bddcf381768423cfccd4e089a1a1b893f2a8b976014f8",
   "backend": "Xvfb / Mesa software GL",
   "idle_seconds": 2,
   "idle_cpu_ticks": 0,
-  "rss_kib": 131320,
+  "rss_kib": 154600,
   "resize_event_to_swap_ms": {
-    "samples": 63,
-    "p50": 4.343,
-    "p95": 8.984,
-    "max": 13.22
+    "samples": 64,
+    "p50": 4.477,
+    "p95": 6.481,
+    "max": 6.974
   },
   "date": "2026-09-07",
   "binary": "target/release/fire-notes",
-  "binary_bytes": 7992904,
-  "binary_sha256": "5a42c29dd059733c0daf1e19de60f333e18faacc881de9e9aede77b1aacaea2f",
+  "binary_bytes": 8165104,
   "checks": [
-    "editing and paragraph breaks",
-    "autosave",
+    "original layout compared visually",
+    "animated fire and idle after decay",
+    "initial typing and paragraph breaks",
+    "raw Markdown autosave",
+    "clipboard cut copy paste",
     "undo and redo",
-    "independent tabs",
-    "search",
-    "reopen closed note",
-    "command palette",
-    "external file opening",
+    "independent tab caret and wrap",
+    "inline rename via keyboard and right/middle click",
+    "tab drag reorder",
+    "search and reopen closed note",
+    "caret-anchored command palette",
+    "native Open and Save As dialogs",
     "narrow layout",
-    "save before close",
-    "session restoration",
-    "shortcuts with no open tabs"
+    "scrollbar dragging",
+    "resize",
+    "window position via ICCCM notification",
+    "session restoration of cursor scroll wrap tabs and titles",
+    "save immediately before close"
   ]
 }
