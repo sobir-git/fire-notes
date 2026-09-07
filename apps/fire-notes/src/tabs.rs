@@ -11,6 +11,7 @@ pub enum TabAction {
     Window(WindowAction),
     Select(usize),
     BeginRename(usize),
+    Context(usize, Point),
     Rename(usize, Arc<str>),
     RenameDone(usize),
     Reorder(usize, usize),
@@ -155,6 +156,17 @@ impl Widget for Tab {
         true
     }
     fn input(&mut self, cx: &mut Update<'_, Self>, phase: Phase, input: &Input) {
+        if let Input::Button {
+            button: 2,
+            down: true,
+            position,
+            ..
+        } = input
+        {
+            let _ = cx.emit(TabAction::Context(self.id, *position));
+            cx.stop();
+            return;
+        }
         if self.renaming {
             if phase == Phase::Preview
                 && matches!(
@@ -176,7 +188,7 @@ impl Widget for Tab {
         }
         match input {
             Input::Button {
-                button: 2 | 3,
+                button: 3,
                 down: true,
                 ..
             } => {
@@ -337,6 +349,14 @@ impl Widget for Tabs {
     type Output = TabAction;
     fn update(&mut self, cx: &mut Update<'_, Self>, c: TabsCommand) {
         match c {
+            TabsCommand::Action(TabAction::Context(id, point)) => {
+                if let Some((_, rect)) = self.rects.iter().find(|(key, _)| *key == id) {
+                    let _ = cx.emit(TabAction::Context(
+                        id,
+                        Point::new(rect.x + point.x, rect.y + point.y),
+                    ));
+                }
+            }
             TabsCommand::Action(a) => {
                 let _ = cx.emit(a);
             }

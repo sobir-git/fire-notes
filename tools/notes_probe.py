@@ -145,7 +145,7 @@ def main():
                 eventually(lambda: created.read_text()=='A second note.','Second editor lost text')
                 x('mousemove','--window',window,170,20);x('click',2);time.sleep(.2)
                 key('ctrl+a');type_text('Draft');key('Escape')
-                x('click',3);time.sleep(.2);key('ctrl+a');type_text('Ideas')
+                x('click',3);time.sleep(.2);key('Down');key('Return');key('ctrl+a');type_text('Ideas')
                 click(40,65)  # Clicking the editor commits rename without stealing its focus.
                 # Drag the second tab ahead of the first and back.
                 x('mousemove','--window',window,170,20);x('mousedown',1);x('mousemove','--window',window,40,20);time.sleep(.2);x('mouseup',1)

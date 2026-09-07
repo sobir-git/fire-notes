@@ -31,6 +31,8 @@ struct Notes {
     footer: Child<Label>,
     empty: Child<Label>,
     picker: Child<Picker>,
+    menu: Option<(usize, Child<Menu<Choice>>)>,
+    menu_pending: bool,
     anchor: Child<Label>,
     focus_pending: Option<usize>,
     rename_pending: Option<usize>,
@@ -45,6 +47,7 @@ enum Message {
     Tabs(TabAction),
     Page(usize, PageOutput),
     Pick(PickerOutput),
+    Menu(MenuOutput<Choice>),
     Loaded(Option<usize>, Result<Note, String>),
     Saved(usize, u64, Result<(), String>),
     FileSelected(Option<usize>, Result<Option<PathBuf>, String>),
@@ -200,6 +203,8 @@ impl Notes {
                     Color::hex(0x9eae98),
                 )),
                 picker: c.connect(Picker::new(), |o| Message::Pick(o.clone())),
+                menu: None,
+                menu_pending: false,
                 anchor: c.add(Element::leaf(Label::new(""))),
                 focus_pending: active,
                 rename_pending: None,
@@ -379,6 +384,32 @@ impl Notes {
             cx.relayout();
         }
     }
+    fn hide_menu(&mut self, cx: &mut Update<'_, Self>) -> Option<usize> {
+        let (id, menu) = self.menu.take()?;
+        self.menu_pending = false;
+        let _ = cx.close_modal();
+        let _ = cx.remove(menu);
+        Some(id)
+    }
+    fn show_menu(&mut self, cx: &mut Update<'_, Self>, id: usize, at: Point) {
+        self.hide_menu(cx);
+        let items = vec![
+            MenuItem::new(Choice::Rename, "Rename").hint("Ctrl R"),
+            MenuItem::new(Choice::Save, "Save").hint("Ctrl S"),
+            MenuItem::new(Choice::Wrap, "Word wrap")
+                .hint("Alt Z")
+                .checked(self.records[id].view.wrap),
+            MenuItem::new(Choice::Close, "Close tab")
+                .hint("Ctrl W")
+                .enabled(self.open.len() > 1),
+        ];
+        if let Ok(menu) = cx.insert(Menu::new(items, at), |o| Message::Menu(o.clone())) {
+            self.menu = Some((id, menu));
+            self.menu_pending = true;
+            cx.request_frame();
+            cx.relayout();
+        }
+    }
     fn show_picker(&mut self, cx: &mut Update<'_, Self>, mode: PickerMode) {
         let items = if mode == PickerMode::Commands {
             [
@@ -485,6 +516,34 @@ impl Widget for Notes {
     }
     fn update(&mut self, cx: &mut Update<'_, Self>, message: Message) {
         match message {
+            Message::Tabs(TabAction::Context(id, at)) => self.show_menu(cx, id, at),
+            Message::Menu(MenuOutput::Dismissed) => {
+                self.hide_menu(cx);
+            }
+            Message::Menu(MenuOutput::Selected(choice)) => {
+                if let Some(id) = self.hide_menu(cx) {
+                    match choice {
+                        Choice::Rename => {
+                            self.display(cx, id);
+                            self.rename_pending = Some(id);
+                        }
+                        Choice::Close => self.close_tab(cx, id),
+                        Choice::Save => {
+                            self.pending_saves.insert(id);
+                            self.flush(cx);
+                        }
+                        Choice::Wrap => {
+                            let r = &mut self.records[id];
+                            r.view.wrap = !r.view.wrap;
+                            if let Some(page) = r.page {
+                                let _ = cx.send(page, PageCommand::Wrap(r.view.wrap));
+                            }
+                            self.save_session(cx);
+                        }
+                        _ => {}
+                    }
+                }
+            }
             Message::FileSelected(None, Ok(Some(path))) => self.load(cx, None, path),
             Message::FileSelected(Some(id), Ok(Some(path))) => {
                 if self
@@ -671,6 +730,26 @@ impl Widget for Notes {
         }
     }
     fn frame(&mut self, cx: &mut Update<'_, Self>, _: FrameTime) {
+        // Insertions commit after their callback; configure the mounted overlay here.
+        if std::mem::take(&mut self.menu_pending) {
+            if let Some((_, menu)) = self.menu {
+                let _ = cx.set_environment(
+                    menu,
+                    std::rc::Rc::new(Theme {
+                        panel: Color::hex(0x211719),
+                        raised: Color::hex(0x402522),
+                        border: Color::hex(0x6b3c2c),
+                        muted: Color::hex(0xa78070),
+                        font_size: 14.,
+                        radius: 6.,
+                        ..paper()
+                    }),
+                    true,
+                );
+                let _ = cx.anchor(menu, Some(self.anchor));
+                let _ = cx.open_modal(menu);
+            }
+        }
         if let Some(id) = self.focus_pending.take() {
             if let Some(page) = self.records[id].page {
                 if self.rename_pending.take() == Some(id) {
@@ -703,6 +782,7 @@ impl Widget for Notes {
     fn input(&mut self, cx: &mut Update<'_, Self>, phase: Phase, input: &Input) {
         if phase == Phase::Target {
             if let Input::FileDropped(path) = input {
+                self.hide_menu(cx);
                 self.hide_picker(cx);
                 self.load(cx, None, path.clone());
                 cx.stop();
@@ -856,6 +936,9 @@ impl Widget for Notes {
         );
         place(cx, self.anchor, Rect::default());
         place(cx, self.picker, Rect::from_size(c.max));
+        if let Some((_, menu)) = self.menu {
+            place(cx, menu, Rect::from_size(c.max));
+        }
         Metrics::new(c.max)
     }
     fn paint(&self, cx: &mut Paint<'_>) {
