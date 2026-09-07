@@ -1,0 +1,7 @@
+[Unit]
+Description=Delete Fire Notes trash older than 30 days
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/fire-notes --purge-trash
+UMask=0077

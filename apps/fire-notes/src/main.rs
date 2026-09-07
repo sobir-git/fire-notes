@@ -3,6 +3,7 @@ mod design;
 mod flames;
 mod storage;
 mod tabs;
+mod trash;
 use components::*;
 use design::*;
 use fire_ui::*;
@@ -15,10 +16,18 @@ use tabs::*;
 struct Record {
     note: Note,
     loaded: bool,
+    removed: bool,
     page: Option<Child<Page>>,
     revision: u64,
     saved: u64,
     view: EditorState,
+}
+#[derive(Clone, Copy)]
+enum FileWork {
+    AwaitSave(usize),
+    Moving(usize),
+    Restoring,
+    Listing(bool),
 }
 struct Notes {
     directory: PathBuf,
@@ -35,6 +44,9 @@ struct Notes {
     picker: Child<Picker>,
     menu: Option<(usize, Child<Menu<Choice>>)>,
     menu_pending: bool,
+    trash: Vec<trash::Entry>,
+    file_work: Option<FileWork>,
+    cleanup_timer: Timer,
     anchor: Child<Label>,
     focus_pending: Option<usize>,
     rename_pending: Option<usize>,
@@ -50,6 +62,7 @@ enum Message {
     Page(usize, PageOutput),
     Pick(PickerOutput),
     Menu(MenuOutput<Choice>),
+    TrashFinished(Result<trash::Change, String>),
     Loaded(Option<usize>, Result<Note, String>),
     Saved(usize, u64, Result<(), String>),
     FileSelected(Option<usize>, Result<Option<PathBuf>, String>),
@@ -58,6 +71,8 @@ impl Data for Message {
     fn bytes(&self) -> usize {
         std::mem::size_of::<Self>()
             + match self {
+                Self::TrashFinished(Ok(change)) => change.bytes(),
+                Self::TrashFinished(Err(e)) => e.len(),
                 Self::Page(_, o) => o.bytes(),
                 Self::Pick(o) => o.bytes(),
                 Self::Loaded(_, Ok(n)) => n.bytes(),
@@ -69,6 +84,7 @@ impl Data for Message {
     }
 }
 enum Output {
+    Trash(PathBuf, trash::Operation),
     PickFile(Ticket<Notes>, Option<(usize, Arc<str>)>),
     Save(Save),
     Load {
@@ -81,6 +97,7 @@ impl Data for Output {
     fn bytes(&self) -> usize {
         std::mem::size_of::<Self>()
             + match self {
+                Self::Trash(path, op) => path.as_os_str().len() + op.bytes(),
                 Self::Save(s) => s.content.len() + s.path.as_os_str().len(),
                 Self::Load { path, .. } => path.as_os_str().len(),
                 Self::PickFile(_, save) => save.as_ref().map_or(0, |(_, title)| title.len()),
@@ -102,6 +119,7 @@ impl Notes {
                     }),
                 note,
                 loaded: false,
+                removed: false,
                 page: None,
                 revision: 0,
                 saved: 0,
@@ -120,6 +138,7 @@ impl Notes {
                             body: Arc::from(""),
                         },
                         loaded: false,
+                        removed: false,
                         page: None,
                         revision: 0,
                         saved: 0,
@@ -200,13 +219,16 @@ impl Notes {
                 }),
                 footer: c.add(label("Saved locally", 12., MUTED)),
                 empty: c.add(label(
-                    "Create a note with Ctrl N, or find one with Ctrl P.",
+                    "Ctrl N  New note\nCtrl P  Find a note\nCtrl Shift T  Open Trash",
                     16.,
                     MUTED,
                 )),
                 picker: c.connect(Picker::new(), |o| Message::Pick(o.clone())),
                 menu: None,
                 menu_pending: false,
+                trash: vec![],
+                file_work: None,
+                cleanup_timer: Timer::new(),
                 anchor: c.add(Element::leaf(Label::new(""))),
                 focus_pending: active,
                 rename_pending: None,
@@ -251,11 +273,13 @@ impl Notes {
             titles: self
                 .records
                 .iter()
+                .filter(|r| !r.removed)
                 .map(|r| (r.note.path.clone(), r.note.title.to_string()))
                 .collect(),
             views: self
                 .records
                 .iter()
+                .filter(|r| !r.removed)
                 .map(|r| (r.note.path.clone(), storage::NoteView::from(&r.view)))
                 .collect(),
             position: self.position,
@@ -288,7 +312,7 @@ impl Notes {
         }
     }
     fn display(&mut self, cx: &mut Update<'_, Self>, id: usize) {
-        if id >= self.records.len() {
+        if id >= self.records.len() || self.records[id].removed {
             return;
         }
         if self.records[id].page.is_none() {
@@ -342,6 +366,7 @@ impl Notes {
         self.records.push(Record {
             note,
             loaded: true,
+            removed: false,
             page: None,
             revision: 1,
             saved: 0,
@@ -355,9 +380,11 @@ impl Notes {
         self.flush(cx);
     }
     fn close_tab(&mut self, cx: &mut Update<'_, Self>, id: usize) {
-        if self.open.len() <= 1 {
-            return;
+        if self.open.len() > 1 {
+            self.detach_tab(cx, id);
         }
+    }
+    fn detach_tab(&mut self, cx: &mut Update<'_, Self>, id: usize) {
         if let Some(page) = self.records.get_mut(id).and_then(|r| r.page.take()) {
             if cx.remove(page).is_err() {
                 self.records[id].page = Some(page);
@@ -386,6 +413,65 @@ impl Notes {
             cx.relayout();
         }
     }
+    fn run_file_work(
+        &mut self,
+        cx: &mut Update<'_, Self>,
+        work: FileWork,
+        operation: trash::Operation,
+    ) {
+        if cx
+            .emit(Output::Trash(self.directory.clone(), operation))
+            .is_ok()
+        {
+            self.file_work = Some(work);
+        } else {
+            self.file_work = None;
+            if let FileWork::Moving(id) = work {
+                self.records[id].removed = false;
+                self.display(cx, id);
+            }
+            self.status(cx, "Could not update Trash: the app is busy. Try again.");
+        }
+    }
+    fn list_trash(&mut self, cx: &mut Update<'_, Self>, show: bool) {
+        if self.file_work.is_none() {
+            self.run_file_work(cx, FileWork::Listing(show), trash::Operation::List);
+        }
+    }
+    fn trash_note(&mut self, cx: &mut Update<'_, Self>, id: usize) {
+        if self.file_work.is_some() || self.records[id].removed {
+            return;
+        }
+        // A fresh revision acts as a writer barrier: acknowledgments of earlier
+        // saves (including repeated Ctrl S) cannot start the move.
+        self.records[id].revision += 1;
+        self.records[id].removed = true;
+        self.pending_saves.insert(id);
+        self.file_work = Some(FileWork::AwaitSave(id));
+        self.detach_tab(cx, id);
+        if self.records[id].page.is_some() {
+            self.records[id].removed = false;
+            self.file_work = None;
+            self.flush(cx);
+            return;
+        }
+        if self.records[id].saved == self.records[id].revision {
+            self.move_saved_note(cx, id);
+        } else {
+            self.pending_saves.insert(id);
+            self.flush(cx);
+        }
+    }
+    fn move_saved_note(&mut self, cx: &mut Update<'_, Self>, id: usize) {
+        let r = &self.records[id];
+        let operation = trash::Operation::Move {
+            id,
+            path: r.note.path.clone(),
+            title: r.note.title.to_string(),
+            view: storage::NoteView::from(&r.view),
+        };
+        self.run_file_work(cx, FileWork::Moving(id), operation);
+    }
     fn hide_menu(&mut self, cx: &mut Update<'_, Self>) -> Option<usize> {
         let (id, menu) = self.menu.take()?;
         self.menu_pending = false;
@@ -404,6 +490,10 @@ impl Notes {
             MenuItem::new(Choice::Close, "Close tab")
                 .hint("Ctrl W")
                 .enabled(self.open.len() > 1),
+            MenuItem::new(Choice::Trash, "Move to Trash").enabled(self.file_work.is_none()),
+            MenuItem::new(Choice::ShowTrash, "Open Trash")
+                .hint("Ctrl Shift T")
+                .enabled(self.file_work.is_none()),
         ];
         if let Ok(menu) = cx.insert(Menu::new(items, at), |o| Message::Menu(o.clone())) {
             self.menu = Some((id, menu));
@@ -419,22 +509,27 @@ impl Notes {
                 (Choice::Save, "Save"),
                 (Choice::Wrap, "Word wrap"),
                 (Choice::Close, "Close tab"),
+                (Choice::Trash, "Move to Trash"),
+                (Choice::ShowTrash, "Open Trash"),
             ]
             .into_iter()
             .map(|(key, title)| PickerItem {
                 key,
                 title: Arc::from(title),
                 open: false,
+                hint: Arc::from(key.shortcut()),
             })
             .collect()
         } else {
             self.records
                 .iter()
                 .enumerate()
+                .filter(|(_, r)| !r.removed)
                 .map(|(id, r)| PickerItem {
                     key: Choice::Note(id),
                     title: r.note.title.clone(),
                     open: self.open.contains(&id),
+                    hint: Arc::from(""),
                 })
                 .collect()
         };
@@ -457,6 +552,23 @@ impl Notes {
     }
     fn choose(&mut self, cx: &mut Update<'_, Self>, choice: Choice) {
         match choice {
+            Choice::ShowTrash => self.list_trash(cx, true),
+            Choice::Trash => {
+                if let Some(id) = self.active {
+                    self.trash_note(cx, id);
+                }
+            }
+            Choice::Restore(key) => {
+                if self.file_work.is_none() {
+                    if let Some(entry) = self.trash.iter().find(|e| e.key == key).cloned() {
+                        self.run_file_work(
+                            cx,
+                            FileWork::Restoring,
+                            trash::Operation::Restore(entry),
+                        );
+                    }
+                }
+            }
             Choice::Note(id) => self.display(cx, id),
             Choice::New => self.create(cx),
             Choice::Save => {
@@ -494,6 +606,7 @@ impl Widget for Notes {
     fn lifecycle(&mut self, cx: &mut Update<'_, Self>, event: Lifecycle) {
         match event {
             Lifecycle::Mount => {
+                let _ = cx.after(self.cleanup_timer, std::time::Duration::from_secs(3600));
                 let _ = cx.show(self.picker, false);
                 let _ = cx.show(self.footer, false);
                 let _ = cx.anchor(self.picker, Some(self.anchor));
@@ -517,6 +630,10 @@ impl Widget for Notes {
         }
     }
     fn update(&mut self, cx: &mut Update<'_, Self>, message: Message) {
+        if matches!(&message, Message::Page(id, _) | Message::FileSelected(Some(id), _) if self.records.get(*id).is_some_and(|r| r.removed))
+        {
+            return;
+        }
         match message {
             Message::Tabs(TabAction::Context(id, at)) => self.show_menu(cx, id, at),
             Message::Menu(MenuOutput::Dismissed) => {
@@ -530,6 +647,8 @@ impl Widget for Notes {
                             self.rename_pending = Some(id);
                         }
                         Choice::Close => self.close_tab(cx, id),
+                        Choice::Trash => self.trash_note(cx, id),
+                        Choice::ShowTrash => self.list_trash(cx, true),
                         Choice::Save => {
                             self.pending_saves.insert(id);
                             self.flush(cx);
@@ -544,6 +663,61 @@ impl Widget for Notes {
                         }
                         _ => {}
                     }
+                }
+            }
+            Message::TrashFinished(result) => {
+                let work = self.file_work.take();
+                match result {
+                    Ok(trash::Change::Moved(id, entry)) => {
+                        self.records[id].removed = true;
+                        self.trash.insert(0, entry);
+                        self.save_session(cx);
+                    }
+                    Ok(trash::Change::Restored(entry, note)) => {
+                        self.trash.retain(|e| e.key != entry.key);
+                        let id = self.records.len();
+                        self.records.push(Record {
+                            note,
+                            loaded: true,
+                            removed: false,
+                            page: None,
+                            revision: 0,
+                            saved: 0,
+                            view: EditorState::from(&entry.view),
+                        });
+                        self.display(cx, id);
+                    }
+                    Ok(trash::Change::Listed(entries)) => {
+                        self.trash = entries;
+                        if matches!(work, Some(FileWork::Listing(true))) {
+                            let items = self
+                                .trash
+                                .iter()
+                                .map(|e| PickerItem {
+                                    key: Choice::Restore(e.key),
+                                    title: Arc::from(e.title.as_str()),
+                                    open: false,
+                                    hint: Arc::from(format!("{} days left", e.days_left())),
+                                })
+                                .collect();
+                            let _ =
+                                cx.send(self.picker, PickerCommand::Show(items, PickerMode::Trash));
+                            let _ = cx.show(self.picker, true);
+                            let _ = cx.open_modal(self.picker);
+                            cx.relayout();
+                        }
+                    }
+                    Err(error) => {
+                        if let Some(FileWork::Moving(id)) = work {
+                            self.records[id].removed = false;
+                            self.display(cx, id);
+                        }
+                        self.closing = false;
+                        self.status(cx, format!("Could not update Trash: {error}"));
+                    }
+                }
+                if self.closing && self.records.iter().all(|r| r.revision == r.saved) {
+                    let _ = cx.close_window();
                 }
             }
             Message::FileSelected(None, Ok(Some(path))) => self.load(cx, None, path),
@@ -673,12 +847,17 @@ impl Widget for Notes {
             }
             Message::Loaded(id, Ok(note)) => {
                 let id = id
-                    .or_else(|| self.records.iter().position(|r| r.note.path == note.path))
+                    .or_else(|| {
+                        self.records
+                            .iter()
+                            .position(|r| !r.removed && r.note.path == note.path)
+                    })
                     .unwrap_or(self.records.len());
                 if id == self.records.len() {
                     self.records.push(Record {
                         note,
                         loaded: true,
+                        removed: false,
                         page: None,
                         revision: 0,
                         saved: 0,
@@ -719,12 +898,26 @@ impl Widget for Notes {
                                 self.status(cx, "Saved locally");
                             }
                         }
-                        if self.closing && self.records.iter().all(|r| r.revision == r.saved) {
+                        if matches!(self.file_work, Some(FileWork::AwaitSave(pending)) if pending == id)
+                            && self.records[id].revision == revision
+                        {
+                            self.move_saved_note(cx, id);
+                        }
+                        if self.closing
+                            && self.file_work.is_none()
+                            && self.records.iter().all(|r| r.revision == r.saved)
+                        {
                             let _ = cx.close_window();
                         }
                     }
                     Err(error) => {
                         self.closing = false;
+                        if matches!(self.file_work, Some(FileWork::AwaitSave(pending)) if pending == id)
+                        {
+                            self.file_work = None;
+                            self.records[id].removed = false;
+                            self.display(cx, id);
+                        }
                         self.status(cx, format!("Save failed: {error}. Ctrl S to retry."));
                     }
                 }
@@ -751,8 +944,18 @@ impl Widget for Notes {
         }
         self.flush(cx);
     }
+    fn timer(&mut self, cx: &mut Update<'_, Self>, timer: Timer) {
+        if timer == self.cleanup_timer {
+            self.list_trash(cx, false);
+            let _ = cx.after(self.cleanup_timer, std::time::Duration::from_secs(3600));
+        }
+    }
     fn close_requested(&mut self, cx: &mut Update<'_, Self>) -> bool {
         self.save_session(cx);
+        if self.file_work.is_some() {
+            self.closing = true;
+            return false;
+        }
         let dirty: Vec<_> = self
             .records
             .iter()
@@ -842,6 +1045,7 @@ impl Widget for Notes {
             if modifiers.command() {
                 match key {
                     Key::Character('n') => self.create(cx),
+                    Key::Character('t') if modifiers.shift => self.list_trash(cx, true),
                     Key::Character('r') => self.choose(cx, Choice::Rename),
                     Key::Character(c @ '1'..='9') => {
                         if let Some(id) = self.open.get((*c as u8 - b'1') as usize).copied() {
@@ -859,6 +1063,8 @@ impl Widget for Notes {
                     Key::Character('/') => {
                         if let Some(page) = self.active.and_then(|id| self.records[id].page) {
                             let _ = cx.send(page, PageCommand::Palette);
+                        } else {
+                            self.show_picker(cx, PickerMode::Commands);
                         }
                     }
                     Key::Character('s') if modifiers.shift => self.save_as(cx),
@@ -953,19 +1159,28 @@ fn start() -> Result<(), String> {
     let mut directory = std::env::var_os("FIRE_NOTES_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("tmp/fire-notes"));
+    let mut purge_only = false;
     while let Some(arg) = args.next() {
         if arg == "--data-dir" {
             directory = PathBuf::from(args.next().ok_or("--data-dir requires a path")?);
+        } else if arg == "--purge-trash" {
+            purge_only = true;
         } else if arg == "--help" {
-            println!("fire-notes [--data-dir PATH]\nCtrl N new · Ctrl P find · Ctrl O open · Ctrl / commands · Ctrl S save · Ctrl W close · Ctrl Tab switch · Alt Z wrap · Ctrl Q quit");
+            println!("fire-notes [--data-dir PATH] [--purge-trash]\nCtrl N new · Ctrl P find · Ctrl O open · Ctrl / commands · Ctrl S save · Ctrl W close · Ctrl Tab switch · Alt Z wrap · Ctrl Q quit");
             return Ok(());
         } else {
             return Err(format!("Unknown argument: {}", arg.to_string_lossy()));
         }
     }
+    if purge_only {
+        return trash::purge(&directory, trash::now());
+    }
+    if let Err(e) = trash::purge(&directory, trash::now()) {
+        eprintln!("Trash cleanup: {e}");
+    }
     let mut library = storage::scan(&directory)?;
     directory = std::fs::canonicalize(&directory).map_err(|e| e.to_string())?;
-    if library.is_empty() {
+    if library.is_empty() && !directory.join("session.json").exists() {
         let note = Note {
             path: directory.join("note-1.md"),
             title: Arc::from("Untitled-1"),
@@ -1006,6 +1221,22 @@ fn start() -> Result<(), String> {
             },
         },
         move |output, wake| match output {
+            Output::Trash(directory, operation) => {
+                let wake = wake.clone();
+                std::thread::spawn(move || {
+                    let mut message = Message::TrashFinished(operation.run(&directory));
+                    loop {
+                        match wake.post(message) {
+                            Ok(()) => break,
+                            Err((Error::Full, returned)) => {
+                                message = returned;
+                                std::thread::sleep(std::time::Duration::from_millis(2));
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                });
+            }
             Output::PickFile(ticket, save) => {
                 let wake = wake.clone();
                 std::thread::spawn(move || {
@@ -1092,6 +1323,47 @@ mod tests {
             ui.layout(&mut TestText);
         }
         outputs
+    }
+    #[test]
+    fn trash_waits_for_its_fresh_save_revision_and_recovers_from_save_failure() {
+        let mut ui = app();
+        settle(&mut ui);
+        ui.send(Message::Chrome(ChromeAction::New)).ok().unwrap();
+        settle(&mut ui);
+        ui.send(Message::Page(0, PageOutput::Body(Arc::from("Last input"))))
+            .ok()
+            .unwrap();
+        settle(&mut ui);
+        let previous = ui.root().records[0].revision;
+        ui.send(Message::Pick(PickerOutput::Selected(Choice::Trash)))
+            .ok()
+            .unwrap();
+        let outputs = settle(&mut ui);
+        let barrier = ui.root().records[0].revision;
+        assert!(barrier > previous);
+        assert!(ui.root().records[0].removed);
+        assert!(!outputs.iter().any(|o| matches!(o, Output::Trash(..))));
+        assert!(!ui.request_close());
+        ui.send(Message::Saved(0, previous, Ok(()))).ok().unwrap();
+        assert!(!settle(&mut ui)
+            .iter()
+            .any(|o| matches!(o, Output::Trash(..))));
+        ui.send(Message::Saved(0, barrier, Err("Disk full".into())))
+            .ok()
+            .unwrap();
+        settle(&mut ui);
+        assert!(!ui.root().records[0].removed);
+        assert!(ui.root().file_work.is_none());
+        assert_eq!(&*ui.root().records[0].note.body, "Last input");
+        ui.send(Message::Pick(PickerOutput::Selected(Choice::Trash)))
+            .ok()
+            .unwrap();
+        settle(&mut ui);
+        let barrier = ui.root().records[0].revision;
+        ui.send(Message::Saved(0, barrier, Ok(()))).ok().unwrap();
+        assert!(settle(&mut ui)
+            .iter()
+            .any(|o| matches!(o, Output::Trash(_, trash::Operation::Move { id: 0, .. }))));
     }
     #[test]
     fn failed_save_keeps_window_open_until_latest_revision_is_acknowledged() {

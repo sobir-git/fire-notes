@@ -91,6 +91,12 @@ def main():
                 key('ctrl+n');type_text('A second note.');key('ctrl+r');key('ctrl+a');type_text('Second note');key('Return')
                 second=next(p for p in notes.glob('note-*.md') if p!=first)
                 key('ctrl+1');key('ctrl+End')
+                for name,yy in [('00-hover-padding',5),('00-hover-text',20)]:
+                    x('mousemove','--window',window,180,yy)
+                    shot(name, 'Tab hover covers both its label and padding.')
+                    from PIL import Image
+                    assert Image.open(screenshots[-1]).getpixel((150,5))[:3]==(59,38,29), 'Tab hover disappeared over text'
+                x('mousemove','--window',window,400,300);time.sleep(.2)
                 def saved():return json.loads((notes/'session.json').read_text())
                 def menu(xx):
                     x('mousemove','--window',window,xx,20);x('click',3);time.sleep(.2)
@@ -111,7 +117,7 @@ def main():
                 assert saved()['active']==str(second)
                 menu(50);click(100,73)
                 assert saved()['active']==str(second),'Save switched tabs'
-                menu(50);key('End');key('Return')
+                menu(50);key('Home');key('Down');key('Down');key('Down');key('Return')
                 eventually(lambda:saved()['tabs']==[str(second)],'Close targeted the wrong tab')
                 assert first.exists(),'Close deleted a note'
                 menu(50)
@@ -121,8 +127,43 @@ def main():
                 key('Escape')
                 menu(50);click(400,300);key('ctrl+End');type_text(' Outside dismissed.')
                 eventually(lambda:second.read_text().endswith(' Outside dismissed.'),'Outside dismissal lost editor focus')
+                # Trash the last open tab, restore it, and exercise retention through the CLI.
+                key('ctrl+End');type_text(' Last input before Trash.')
+                expected=second.read_text() if second.read_text().endswith('Last input before Trash.') else 'A second note. Outside dismissed. Last input before Trash.'
+                key('ctrl+s');key('ctrl+s')
+                menu(50);click(100,169)
+                eventually(lambda:not second.exists(),'Move to Trash left the note in the library')
+                entries=list((notes/'trash').glob('*/entry.json'))
+                assert len(entries)==1
+                entry=json.loads(entries[0].read_text())
+                assert entry['title']=='Ideas' and entry['view']['wrap']
+                assert (entries[0].parent/'note.md').read_text()==expected,'Trash lost recent input'
+                assert saved()['tabs']==[], 'Trashing the last tab did not close it'
+                key('ctrl+shift+t')
+                shot('05-trash', 'Trash shows recovery time; Enter or click restores the selected note.')
+                type_text('Ideas');key('Return')
+                eventually(lambda:second.exists() and saved()['active']==str(second),'Restore failed')
+                assert second.read_text()==expected
+                assert saved()['titles'][str(second)]=='Ideas' and saved()['views'][str(second)]['wrap']
+                shot('06-restored-note', 'Restored note retains its title, text and wrapping.')
+                menu(50);click(100,169);key('ctrl+q')
+                app.wait(timeout=10);assert app.returncode==0
+                entries=list((notes/'trash').glob('*/entry.json'));assert len(entries)==1
+                entry=json.loads(entries[0].read_text())
+                entry['deleted_at']=int(time.time())-30*86400+3600
+                entries[0].write_text(json.dumps(entry))
+                subprocess.run([str(binary),'--data-dir',str(notes),'--purge-trash'],check=True,env=env)
+                assert (entries[0].parent/'note.md').exists(),'Cleanup deleted an unexpired note'
+                entry['deleted_at']=int(time.time())-30*86400
+                entries[0].write_text(json.dumps(entry))
+                subprocess.run([str(binary),'--data-dir',str(notes),'--purge-trash'],check=True,env=env)
+                assert not (entries[0].parent/'note.md').exists(),'Expired note was not deleted'
+                assert first.exists(),'Trash cleanup touched an active-library note'
+                app,window=start();key('ctrl+shift+t')
+                shot('07-empty-trash', 'Expired notes are removed automatically; active notes remain untouched.')
+                key('Escape')
                 key('ctrl+q');app.wait(timeout=10);assert app.returncode==0
-                (output/'result.json').write_text(json.dumps({'binary_sha256':fingerprint,'passed':['inactive tab target','wrap','focus restoration','rename','save','close preserves files','last-tab disabled','outside dismiss']},indent=2)+'\n')
+                (output/'result.json').write_text(json.dumps({'binary_sha256':fingerprint,'passed':['inactive tab target','wrap','focus restoration','rename','save','close preserves files','last-tab disabled','outside dismiss','hover over text and padding','trash latest input','restore title and view','last-tab trash','close waits for trash','30-day cleanup']},indent=2)+'\n')
                 print('PASS: native tab context actions',flush=True)
             finally:
                 if app and app.poll() is None:

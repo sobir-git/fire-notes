@@ -64,6 +64,11 @@ The command palette stays near the caret without covering its line when space
 allows. Note lookup is centered. Popups stay inside the window at minimum size.
 Escape and outside clicks dismiss them and return focus to writing.
 
+Trash uses the same searchable popup, with remaining recovery time beside each
+note and a footer stating the 30-day retention policy. Selecting a note restores
+it. “Move to Trash” is separate from “Close tab.” Trashing the last tab leaves
+keyboard hints for creating, finding, and restoring notes.
+
 ## Motion and verification
 
 Fire is the distinctive motion. Keep its response to typing and selected text;

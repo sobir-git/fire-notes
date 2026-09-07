@@ -114,11 +114,27 @@ impl Widget for Page {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Choice {
     Note(usize),
+    Trash,
+    ShowTrash,
+    Restore(u64),
     New,
     Save,
     Rename,
     Wrap,
     Close,
+}
+impl Choice {
+    pub fn shortcut(self) -> &'static str {
+        match self {
+            Self::New => "Ctrl N",
+            Self::Save => "Ctrl S",
+            Self::Rename => "Ctrl R",
+            Self::Wrap => "Alt Z",
+            Self::Close => "Ctrl W",
+            Self::ShowTrash => "Ctrl Shift T",
+            _ => "",
+        }
+    }
 }
 impl Data for Choice {
     fn bytes(&self) -> usize {
@@ -130,12 +146,14 @@ pub enum PickerMode {
     Notes,
     Commands,
     File,
+    Trash,
 }
 #[derive(Clone)]
 pub struct PickerItem {
     pub key: Choice,
     pub title: Arc<str>,
     pub open: bool,
+    pub hint: Arc<str>,
 }
 pub enum PickerCommand {
     Show(Vec<PickerItem>, PickerMode),
@@ -174,7 +192,7 @@ struct PickerRow {
     title: Arc<str>,
     paragraph: Option<Arc<Paragraph>>,
     hint: Option<Arc<Paragraph>>,
-    shortcut: &'static str,
+    shortcut: Arc<str>,
     open: bool,
 }
 impl PickerRow {
@@ -183,14 +201,7 @@ impl PickerRow {
             title: item.title.clone(),
             paragraph: None,
             hint: None,
-            shortcut: match item.key {
-                Choice::New => "Ctrl N",
-                Choice::Save => "Ctrl S",
-                Choice::Rename => "Ctrl R",
-                Choice::Wrap => "Alt Z",
-                Choice::Close => "Ctrl W",
-                Choice::Note(_) => "",
-            },
+            shortcut: item.hint.clone(),
             open: item.open,
         })
     }
@@ -201,7 +212,7 @@ impl Widget for PickerRow {
     fn layout(&mut self, cx: &mut Layout<'_>, c: Constraints) -> Metrics {
         for (text, cached) in [
             (self.title.clone(), &mut self.paragraph),
-            (Arc::from(self.shortcut), &mut self.hint),
+            (self.shortcut.clone(), &mut self.hint),
         ] {
             if cached
                 .as_ref()
@@ -272,6 +283,7 @@ pub struct Picker {
     search: Child<Editor>,
     list: Child<NoteList>,
     empty: Child<Label>,
+    retention: Child<Label>,
     items: Vec<PickerItem>,
     query: String,
     mode: PickerMode,
@@ -293,6 +305,11 @@ impl Picker {
             ),
             list: c.connect(list(&[]), |o| PickerCommand::List(o.clone())),
             empty: c.add(label("No matching notes", 14., MUTED)),
+            retention: c.add(label(
+                "Restore within 30 days. Older notes are deleted.",
+                12.,
+                MUTED,
+            )),
             items: vec![],
             query: String::new(),
             mode: PickerMode::Notes,
@@ -333,6 +350,7 @@ impl Widget for Picker {
                     self.empty,
                     match mode {
                         PickerMode::Commands => "No matching commands",
+                        PickerMode::Trash => "No notes in Trash",
                         _ => "No matching notes",
                     }
                     .to_string(),
@@ -344,6 +362,7 @@ impl Widget for Picker {
                         PickerMode::Notes => "Search notes...",
                         PickerMode::Commands => "Search commands...",
                         PickerMode::File => "Enter a file path...",
+                        PickerMode::Trash => "Search Trash to restore...",
                     })),
                 );
                 if cx.remove(self.list).is_ok() {
@@ -384,6 +403,7 @@ impl Widget for Picker {
         }
     }
     fn frame(&mut self, cx: &mut Update<'_, Self>, _: FrameTime) {
+        let _ = cx.show(self.retention, self.mode == PickerMode::Trash);
         let _ = cx.show(self.list, self.mode != PickerMode::File);
         let _ = cx.show(
             self.empty,
@@ -442,12 +462,17 @@ impl Widget for Picker {
         };
         let commands = self.mode == PickerMode::Commands;
         let w = (if commands { 360_f32 } else { 420_f32 }).min((c.max.width - 16.).max(0.));
-        let h = (if rows == 0 {
+        let footer = if self.mode == PickerMode::Trash {
+            28.
+        } else {
+            0.
+        };
+        let h = ((if rows == 0 {
             52.
         } else {
             50. + rows as f32 * 32. + 8.
-        })
-        .min((c.max.height - 16.).max(0.));
+        }) + footer)
+            .min((c.max.height - 16.).max(0.));
         let (x, y) = if commands {
             let x = (self.anchor.x - 8.).clamp(8., (c.max.width - w - 8.).max(8.));
             let below = self.anchor.y + self.anchor.height + 4.;
@@ -465,7 +490,12 @@ impl Widget for Picker {
         place(
             cx,
             self.list,
-            Rect::new(x + 8., y + 50., w - 16., (h - 58.).max(0.)),
+            Rect::new(x + 8., y + 50., w - 16., (h - 58. - footer).max(0.)),
+        );
+        place(
+            cx,
+            self.retention,
+            Rect::new(x + 16., y + h - 26., w - 32., 20.),
         );
         place(cx, self.empty, Rect::new(x + 16., y + 56., w - 32., 21.));
         Metrics::new(c.max)
@@ -494,6 +524,7 @@ impl Widget for Picker {
                 PickerMode::Notes => "Find a note",
                 PickerMode::Commands => "Commands",
                 PickerMode::File => "Open a file",
+                PickerMode::Trash => "Trash",
             }
             .into(),
             ..Semantics::default()
