@@ -17,6 +17,7 @@ struct Record {
     note: Note,
     loaded: bool,
     removed: bool,
+    draft: bool,
     page: Option<Child<Page>>,
     revision: u64,
     saved: u64,
@@ -105,7 +106,12 @@ impl Data for Output {
     }
 }
 impl Notes {
-    fn new(directory: PathBuf, notes: Vec<Note>, session: &Session) -> Element<Self> {
+    fn new(
+        directory: PathBuf,
+        notes: Vec<Note>,
+        session: &Session,
+        initial_draft: bool,
+    ) -> Element<Self> {
         let mut records: Vec<_> = notes
             .into_iter()
             .map(|note| Record {
@@ -120,6 +126,7 @@ impl Notes {
                 note,
                 loaded: false,
                 removed: false,
+                draft: false,
                 page: None,
                 revision: 0,
                 saved: 0,
@@ -139,6 +146,7 @@ impl Notes {
                         },
                         loaded: false,
                         removed: false,
+                        draft: false,
                         page: None,
                         revision: 0,
                         saved: 0,
@@ -171,6 +179,27 @@ impl Notes {
                 records[0].loaded = true;
                 open.push(0);
             }
+        }
+        if initial_draft {
+            let id = records.len();
+            records.push(Record {
+                note: Note {
+                    path: directory.join("note-1.md"),
+                    title: Arc::from("Untitled-1"),
+                    body: Arc::from(""),
+                },
+                loaded: true,
+                removed: false,
+                draft: true,
+                page: None,
+                revision: 0,
+                saved: 0,
+                view: EditorState {
+                    wrap: false,
+                    ..EditorState::default()
+                },
+            });
+            open.push(id);
         }
         let active = session
             .active
@@ -267,19 +296,23 @@ impl Notes {
             tabs: self
                 .open
                 .iter()
+                .filter(|id| !self.records[**id].draft)
                 .map(|id| self.records[*id].note.path.clone())
                 .collect(),
-            active: self.active.map(|id| self.records[id].note.path.clone()),
+            active: self
+                .active
+                .filter(|id| !self.records[*id].draft)
+                .map(|id| self.records[id].note.path.clone()),
             titles: self
                 .records
                 .iter()
-                .filter(|r| !r.removed)
+                .filter(|r| !r.removed && !r.draft)
                 .map(|r| (r.note.path.clone(), r.note.title.to_string()))
                 .collect(),
             views: self
                 .records
                 .iter()
-                .filter(|r| !r.removed)
+                .filter(|r| !r.removed && !r.draft)
                 .map(|r| (r.note.path.clone(), storage::NoteView::from(&r.view)))
                 .collect(),
             position: self.position,
@@ -367,22 +400,37 @@ impl Notes {
             note,
             loaded: true,
             removed: false,
+            draft: true,
             page: None,
-            revision: 1,
+            revision: 0,
             saved: 0,
             view: EditorState {
                 wrap: false,
                 ..EditorState::default()
             },
         });
-        self.pending_saves.insert(id);
         self.display(cx, id);
-        self.flush(cx);
     }
     fn close_tab(&mut self, cx: &mut Update<'_, Self>, id: usize) {
-        if self.open.len() > 1 {
+        if self.records[id].draft {
+            self.discard_draft(cx, id);
+        } else if self.open.len() > 1 {
             self.detach_tab(cx, id);
         }
+    }
+    fn discard_draft(&mut self, cx: &mut Update<'_, Self>, id: usize) {
+        self.records[id].removed = true;
+        self.detach_tab(cx, id);
+        if self.records[id].page.is_some() {
+            self.records[id].removed = false;
+        }
+    }
+    fn save_note(&mut self, cx: &mut Update<'_, Self>, id: usize) {
+        self.records[id].draft = false;
+        self.records[id].revision += 1;
+        self.pending_saves.insert(id);
+        self.save_session(cx);
+        self.flush(cx);
     }
     fn detach_tab(&mut self, cx: &mut Update<'_, Self>, id: usize) {
         if let Some(page) = self.records.get_mut(id).and_then(|r| r.page.take()) {
@@ -439,6 +487,10 @@ impl Notes {
         }
     }
     fn trash_note(&mut self, cx: &mut Update<'_, Self>, id: usize) {
+        if self.records[id].draft {
+            self.discard_draft(cx, id);
+            return;
+        }
         if self.file_work.is_some() || self.records[id].removed {
             return;
         }
@@ -489,7 +541,7 @@ impl Notes {
                 .checked(self.records[id].view.wrap),
             MenuItem::new(Choice::Close, "Close tab")
                 .hint("Ctrl W")
-                .enabled(self.open.len() > 1),
+                .enabled(self.open.len() > 1 || self.records[id].draft),
             MenuItem::new(Choice::Trash, "Move to Trash").enabled(self.file_work.is_none()),
             MenuItem::new(Choice::ShowTrash, "Open Trash")
                 .hint("Ctrl Shift T")
@@ -524,7 +576,7 @@ impl Notes {
             self.records
                 .iter()
                 .enumerate()
-                .filter(|(_, r)| !r.removed)
+                .filter(|(_, r)| !r.removed && !r.draft)
                 .map(|(id, r)| PickerItem {
                     key: Choice::Note(id),
                     title: r.note.title.clone(),
@@ -573,8 +625,7 @@ impl Notes {
             Choice::New => self.create(cx),
             Choice::Save => {
                 if let Some(id) = self.active {
-                    self.pending_saves.insert(id);
-                    self.flush(cx);
+                    self.save_note(cx, id);
                 }
             }
             Choice::Rename => {
@@ -649,10 +700,7 @@ impl Widget for Notes {
                         Choice::Close => self.close_tab(cx, id),
                         Choice::Trash => self.trash_note(cx, id),
                         Choice::ShowTrash => self.list_trash(cx, true),
-                        Choice::Save => {
-                            self.pending_saves.insert(id);
-                            self.flush(cx);
-                        }
+                        Choice::Save => self.save_note(cx, id),
                         Choice::Wrap => {
                             let r = &mut self.records[id];
                             r.view.wrap = !r.view.wrap;
@@ -680,6 +728,7 @@ impl Widget for Notes {
                             note,
                             loaded: true,
                             removed: false,
+                            draft: false,
                             page: None,
                             revision: 0,
                             saved: 0,
@@ -732,6 +781,7 @@ impl Widget for Notes {
                     return;
                 }
                 let r = &mut self.records[id];
+                r.draft = false;
                 r.note.path = path;
                 r.note.title = Arc::from(
                     r.note
@@ -810,6 +860,7 @@ impl Widget for Notes {
             }
             Message::Page(id, change) => {
                 let r = &mut self.records[id];
+                let previous_title = r.note.title.clone();
                 match change {
                     PageOutput::Title(title) => {
                         r.note.title = if title.trim().is_empty() {
@@ -826,8 +877,13 @@ impl Widget for Notes {
                         unreachable!()
                     }
                 };
-                r.revision += 1;
-                self.pending_saves.insert(id);
+                if !r.note.body.is_empty() || r.note.title != previous_title {
+                    r.draft = false;
+                }
+                if !r.draft {
+                    r.revision += 1;
+                    self.pending_saves.insert(id);
+                }
                 self.sync_tabs(cx);
                 self.save_session(cx);
                 self.status(cx, "Saving…");
@@ -858,6 +914,7 @@ impl Widget for Notes {
                         note,
                         loaded: true,
                         removed: false,
+                        draft: false,
                         page: None,
                         revision: 0,
                         saved: 0,
@@ -1180,15 +1237,7 @@ fn start() -> Result<(), String> {
     }
     let mut library = storage::scan(&directory)?;
     directory = std::fs::canonicalize(&directory).map_err(|e| e.to_string())?;
-    if library.is_empty() && !directory.join("session.json").exists() {
-        let note = Note {
-            path: directory.join("note-1.md"),
-            title: Arc::from("Untitled-1"),
-            body: Arc::from(""),
-        };
-        storage::atomic_write(&note.path, note.body.as_bytes())?;
-        library.push(note);
-    }
+    let initial_draft = library.is_empty() && !directory.join("session.json").exists();
     for note in &mut library {
         note.path = std::fs::canonicalize(&note.path).map_err(|e| e.to_string())?;
     }
@@ -1202,7 +1251,7 @@ fn start() -> Result<(), String> {
             note.title = Arc::from(title.as_str());
         }
     }
-    let root = Notes::new(directory, library, &session);
+    let root = Notes::new(directory, library, &session, initial_draft);
     let mut writer: Option<Writer> = None;
     run_with(
         root,
@@ -1309,6 +1358,7 @@ mod tests {
                 PathBuf::from("/unused-test-directory"),
                 vec![],
                 &Session::default(),
+                false,
             ),
             Size::new(1100., 820.),
             Limits::default(),
@@ -1323,6 +1373,63 @@ mod tests {
             ui.layout(&mut TestText);
         }
         outputs
+    }
+    #[test]
+    fn untouched_drafts_never_write_note_files_or_session_entries() {
+        let mut ui = app();
+        settle(&mut ui);
+        ui.send(Message::Chrome(ChromeAction::New)).ok().unwrap();
+        let mut outputs = settle(&mut ui);
+        let title = ui.root().records[0].note.title.clone();
+        ui.send(Message::Page(0, PageOutput::Title(title)))
+            .ok()
+            .unwrap();
+        outputs.extend(settle(&mut ui));
+        assert!(ui.root().records[0].draft);
+        ui.send(Message::Pick(PickerOutput::Selected(Choice::Close)))
+            .ok()
+            .unwrap();
+        outputs.extend(settle(&mut ui));
+        assert!(ui.root().open.is_empty());
+        assert!(ui.root().records[0].removed);
+        assert!(ui.request_close());
+        outputs.extend(settle(&mut ui));
+        for output in outputs {
+            match output {
+                Output::Save(save) => {
+                    assert_eq!(save.id, usize::MAX, "Draft wrote a note file");
+                    let session: Session = serde_json::from_str(&save.content).unwrap();
+                    assert!(
+                        session.tabs.is_empty()
+                            && session.titles.is_empty()
+                            && session.views.is_empty()
+                    );
+                    assert!(session.active.is_none());
+                }
+                Output::Trash(..) => panic!("Draft went to Trash"),
+                _ => {}
+            }
+        }
+    }
+    #[test]
+    fn naming_writing_or_explicitly_saving_a_draft_makes_it_persistent() {
+        for action in 0..3 {
+            let mut ui = app();
+            settle(&mut ui);
+            ui.send(Message::Chrome(ChromeAction::New)).ok().unwrap();
+            settle(&mut ui);
+            let message = match action {
+                0 => Message::Page(0, PageOutput::Title(Arc::from("Plans"))),
+                1 => Message::Page(0, PageOutput::Body(Arc::from(" "))),
+                _ => Message::Pick(PickerOutput::Selected(Choice::Save)),
+            };
+            ui.send(message).ok().unwrap();
+            let outputs = settle(&mut ui);
+            assert!(!ui.root().records[0].draft);
+            assert!(outputs
+                .iter()
+                .any(|o| matches!(o, Output::Save(s) if s.id == 0)));
+        }
     }
     #[test]
     fn trash_waits_for_its_fresh_save_revision_and_recovers_from_save_failure() {

@@ -125,9 +125,24 @@ def main():
                     raise AssertionError(message)
                 x('windowsize', window, 900, 600)
                 shot('01-empty', 'Original compact chrome on the new framework.')
+                time.sleep(.5)
+                assert not list(notes.glob('*.md')), 'Untouched startup draft was saved'
+                key('ctrl+n');time.sleep(.5);key('ctrl+w')
+                assert not list(notes.glob('*.md')), 'Empty new tab left a note file'
+                key('ctrl+r');key('Return');time.sleep(.4)
+                assert not list(notes.glob('*.md')), 'Unchanged default name saved a draft'
+                key('ctrl+q');app.wait(timeout=10);assert app.returncode==0
+                state=json.loads((notes/'session.json').read_text())
+                assert not state['tabs'] and not state['titles'] and not state['views']
+                assert not list(notes.glob('*.md')), 'Quit saved an untouched draft'
+                assert not list((notes/'trash').glob('*/entry.json')), 'Draft went to Trash'
+                app,window=start()
+                shot('01a-discarded', 'Empty Untitled drafts leave no files or restored tabs after restart.')
+                key('ctrl+n')
                 body='Fire Notes\n\nA small, fast place for your thoughts.\nKeep the useful parts. Make the rest simpler.'
                 type_text(body)
-                first=notes/'note-1.md'
+                eventually(lambda:bool(list(notes.glob('note-*.md'))),'Typing did not save the draft')
+                first=next(notes.glob('note-*.md'))
                 eventually(lambda: first.read_text()==body, 'Initial typing or raw Markdown saving failed')
                 time.sleep(1.8)
                 shot('02-writing', 'Text placement and colors use the original app as reference.')

@@ -68,6 +68,9 @@ Trash uses the same searchable popup, with remaining recovery time beside each
 note and a footer stating the 30-day retention policy. Selecting a note restores
 it. “Move to Trash” is separate from “Close tab.” Trashing the last tab leaves
 keyboard hints for creating, finding, and restoring notes.
+An untouched empty Untitled tab is a disposable draft. Closing it leaves no file
+or Trash entry. Naming it, writing content, or explicitly saving it makes it a
+persistent note, including intentionally saved empty notes.
 
 ## Motion and verification
 
