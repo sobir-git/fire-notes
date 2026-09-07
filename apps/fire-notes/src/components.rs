@@ -1,3 +1,4 @@
+use crate::design::*;
 use fire_ui::*;
 use fire_ui_widgets::*;
 use std::{collections::HashMap, rc::Rc, sync::Arc};
@@ -11,18 +12,6 @@ pub fn label(text: impl Into<Arc<str>>, size: f32, color: Color) -> Element<Labe
 pub fn place<W: Widget>(cx: &mut Layout<'_>, child: Child<W>, rect: Rect) {
     cx.measure(child, Constraints::tight(rect.size()));
     cx.place(child, Point::new(rect.x, rect.y));
-}
-pub fn paper() -> Theme {
-    Theme {
-        background: Color::hex(0),
-        foreground: Color(1., 0.9, 0.8, 1.),
-        accent: Color(1., 0.8, 0., 1.),
-        selection: Color(0.39, 0.55, 0.82, 0.35),
-        radius: 0.,
-        font_size: 16.,
-        inset: 0.,
-        ..Theme::default()
-    }
 }
 #[derive(Clone, Debug)]
 pub enum PageOutput {
@@ -85,7 +74,7 @@ impl Widget for Page {
     type Output = PageOutput;
     fn lifecycle(&mut self, cx: &mut Update<'_, Self>, event: Lifecycle) {
         if event == Lifecycle::Mount {
-            let _ = cx.set_environment(self.body, Rc::new(paper()), true);
+            let _ = cx.set_environment(self.body, Rc::new(editor_theme()), true);
         }
     }
     fn update(&mut self, cx: &mut Update<'_, Self>, command: PageCommand) {
@@ -184,6 +173,8 @@ impl Data for PickerOutput {
 struct PickerRow {
     title: Arc<str>,
     paragraph: Option<Arc<Paragraph>>,
+    hint: Option<Arc<Paragraph>>,
+    shortcut: &'static str,
     open: bool,
 }
 impl PickerRow {
@@ -191,6 +182,15 @@ impl PickerRow {
         Element::build(|_| Self {
             title: item.title.clone(),
             paragraph: None,
+            hint: None,
+            shortcut: match item.key {
+                Choice::New => "Ctrl N",
+                Choice::Save => "Ctrl S",
+                Choice::Rename => "Ctrl R",
+                Choice::Wrap => "Alt Z",
+                Choice::Close => "Ctrl W",
+                Choice::Note(_) => "",
+            },
             open: item.open,
         })
     }
@@ -199,35 +199,63 @@ impl Widget for PickerRow {
     type Command = std::convert::Infallible;
     type Output = std::convert::Infallible;
     fn layout(&mut self, cx: &mut Layout<'_>, c: Constraints) -> Metrics {
-        if self.paragraph.is_none() {
-            self.paragraph = Some(cx.paragraph(TextRequest {
-                text: self.title.clone(),
-                style: TextStyle { size: 14., font: 0 },
-                width: None,
-                revision: 0,
-            }));
+        for (text, cached) in [
+            (self.title.clone(), &mut self.paragraph),
+            (Arc::from(self.shortcut), &mut self.hint),
+        ] {
+            if cached
+                .as_ref()
+                .is_none_or(|p| p.service_revision != cx.text_revision())
+            {
+                *cached = Some(cx.paragraph(TextRequest {
+                    text,
+                    style: TextStyle {
+                        size: CONTROL_TEXT,
+                        font: 0,
+                    },
+                    width: None,
+                    revision: 0,
+                }));
+            }
         }
         Metrics::new(c.max)
     }
     fn paint(&self, cx: &mut Paint<'_>) {
+        let hint_width = self.hint.as_ref().map_or(0., |p| p.size.width);
+        let trailing = if self.open {
+            24.
+        } else if hint_width > 0. {
+            hint_width + 24.
+        } else {
+            8.
+        };
         if let Some(p) = &self.paragraph {
-            let selected = cx.environment::<ListRowState>().is_some_and(|s| s.selected);
+            cx.painter.save();
+            cx.painter.clip(Rect::new(
+                8.,
+                0.,
+                (cx.bounds.width - trailing - 8.).max(0.),
+                cx.bounds.height,
+            ));
+            cx.painter
+                .paragraph(p, Point::new(8., (32. - p.line_height) / 2.), TEXT.into());
+            cx.painter.restore();
+        }
+        if let Some(p) = &self.hint {
             cx.painter.paragraph(
                 p,
-                Point::new(8., 6.),
-                if selected {
-                    Color::hex(0xffffff)
-                } else {
-                    Color(0.78, 0.78, 0.78, 1.)
-                }
-                .into(),
+                Point::new(
+                    cx.bounds.width - p.size.width - 8.,
+                    (32. - p.line_height) / 2.,
+                ),
+                MUTED.into(),
             );
         }
         if self.open {
             cx.painter.rect(
                 Rect::new(cx.bounds.width - 14., 14., 4., 4.),
                 2.,
-                Color(0.4, 0.7, 1., 1.).into(),
+                EMBER.into(),
             );
         }
     }
@@ -239,21 +267,6 @@ fn list(items: &[PickerItem]) -> Element<NoteList> {
     let keys = items.iter().map(|i| i.key).collect();
     let factory: RowFactory = Box::new(move |key| PickerRow::new(&entries[key]));
     Element::leaf(VirtualList::new(keys, 32., factory).select_on_hover(true))
-}
-fn overlay_theme() -> Theme {
-    Theme {
-        background: Color(0.07, 0.07, 0.09, 1.),
-        panel: Color(0.13, 0.13, 0.15, 1.),
-        border: Color(0.4, 0.7, 1., 0.55),
-        foreground: Color::hex(0xffffff),
-        muted: Color(0.4, 0.4, 0.4, 1.),
-        accent: Color(0.4, 0.7, 1., 1.),
-        selection: Color(0.4, 0.7, 1., 0.12),
-        font_size: 14.,
-        inset: 8.,
-        radius: 4.,
-        ..Theme::default()
-    }
 }
 pub struct Picker {
     search: Child<Editor>,
@@ -273,16 +286,13 @@ impl Picker {
                     Editor::field("")
                         .caret_blink(false)
                         .placeholder("Search notes...")
+                        .chrome(false)
                         .padding(8., 7.),
                 ),
                 |o| PickerCommand::Query(o.clone()),
             ),
             list: c.connect(list(&[]), |o| PickerCommand::List(o.clone())),
-            empty: c.add(label(
-                "No matching notes",
-                14.,
-                Color(0.59, 0.59, 0.59, 0.71),
-            )),
+            empty: c.add(label("No matching notes", 14., MUTED)),
             items: vec![],
             query: String::new(),
             mode: PickerMode::Notes,
@@ -309,7 +319,7 @@ impl Widget for Picker {
     type Output = PickerOutput;
     fn lifecycle(&mut self, cx: &mut Update<'_, Self>, e: Lifecycle) {
         if e == Lifecycle::Mount {
-            let _ = cx.set_environment(self.search, Rc::new(overlay_theme()), true);
+            let _ = cx.set_environment(self.search, Rc::new(popup_theme()), true);
         }
     }
     fn update(&mut self, cx: &mut Update<'_, Self>, c: PickerCommand) {
@@ -319,6 +329,14 @@ impl Widget for Picker {
                 self.items = items;
                 self.mode = mode;
                 self.query.clear();
+                let _ = cx.send(
+                    self.empty,
+                    match mode {
+                        PickerMode::Commands => "No matching commands",
+                        _ => "No matching notes",
+                    }
+                    .to_string(),
+                );
                 let _ = cx.send(self.search, Edit::Set(String::new()));
                 let _ = cx.send(
                     self.search,
@@ -374,8 +392,8 @@ impl Widget for Picker {
         let _ = cx.set_environment(
             self.list,
             Rc::new(Theme {
-                radius: 0.,
-                ..overlay_theme()
+                radius: 3.,
+                ..popup_theme()
             }),
             false,
         );
@@ -423,16 +441,16 @@ impl Widget for Picker {
             self.filtered().len().clamp(1, 8)
         };
         let commands = self.mode == PickerMode::Commands;
-        let w = ((c.max.width * if commands { 0.5 } else { 0.6 }).min(if commands {
-            400.
+        let w = (if commands { 360_f32 } else { 420_f32 }).min((c.max.width - 16.).max(0.));
+        let h = (if rows == 0 {
+            52.
         } else {
-            500.
-        }) + 16.)
-            .min(c.max.width - 16.);
-        let h = (36. + rows as f32 * 32. + 32.).min(c.max.height - 32.);
+            50. + rows as f32 * 32. + 8.
+        })
+        .min((c.max.height - 16.).max(0.));
         let (x, y) = if commands {
             let x = (self.anchor.x - 8.).clamp(8., (c.max.width - w - 8.).max(8.));
-            let below = self.anchor.y + self.anchor.height - 12.;
+            let below = self.anchor.y + self.anchor.height + 4.;
             let y = if below + h <= c.max.height - 8. {
                 below
             } else {
@@ -440,26 +458,34 @@ impl Widget for Picker {
             };
             (x, y.clamp(8., (c.max.height - h - 8.).max(8.)))
         } else {
-            (
-                (c.max.width - w) / 2.,
-                ((c.max.height - h) / 2. + 30.).min(c.max.height - h - 8.),
-            )
+            ((c.max.width - w) / 2., ((c.max.height - h) / 2.).max(8.))
         };
         self.panel = Rect::new(x, y, w, h);
         place(cx, self.search, Rect::new(x + 8., y + 8., w - 16., 36.));
         place(
             cx,
             self.list,
-            Rect::new(x + 8., y + 44., w - 28., (h - 68.).max(0.)),
+            Rect::new(x + 8., y + 50., w - 16., (h - 58.).max(0.)),
         );
-        place(cx, self.empty, Rect::new(x + 16., y + 52., w - 32., 21.));
+        place(cx, self.empty, Rect::new(x + 16., y + 56., w - 32., 21.));
         Metrics::new(c.max)
     }
     fn paint(&self, cx: &mut Paint<'_>) {
+        cx.painter.rect(self.panel, POPUP_RADIUS, PANEL.into());
         cx.painter
-            .rect(self.panel, 8., Color(0.13, 0.13, 0.15, 1.).into());
-        cx.painter
-            .stroke(self.panel, 8., 2., Color(0.4, 0.7, 1., 0.55));
+            .stroke(self.panel.inset(0.5), POPUP_RADIUS, 1., BORDER);
+        if self.mode != PickerMode::File {
+            cx.painter.rect(
+                Rect::new(
+                    self.panel.x + 8.,
+                    self.panel.y + 44.,
+                    self.panel.width - 16.,
+                    1.,
+                ),
+                0.,
+                BORDER.into(),
+            );
+        }
     }
     fn semantics(&self) -> Semantics {
         Semantics {

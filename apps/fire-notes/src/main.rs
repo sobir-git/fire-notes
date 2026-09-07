@@ -1,8 +1,10 @@
 mod components;
+mod design;
 mod flames;
 mod storage;
 mod tabs;
 use components::*;
+use design::*;
 use fire_ui::*;
 use fire_ui_native::{run_with, WindowOptions};
 use fire_ui_widgets::*;
@@ -196,11 +198,11 @@ impl Notes {
                 close: c.connect(ChromeButton::new(ChromeAction::Close), |a| {
                     Message::Chrome(*a)
                 }),
-                footer: c.add(label("Saved locally", 12., Color::hex(0x91a18b))),
+                footer: c.add(label("Saved locally", 12., MUTED)),
                 empty: c.add(label(
-                    "A little room for your next idea.\n\nCreate a note, or find one with Ctrl P.",
-                    20.,
-                    Color::hex(0x9eae98),
+                    "Create a note with Ctrl N, or find one with Ctrl P.",
+                    16.,
+                    MUTED,
                 )),
                 picker: c.connect(Picker::new(), |o| Message::Pick(o.clone())),
                 menu: None,
@@ -413,10 +415,10 @@ impl Notes {
     fn show_picker(&mut self, cx: &mut Update<'_, Self>, mode: PickerMode) {
         let items = if mode == PickerMode::Commands {
             [
-                (Choice::New, "New Tab"),
+                (Choice::New, "New tab"),
                 (Choice::Save, "Save"),
-                (Choice::Wrap, "Toggle Word Wrap"),
-                (Choice::Close, "Close Tab"),
+                (Choice::Wrap, "Word wrap"),
+                (Choice::Close, "Close tab"),
             ]
             .into_iter()
             .map(|(key, title)| PickerItem {
@@ -733,19 +735,7 @@ impl Widget for Notes {
         // Insertions commit after their callback; configure the mounted overlay here.
         if std::mem::take(&mut self.menu_pending) {
             if let Some((_, menu)) = self.menu {
-                let _ = cx.set_environment(
-                    menu,
-                    std::rc::Rc::new(Theme {
-                        panel: Color::hex(0x211719),
-                        raised: Color::hex(0x402522),
-                        border: Color::hex(0x6b3c2c),
-                        muted: Color::hex(0xa78070),
-                        font_size: 14.,
-                        radius: 6.,
-                        ..paper()
-                    }),
-                    true,
-                );
+                let _ = cx.set_environment(menu, std::rc::Rc::new(popup_theme()), true);
                 let _ = cx.anchor(menu, Some(self.anchor));
                 let _ = cx.open_modal(menu);
             }
@@ -942,16 +932,13 @@ impl Widget for Notes {
         Metrics::new(c.max)
     }
     fn paint(&self, cx: &mut Paint<'_>) {
-        cx.painter.rect(cx.bounds, 0., Color::hex(0).into());
-        cx.painter.rect(
-            Rect::new(0., 0., cx.bounds.width, 40.),
-            0.,
-            Color(0.05, 0.02, 0.02, 1.).into(),
-        );
+        cx.painter.rect(cx.bounds, 0., CANVAS.into());
+        cx.painter
+            .rect(Rect::new(0., 0., cx.bounds.width, 40.), 0., CHROME.into());
         cx.painter.rect(
             Rect::new(0., 40., cx.bounds.width, 1.),
             0.,
-            Color(0.2, 0.05, 0.05, 1.).into(),
+            ACTIVE_TAB.into(),
         );
     }
 }
@@ -1012,7 +999,7 @@ fn start() -> Result<(), String> {
                 "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
             )),
             size,
-            background: paper().background,
+            background: CANVAS,
             limits: Limits {
                 message_bytes: 32 * 1024 * 1024,
                 ..Limits::default()

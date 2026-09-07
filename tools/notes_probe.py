@@ -175,7 +175,15 @@ def main():
                 eventually(lambda:'Reopened.' in created.read_text(),'Closed tab failed to reopen')
                 key('ctrl+1');key('ctrl+End');key('ctrl+slash')
                 shot('07-commands', 'Command palette anchored to the editor caret.')
-                type_text('wrap');key('Return')
+                type_text('no matching command')
+                shot('07a-empty-commands', 'Empty command search uses the same warm popup styling.')
+                key('ctrl+a');type_text('wrap');key('Return')
+                x('windowsize',window,420,360);time.sleep(.2)
+                key('ctrl+slash')
+                shot('07b-narrow-commands', 'The palette fits the minimum window size without covering its search or rows.')
+                key('Escape');key('ctrl+p');type_text('no matching note')
+                shot('07c-empty-notes', 'Note search stays legible at minimum size, including no-results feedback.')
+                key('Escape');x('windowsize',window,900,600)
                 # Native chooser, tested in its actual separate desktop window.
                 key('ctrl+o')
                 def choose_file(path):

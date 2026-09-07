@@ -1,4 +1,4 @@
-use crate::components::{label, paper, place};
+use crate::{components::place, design::*};
 use fire_ui::*;
 use fire_ui_widgets::*;
 use std::{rc::Rc, sync::Arc};
@@ -64,7 +64,12 @@ impl Tab {
     fn new(id: usize, state: TabState) -> Element<Self> {
         Element::build(|c| Self {
             id,
-            title: c.add(label(state.title.clone(), 14., paper().foreground)),
+            title: c.add(Element::leaf(Label::new(state.title.clone()).appearance(
+                Appearance {
+                    font_size: Some(CONTROL_TEXT),
+                    foreground: None,
+                },
+            ))),
             editor: c.connect(
                 Element::leaf(
                     Editor::field("")
@@ -79,6 +84,16 @@ impl Tab {
             renaming: false,
             pressed: None,
         })
+    }
+    fn title_theme(&self, cx: &mut Update<'_, Self>) {
+        let _ = cx.set_environment(
+            self.title,
+            Rc::new(Theme {
+                foreground: if self.state.active { TEXT } else { MUTED },
+                ..editor_theme()
+            }),
+            false,
+        );
     }
     fn finish(&mut self, cx: &mut Update<'_, Self>, commit: bool) {
         self.renaming = false;
@@ -96,13 +111,14 @@ impl Widget for Tab {
     type Output = TabAction;
     fn lifecycle(&mut self, cx: &mut Update<'_, Self>, e: Lifecycle) {
         if e == Lifecycle::Mount {
+            self.title_theme(cx);
             let _ = cx.show(self.editor, false);
             let _ = cx.set_environment(
                 self.editor,
                 Rc::new(Theme {
                     font_size: 14.,
-                    background: Color(0.15, 0.05, 0.05, 1.),
-                    ..paper()
+                    background: ACTIVE_TAB,
+                    ..editor_theme()
                 }),
                 true,
             );
@@ -116,6 +132,7 @@ impl Widget for Tab {
             TabCommand::State(state) => {
                 let _ = cx.send(self.title, state.title.to_string());
                 self.state = state;
+                self.title_theme(cx);
                 cx.relayout();
             }
             TabCommand::Rename => {
@@ -250,26 +267,23 @@ impl Widget for Tab {
     }
     fn paint(&self, cx: &mut Paint<'_>) {
         let bg = if self.state.active {
-            Color(0.15, 0.05, 0.05, 1.)
+            ACTIVE_TAB
         } else if cx.hovered {
-            Color(0.25, 0.1, 0.05, 1.)
+            RAISED
         } else {
-            Color(0.05, 0.02, 0.02, 1.)
+            CHROME
         };
         cx.painter.rect(cx.bounds, 0., bg.into());
         if self.state.active {
-            cx.painter.rect(
-                Rect::new(0., 0., cx.bounds.width, 2.),
-                0.,
-                Color(1., 0.4, 0., 1.).into(),
-            );
+            cx.painter
+                .rect(Rect::new(0., 0., cx.bounds.width, 2.), 0., EMBER.into());
         }
         if self.renaming {
             let width = (self.draft.chars().count() as f32 * 8.43).min(cx.bounds.width - 12.);
             cx.painter.rect(
                 Rect::new((cx.bounds.width - width) / 2., 28., width, 2.),
                 0.,
-                paper().foreground.into(),
+                EMBER.into(),
             );
         }
     }
@@ -559,14 +573,21 @@ impl Widget for ChromeButton {
     }
     fn paint(&self, cx: &mut Paint<'_>) {
         let bg = if cx.hovered && matches!(self.action, ChromeAction::Close) {
-            Color(0.9, 0.2, 0.2, 1.)
+            DANGER
         } else if cx.hovered {
-            Color(0.3, 0.1, 0.05, 1.)
+            RAISED
         } else {
-            Color(0.1, 0.03, 0.03, 1.)
+            CHROME
         };
         cx.painter.rect(cx.bounds, 4., bg.into());
-        let color = Color(1., 0.6, 0., 1.);
+        if cx.focused {
+            cx.painter.stroke(cx.bounds.inset(0.5), 4., 1., EMBER);
+        }
+        let color = if cx.hovered && matches!(self.action, ChromeAction::Close) {
+            TEXT
+        } else {
+            EMBER
+        };
         let x = cx.bounds.width / 2.;
         let y = cx.bounds.height / 2.;
         let line = |p: &mut dyn Painter, a: Point, b: Point| {
