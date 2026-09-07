@@ -394,7 +394,14 @@ impl Notes {
     }
     fn create(&mut self, cx: &mut Update<'_, Self>) {
         let mut note = storage::new_note(&self.directory);
-        note.title = Arc::from(format!("Untitled-{}", self.records.len() + 1));
+        let used: BTreeSet<usize> = self
+            .records
+            .iter()
+            .filter(|r| !r.removed)
+            .filter_map(|r| r.note.title.strip_prefix("Untitled-")?.parse().ok())
+            .collect();
+        let number = (1..=used.len() + 1).find(|n| !used.contains(n)).unwrap();
+        note.title = Arc::from(format!("Untitled-{number}"));
         let id = self.records.len();
         self.records.push(Record {
             note,
@@ -1373,6 +1380,32 @@ mod tests {
             ui.layout(&mut TestText);
         }
         outputs
+    }
+    #[test]
+    fn untitled_numbers_reuse_gaps_without_colliding_with_existing_notes() {
+        let mut ui = app();
+        settle(&mut ui);
+        for _ in 0..3 {
+            ui.send(Message::Chrome(ChromeAction::New)).ok().unwrap();
+            settle(&mut ui);
+        }
+        ui.send(Message::Page(1, PageOutput::Close)).ok().unwrap();
+        settle(&mut ui);
+        ui.send(Message::Chrome(ChromeAction::New)).ok().unwrap();
+        settle(&mut ui);
+        assert_eq!(&*ui.root().records[3].note.title, "Untitled-2");
+        ui.send(Message::Page(0, PageOutput::Title(Arc::from("Plans"))))
+            .ok()
+            .unwrap();
+        settle(&mut ui);
+        for id in 4..7 {
+            ui.send(Message::Chrome(ChromeAction::New)).ok().unwrap();
+            settle(&mut ui);
+            assert_eq!(&*ui.root().records[id].note.title, "Untitled-1");
+            ui.send(Message::Page(id, PageOutput::Close)).ok().unwrap();
+            settle(&mut ui);
+        }
+        assert_eq!(&*ui.root().records[2].note.title, "Untitled-3");
     }
     #[test]
     fn untouched_drafts_never_write_note_files_or_session_entries() {
