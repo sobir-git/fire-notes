@@ -1,4 +1,4 @@
-# Fire UI project rules
+# Fire Notes project rules
 
 ## No backward compatibility
 
@@ -40,3 +40,14 @@ behavior on the new framework. Animated fire on typed and selected text is manda
 Use the original in Git history as visual and interaction evidence. Close framework
 gaps revealed by the app through reusable public capabilities, without restoring
 old framework implementations. Verify real native interactions and screenshots.
+
+## Repository boundary
+
+This repository owns Fire Notes, its visual design, persistence, app probes and
+installation units. Fire UI lives in the sibling `../fire-ui` repository. Use its
+public interfaces. Implement reusable framework capabilities there and update this
+consumer directly. Do not copy framework code into the app.
+
+Run app tests here; run framework tests in Fire UI when changing its crates. Changes
+across both repositories need both sets of checks. Preserve the user's installed
+notes and session data during builds and native verification; probes use temporary data.

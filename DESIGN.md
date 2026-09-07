@@ -18,7 +18,7 @@ bright orange for active tabs, the caret, open-note indicators, and controls.
 
 ## Color
 
-The code source is [design.rs](apps/fire-notes/src/design.rs). Apply these tokens
+The code source is [design.rs](src/design.rs). Apply these tokens
 through the framework's `Theme`; Fire Notes' palette is not a framework default.
 
 | Role | Color | Use |

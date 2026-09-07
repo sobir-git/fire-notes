@@ -1,11 +1,27 @@
-# Fire UI
+# Fire Notes
 
-A Rust UI toolkit built around persistent widgets and typed, owned children.
-The framework and reusable widgets are the product. Fire Notes is a consumer.
+A compact native notes app built with [Fire UI](../fire-ui/README.md).
+
+## Build and run
+
+Keep the two independent repositories beside each other:
+
+```text
+projects/
+  fire-ui/       # framework, widgets, native host and studio
+  fire-notes/    # this app
+```
+
+The three Fire UI dependencies in `Cargo.toml` point to the sibling checkout.
+Framework edits are compiled directly on the next app build. Each project owns
+its Git history, Cargo manifest, lockfile and checks. Fire UI builds independently
+and has no dependency on Fire Notes.
 
 ```sh
-cargo run --release -p fire-notes
+cargo run --release -- --data-dir /path/to/notes
 ```
+
+## App behavior
 
 Fire Notes reproduces the original compact black-and-orange interface: inline tab
 titles, warm monospaced text, a caret-anchored command palette, and animated fire on
@@ -74,54 +90,28 @@ resolution. Note bodies are limited to 2 MiB and titles to 4 KiB; the framework 
 byte limit is configurable. There is no app-specific open-tab cap, although framework
 node and message budgets still apply. Large-document editing needs further profiling.
 
-The framework studio is a separate consumer:
-
-```sh
-cargo run --release -p fire-ui-studio
-```
-
-The studio demonstrates independent counters, editable text, a searchable 100,000-item
-virtual list, and a custom fire/paddle canvas. Animations start with **Play / pause**;
-the paddle follows the pointer directly. Narrow windows use a scrolling column.
-
-## Packages
-
-- `fire-ui`: platform-independent widget protocol, ownership, typed delivery, layout,
-  shared geometry, input, scheduling, drawing and text contracts. No dependencies.
-- `fire-ui-widgets`: arbitrary-content buttons, labels, layout helpers, appearance
-  scopes, document editing, scrolling and fixed-height virtual lists.
-- `fire-ui-native`: winit windows, OpenGL drawing, font shaping, clipboard, IME and native accessibility.
-- `examples/studio`: ordinary consumers of the public framework API.
-- `apps/fire-notes`: the notes app, composed entirely through public APIs.
-
-Previous frameworks and executable design skeletons have been removed. Git history
-is their archive. There are no compatibility shims or parallel implementations.
-
 ## Development
 
 ```sh
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
-cargo build --release -p fire-ui-studio
-python3 tools/native_probe.py --accessibility --output artifacts/native
-cargo build --release -p fire-notes
+cargo fmt --check
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
+cargo build --locked --release
 python3 tools/notes_probe.py --output artifacts/notes
 python3 tools/tab_menu_probe.py --output artifacts/tab-menu
 ```
 
-The native probe requires Linux, Xvfb, xdotool and Pillow with XCB support. It runs
-on an isolated display and, with `--accessibility`, a private accessibility bus.
-It exercises real input, verifies an accessibility-triggered counter increment, captures screenshots and measures
-idle CPU, memory, resizing and visible paddle response. `FIRE_UI_FONT` selects a
-TrueType font if the platform's default font cannot be found.
+The probes require Linux, Xvfb, xdotool and Pillow with XCB support. The notes
+probe also requires xclip and a native file chooser such as Zenity. They use
+isolated displays and temporary notes. They check real editing, fire animation,
+menus, Trash, file dialogs, resizing, saving and session restoration.
+The optional `--telegram` flag on the notes probe sends screenshots through the
+locally installed telegram-notify skill, only when delivery is requested.
 
-The notes probe also requires xclip and a native file chooser such as Zenity. It
-uses temporary files, isolated chooser settings and its own display. It checks editing,
-autosave, independent tabs, pickers, external file loading, narrow layouts,
-save-before-close and restart, and records screenshots and process measurements.
-Its optional `--telegram` flag sends screenshots using the locally installed
-telegram-notify skill; use it only when the user has requested delivery.
+App code lives in `src/`. Themes, tabs, fire decoration and note persistence belong
+here. Reusable widget and native-host changes belong in the Fire UI repository
+and must remain available through public APIs. When a change touches both projects,
+run both test suites and the affected native probes.
 
-See [visual design](DESIGN.md) for Fire Notes’ appearance and interaction rules,
-[architecture](docs/architecture.md) for the framework design and implementation limits,
-[measurements](docs/performance.md) for native evidence, and [project rules](AGENTS.md).
+See [visual design](DESIGN.md), [app measurements](docs/performance.md),
+[framework architecture](../fire-ui/docs/architecture.md) and [project rules](AGENTS.md).
