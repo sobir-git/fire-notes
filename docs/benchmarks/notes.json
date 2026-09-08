@@ -1,36 +1,32 @@
 {
-  "binary_sha256": "ac3d56b6b6939732697bddcf381768423cfccd4e089a1a1b893f2a8b976014f8",
+  "binary_sha256": "cb4bb5647a5f7ad4bbba8831040ae8cb59681b504d541cd23651cf7bfeb4a6f7",
   "backend": "Xvfb / Mesa software GL",
   "idle_seconds": 2,
   "idle_cpu_ticks": 0,
-  "rss_kib": 154600,
+  "rss_kib": 166772,
   "resize_event_to_swap_ms": {
-    "samples": 64,
-    "p50": 4.477,
-    "p95": 6.481,
-    "max": 6.974
+    "samples": 66,
+    "p50": 7.531,
+    "p95": 10.726,
+    "max": 11.968
   },
-  "date": "2026-09-07",
-  "binary": "target/release/fire-notes",
-  "binary_bytes": 8165104,
-  "checks": [
-    "original layout compared visually",
-    "animated fire and idle after decay",
-    "initial typing and paragraph breaks",
-    "raw Markdown autosave",
-    "clipboard cut copy paste",
-    "undo and redo",
-    "independent tab caret and wrap",
-    "inline rename via keyboard and right/middle click",
-    "tab drag reorder",
-    "search and reopen closed note",
-    "caret-anchored command palette",
-    "native Open and Save As dialogs",
-    "narrow layout",
-    "scrollbar dragging",
-    "resize",
-    "window position via ICCCM notification",
-    "session restoration of cursor scroll wrap tabs and titles",
-    "save immediately before close"
-  ]
+  "inspection": {
+    "semantic_editing": "passed",
+    "native_keyboard_undo": "passed",
+    "invalid_and_stale_requests": "rejected",
+    "idle_cpu_ticks_over_2_seconds": 0,
+    "socket_cleanup": "passed",
+    "temporary_data": true
+  },
+  "pre_modularity_reference": {
+    "binary_sha256": "4ad775a6516b7e21e90413f61fcd9d9579d4eb1bfc8a376348d75bd4afab0c63",
+    "idle_cpu_ticks": 0,
+    "rss_kib": 175148,
+    "resize_event_to_swap_ms": {
+      "samples": 66,
+      "p50": 6.355,
+      "p95": 8.514,
+      "max": 9.209
+    }
+  }
 }

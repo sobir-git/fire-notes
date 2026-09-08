@@ -35,10 +35,10 @@ struct Notes {
     records: Vec<Record>,
     open: Vec<usize>,
     active: Option<usize>,
-    new_button: Child<ChromeButton>,
-    minimize: Child<ChromeButton>,
-    maximize: Child<ChromeButton>,
-    close: Child<ChromeButton>,
+    new_button: Child<Button<ChromeIcon>>,
+    minimize: Child<Button<ChromeIcon>>,
+    maximize: Child<Button<ChromeIcon>>,
+    close: Child<Button<ChromeIcon>>,
     tabs: Child<Tabs>,
     footer: Child<Label>,
     empty: Child<Label>,
@@ -234,17 +234,17 @@ impl Notes {
                 open,
                 active,
                 tabs,
-                new_button: c.connect(ChromeButton::new(ChromeAction::New), |a| {
-                    Message::Chrome(*a)
+                new_button: c.connect(chrome_button(ChromeAction::New), |_| {
+                    Message::Chrome(ChromeAction::New)
                 }),
-                minimize: c.connect(ChromeButton::new(ChromeAction::Minimize), |a| {
-                    Message::Chrome(*a)
+                minimize: c.connect(chrome_button(ChromeAction::Minimize), |_| {
+                    Message::Chrome(ChromeAction::Minimize)
                 }),
-                maximize: c.connect(ChromeButton::new(ChromeAction::Maximize), |a| {
-                    Message::Chrome(*a)
+                maximize: c.connect(chrome_button(ChromeAction::Maximize), |_| {
+                    Message::Chrome(ChromeAction::Maximize)
                 }),
-                close: c.connect(ChromeButton::new(ChromeAction::Close), |a| {
-                    Message::Chrome(*a)
+                close: c.connect(chrome_button(ChromeAction::Close), |_| {
+                    Message::Chrome(ChromeAction::Close)
                 }),
                 footer: c.add(label("Saved locally", 12., MUTED)),
                 empty: c.add(label(
@@ -1265,10 +1265,14 @@ fn start() -> Result<(), String> {
         WindowOptions {
             title: "Fire Notes".into(),
             decorations: false,
+            overlay: false,
+            min_size: Size::new(420., 360.),
             position: session.position,
             font: Some(PathBuf::from(
                 "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
             )),
+            fallback_fonts: fallback_fonts(),
+            partial_repaint: true,
             size,
             background: CANVAS,
             limits: Limits {
@@ -1354,6 +1358,41 @@ fn start() -> Result<(), String> {
             }
         },
     )
+}
+
+// This application chooses multilingual coverage; the framework loads no defaults.
+fn fallback_fonts() -> Vec<std::path::PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        [
+            &[
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            ][..],
+            &[
+                "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+            ][..],
+            &[
+                "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+                "/usr/share/fonts/noto/NotoColorEmoji.ttf",
+            ][..],
+        ]
+        .into_iter()
+        .filter_map(|choices| {
+            choices
+                .iter()
+                .map(std::path::PathBuf::from)
+                .find(|p| p.is_file())
+        })
+        .collect()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        vec![]
+    }
 }
 
 #[cfg(test)]

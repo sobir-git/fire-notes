@@ -1,39 +1,38 @@
 # Fire Notes native measurements
 
-These measurements predate the repository split. The recorded binary hash identifies
-the tested build; they are historical evidence, not measurements of every later commit.
+Measured on 2026-09-08 with release optimization, Xvfb and Mesa software rendering.
+[Raw results](benchmarks/notes.json) identify the tested binary. This is an isolated
+native test using temporary notes and session data, not a hardware-GPU measurement.
 
-## Fire Notes
+After fire animation stopped, the app recorded zero CPU ticks over two seconds.
+RSS was 162.9 MiB, including software GL, font fallback and glyph caches. Across 66
+rendered resize samples, event-received to completed swap was 7.53 ms median,
+10.73 ms at the 95th percentile and 11.97 ms maximum. These figures exclude
+compositor presentation. Other work on the machine can affect timings.
 
-The restored original interface was measured on 2026-09-07 using Xvfb and Mesa
-software rendering. [Raw app results](benchmarks/notes.json) identify the measured
-release binary. The workload includes four tabs, a 100-line document, fire animation,
-clipboard edits, native Open/Save As dialogs, and a restart.
+The app explicitly enables its required native services, font files and retained
+partial repainting. Framework defaults leave those choices to each consumer.
 
-After the fire faded, a focused editor used **zero CPU ticks over two seconds**.
-Process RSS was 151.0 MiB, including software GL and native libraries.
-The release executable was 7.79 MiB. These short samples establish
-quiet idle behavior for this run, not hardware GPU power use or an RSS ceiling.
+The native probe passed typing, clipboard, undo/redo, inline rename, tabs, search,
+commands, native file opening, raw Markdown preservation, wrap, scrollbar dragging,
+420-pixel layouts, save-before-close and session restoration. Selected text remains
+animated. The editor decoration reports its changed bounds through Fire UI's public
+interface; small fire frames can repaint fewer than 1,000 pixels.
 
-Across 64 rendered resize samples, app-received event to completed swap was
-4.48 ms median, 6.48 ms at the 95th percentile, and 6.97 ms maximum.
-This excludes compositor presentation latency. The earlier app workload was different,
-so these figures are not a controlled speedup or memory regression comparison.
+The inspection probe found the editor by its app key, replaced Unicode text,
+preserved reversed selection, rejected invalid/stale requests and verified native
+keyboard undo. It also recorded zero idle CPU ticks with the socket enabled, and
+verified socket cleanup on orderly exit. Its screenshot shows Hebrew, Arabic,
+combining characters, color emoji and animated selected text. The probes do not
+establish every input method or assistive-device combination. The framework's Linux
+probe separately verifies installed IBus/XIM composition, stale-composition cancellation,
+Orca speech generation/navigation and all six native AT-SPI EditableText methods.
 
-The native check passed initial typing, animated fire, clipboard, undo/redo, inline
-rename, tab dragging, search, reopening, command execution, native Open and Save As,
-raw Markdown preservation, per-tab wrap, scrollbar drag, 420-pixel layout, saving
-immediately before close, and restoration of cursor, scroll, titles, tabs and placement.
-Xvfb has no window manager; the probe supplies the ICCCM move notification for that
-placement check. Eleven final screenshots were visually inspected against the original
-app reference. The combined workspace at measurement time had **50 passing tests** and Clippy passes with warnings
-as errors. File-drop delivery while blurred/modal, tabs in native text, selection
-movement, scroll restoration, and bounded fire scheduling have regression tests.
+All 14 app tests and Clippy with warnings as errors passed. Framework tests and
+package checks run separately in [Fire UI](../../fire-ui/docs/performance.md).
 
 ```sh
-cargo build --release -p fire-notes
+cargo build --release
 python3 tools/notes_probe.py --output artifacts/notes
+python3 tools/inspection_probe.py --output artifacts/inspection
 ```
-
-
-Framework measurements live in [Fire UI](../../fire-ui/docs/performance.md).

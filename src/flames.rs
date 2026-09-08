@@ -58,6 +58,19 @@ impl Flames {
     }
 }
 impl EditorDecoration for Flames {
+    fn damage(&self, view: &EditorView<'_>) -> Option<Rect> {
+        let mut rects = Self::rects(view);
+        rects.extend(self.recent.iter().map(|(r, _)| *r));
+        rects.extend(self.particles.iter().map(|p| {
+            Rect::new(
+                p.x - p.size - 2.,
+                p.y - p.size - 2.,
+                p.size * 2. + 4.,
+                p.size * 2. + 4.,
+            )
+        }));
+        Some(rects.into_iter().reduce(Rect::union).unwrap_or_default())
+    }
     fn frame(&mut self, view: &EditorView<'_>, time: FrameTime, edited: bool) -> bool {
         self.time = time.now.as_secs_f32();
         let dt = time.elapsed.as_secs_f32().min(0.05);

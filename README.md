@@ -21,6 +21,11 @@ and has no dependency on Fire Notes.
 cargo run --release -- --data-dir /path/to/notes
 ```
 
+Fire Notes explicitly enables native accessibility, agent inspection, clipboard,
+file dialogs and bitmap fonts. It chooses its installed multilingual fallback faces
+and retained partial repainting in `src/main.rs`. These are app choices; Fire UI
+loads no fonts or optional services by default.
+
 ## App behavior
 
 Fire Notes reproduces the original compact black-and-orange interface: inline tab
@@ -115,3 +120,10 @@ run both test suites and the affected native probes.
 
 See [visual design](DESIGN.md), [app measurements](docs/performance.md),
 [framework architecture](../fire-ui/docs/architecture.md) and [project rules](AGENTS.md).
+
+Agent inspection uses Fire UI's public semantic interface. Run with `FIRE_UI_INSPECT`
+pointing to a socket in a private directory, then use the sibling framework's
+`tools/fire_ui_inspect.py` to read the tree and edit `note-body` by key. See
+[the protocol](../fire-ui/docs/inspection.md). `python3 tools/inspection_probe.py`
+checks semantic editing, Unicode selection, native undo and socket cleanup against
+an isolated X11 window with temporary notes. Wayland work is deferred.

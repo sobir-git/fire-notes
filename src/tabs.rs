@@ -73,6 +73,8 @@ impl Tab {
             editor: c.connect(
                 Element::leaf(
                     Editor::field("")
+                        .label("Rename note")
+                        .key(format!("rename-note-{id}"))
                         .chrome(false)
                         .caret_blink(false)
                         .max_bytes(crate::storage::MAX_TITLE_BYTES),
@@ -289,20 +291,24 @@ impl Widget for Tab {
     }
     fn semantics(&self) -> Semantics {
         Semantics {
-            role: Role::Button,
+            role: Role::Tab,
+            actions: vec![SemanticActionKind::Activate],
             label: self.state.title.to_string(),
             selected: self.state.active,
             ..Semantics::default()
         }
     }
-    fn accessibility(&mut self, cx: &mut Update<'_, Self>, a: SemanticAction) {
+    fn accessibility(
+        &mut self,
+        cx: &mut Update<'_, Self>,
+        a: SemanticAction,
+    ) -> Result<(), SemanticError> {
         match a {
-            SemanticAction::Activate => {
-                let _ = cx.emit(TabAction::Select(self.id));
-            }
-            SemanticAction::Focus => {
-                let _ = cx.focus();
-            }
+            SemanticAction::Activate => cx
+                .emit(TabAction::Select(self.id))
+                .map_err(|_| SemanticError::Unavailable),
+            SemanticAction::Focus => cx.focus().map_err(|_| SemanticError::Unavailable),
+            _ => Err(SemanticError::Unsupported),
         }
     }
 }
@@ -504,85 +510,41 @@ impl Data for ChromeAction {
         1
     }
 }
-pub struct ChromeButton {
+pub struct ChromeIcon {
     action: ChromeAction,
-    pressed: Option<u32>,
 }
-impl ChromeButton {
-    pub fn new(action: ChromeAction) -> Element<Self> {
-        Element::leaf(Self {
-            action,
-            pressed: None,
-        })
-    }
+pub fn chrome_button(action: ChromeAction) -> Element<fire_ui_widgets::Button<ChromeIcon>> {
+    let label = match action {
+        ChromeAction::New => "New note",
+        ChromeAction::Close => "Close window",
+        ChromeAction::Minimize => "Minimize",
+        ChromeAction::Maximize => "Maximize or restore",
+    };
+    fire_ui_widgets::Button::styled(
+        Element::leaf(ChromeIcon { action }),
+        label,
+        fire_ui_widgets::Theme {
+            panel: CHROME,
+            raised: if matches!(action, ChromeAction::Close) {
+                DANGER
+            } else {
+                RAISED
+            },
+            border: CHROME,
+            accent: EMBER,
+            inset: 0.,
+            radius: 4.,
+            ..Default::default()
+        },
+    )
 }
-impl Widget for ChromeButton {
+impl Widget for ChromeIcon {
     type Command = ();
-    type Output = ChromeAction;
-    fn cursor(&self, _position: Point) -> Option<CursorIcon> {
-        Some(CursorIcon::Pointer)
-    }
-    fn focusable(&self) -> bool {
-        true
-    }
-    fn input(&mut self, cx: &mut Update<'_, Self>, phase: Phase, input: &Input) {
-        if phase != Phase::Target {
-            return;
-        }
-        match input {
-            Input::Button {
-                pointer,
-                button: 1,
-                down: true,
-                ..
-            } => {
-                self.pressed = Some(*pointer);
-                let _ = cx.capture(*pointer);
-                cx.stop();
-            }
-            Input::Button {
-                pointer,
-                button: 1,
-                down: false,
-                position,
-            } => {
-                if self.pressed.take() == Some(*pointer) && cx.bounds().contains(*position) {
-                    let _ = cx.emit(self.action);
-                }
-                let _ = cx.release(*pointer);
-                cx.stop();
-            }
-            Input::Key {
-                key: Key::Enter | Key::Character(' '),
-                down: true,
-                ..
-            } => {
-                let _ = cx.emit(self.action);
-                cx.stop();
-            }
-            _ => {}
-        }
-    }
-    fn lifecycle(&mut self, _: &mut Update<'_, Self>, e: Lifecycle) {
-        if matches!(e, Lifecycle::CaptureLost(_)) {
-            self.pressed = None;
-        }
-    }
+    type Output = std::convert::Infallible;
     fn layout(&mut self, _: &mut Layout<'_>, c: Constraints) -> Metrics {
         Metrics::new(c.constrain(Size::new(28., 28.)))
     }
     fn paint(&self, cx: &mut Paint<'_>) {
-        let bg = if cx.hovered && matches!(self.action, ChromeAction::Close) {
-            DANGER
-        } else if cx.hovered {
-            RAISED
-        } else {
-            CHROME
-        };
-        cx.painter.rect(cx.bounds, 4., bg.into());
-        if cx.focused {
-            cx.painter.stroke(cx.bounds.inset(0.5), 4., 1., EMBER);
-        }
         let color = if cx.hovered && matches!(self.action, ChromeAction::Close) {
             TEXT
         } else {
@@ -616,29 +578,6 @@ impl Widget for ChromeButton {
             ChromeAction::New => {
                 line(cx.painter, Point::new(x - 5., y), Point::new(x + 5., y));
                 line(cx.painter, Point::new(x, y - 5.), Point::new(x, y + 5.));
-            }
-        }
-    }
-    fn semantics(&self) -> Semantics {
-        Semantics {
-            role: Role::Button,
-            label: match self.action {
-                ChromeAction::New => "New note",
-                ChromeAction::Close => "Close window",
-                ChromeAction::Minimize => "Minimize",
-                ChromeAction::Maximize => "Maximize or restore",
-            }
-            .into(),
-            ..Semantics::default()
-        }
-    }
-    fn accessibility(&mut self, cx: &mut Update<'_, Self>, a: SemanticAction) {
-        match a {
-            SemanticAction::Activate => {
-                let _ = cx.emit(self.action);
-            }
-            SemanticAction::Focus => {
-                let _ = cx.focus();
             }
         }
     }

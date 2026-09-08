@@ -57,6 +57,8 @@ impl Page {
             body: c.connect(
                 Element::leaf(
                     Editor::new(body.to_string())
+                        .label("Note body")
+                        .key("note-body")
                         .restore(state)
                         .padding(16., 8.)
                         .decoration(crate::flames::Flames::default())
@@ -296,6 +298,8 @@ impl Picker {
             search: c.connect(
                 Element::leaf(
                     Editor::field("")
+                        .label("Find in note")
+                        .key("find-query")
                         .caret_blink(false)
                         .placeholder("Search notes...")
                         .chrome(false)
