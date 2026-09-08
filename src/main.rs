@@ -35,11 +35,11 @@ struct Notes {
     records: Vec<Record>,
     open: Vec<usize>,
     active: Option<usize>,
-    new_button: Child<Button<ChromeIcon>>,
-    minimize: Child<Button<ChromeIcon>>,
-    maximize: Child<Button<ChromeIcon>>,
-    close: Child<Button<ChromeIcon>>,
-    tabs: Child<Tabs>,
+    new_button: Child<ChromeButton>,
+    minimize: Child<ChromeButton>,
+    maximize: Child<ChromeButton>,
+    close: Child<ChromeButton>,
+    tabs: Child<TabBar>,
     footer: Child<Label>,
     empty: Child<Label>,
     picker: Child<Picker>,
@@ -220,7 +220,7 @@ impl Notes {
                 ));
             }
             let tabs = c.connect(
-                Tabs::new(
+                TabBar::new(
                     open.iter()
                         .map(|id| (*id, records[*id].note.title.clone()))
                         .collect(),
@@ -282,7 +282,7 @@ impl Notes {
     fn sync_tabs(&self, cx: &mut Update<'_, Self>) {
         let _ = cx.send(
             self.tabs,
-            TabsCommand::Sync(
+            TabBarCommand::Sync(
                 self.open
                     .iter()
                     .map(|id| (*id, self.records[*id].note.title.clone()))
@@ -637,7 +637,7 @@ impl Notes {
             }
             Choice::Rename => {
                 if let Some(id) = self.active {
-                    let _ = cx.send(self.tabs, TabsCommand::Rename(id));
+                    let _ = cx.send(self.tabs, TabBarCommand::Rename(id));
                 }
             }
             Choice::Wrap => {
@@ -667,7 +667,7 @@ impl Widget for Notes {
                 let _ = cx.after(self.cleanup_timer, std::time::Duration::from_secs(3600));
                 let _ = cx.show(self.picker, false);
                 let _ = cx.show(self.footer, false);
-                let _ = cx.anchor(self.picker, Some(self.anchor));
+                let _ = cx.anchor(self.picker, Anchor::To(self.anchor));
                 let _ = cx.show(self.empty, self.active.is_none());
                 for (id, r) in self.records.iter().enumerate() {
                     if let Some(page) = r.page {
@@ -993,14 +993,14 @@ impl Widget for Notes {
         if std::mem::take(&mut self.menu_pending) {
             if let Some((_, menu)) = self.menu {
                 let _ = cx.set_environment(menu, std::rc::Rc::new(popup_theme()), true);
-                let _ = cx.anchor(menu, Some(self.anchor));
+                let _ = cx.anchor(menu, Anchor::To(self.anchor));
                 let _ = cx.open_modal(menu);
             }
         }
         if let Some(id) = self.focus_pending.take() {
             if let Some(page) = self.records[id].page {
                 if self.rename_pending.take() == Some(id) {
-                    let _ = cx.send(self.tabs, TabsCommand::Rename(id));
+                    let _ = cx.send(self.tabs, TabBarCommand::Rename(id));
                 } else {
                     let _ = cx.send(page, PageCommand::Focus);
                 }
@@ -1224,13 +1224,16 @@ fn start() -> Result<(), String> {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("tmp/fire-notes"));
     let mut purge_only = false;
+    let mut full_fonts = false;
     while let Some(arg) = args.next() {
         if arg == "--data-dir" {
             directory = PathBuf::from(args.next().ok_or("--data-dir requires a path")?);
         } else if arg == "--purge-trash" {
             purge_only = true;
+        } else if arg == "--full-fonts" {
+            full_fonts = true;
         } else if arg == "--help" {
-            println!("fire-notes [--data-dir PATH] [--purge-trash]\nCtrl N new · Ctrl P find · Ctrl O open · Ctrl / commands · Ctrl S save · Ctrl W close · Ctrl Tab switch · Alt Z wrap · Ctrl Q quit");
+            println!("fire-notes [--data-dir PATH] [--full-fonts] [--purge-trash]\n--full-fonts loads installed CJK and color-emoji fallback fonts.\nCtrl N new · Ctrl P find · Ctrl O open · Ctrl / commands · Ctrl S save · Ctrl W close · Ctrl Tab switch · Alt Z wrap · Ctrl Q quit");
             return Ok(());
         } else {
             return Err(format!("Unknown argument: {}", arg.to_string_lossy()));
@@ -1271,7 +1274,7 @@ fn start() -> Result<(), String> {
             font: Some(PathBuf::from(
                 "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
             )),
-            fallback_fonts: fallback_fonts(),
+            fallback_fonts: fallback_fonts(full_fonts),
             partial_repaint: true,
             size,
             background: CANVAS,
@@ -1360,8 +1363,8 @@ fn start() -> Result<(), String> {
     )
 }
 
-// This application chooses multilingual coverage; the framework loads no defaults.
-fn fallback_fonts() -> Vec<std::path::PathBuf> {
+// Broad font coverage is explicit; ordinary notes do not load large CJK/emoji files.
+fn fallback_fonts(full: bool) -> Vec<std::path::PathBuf> {
     #[cfg(target_os = "linux")]
     {
         [
@@ -1381,6 +1384,7 @@ fn fallback_fonts() -> Vec<std::path::PathBuf> {
             ][..],
         ]
         .into_iter()
+        .take(if full { 3 } else { 1 })
         .filter_map(|choices| {
             choices
                 .iter()
@@ -1391,6 +1395,7 @@ fn fallback_fonts() -> Vec<std::path::PathBuf> {
     }
     #[cfg(not(target_os = "linux"))]
     {
+        let _ = full;
         vec![]
     }
 }
