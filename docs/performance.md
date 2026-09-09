@@ -2,7 +2,7 @@
 
 ## Current framework implementation
 
-Fire UI 0.6 separates native hosting, Cairo/OpenGL drawing, font resources and
+Fire UI 0.7 separates native hosting, Cairo/OpenGL drawing, font resources and
 Unicode shaping. Notes selects Cairo and its original multilingual font coverage,
 plus clipboard, file dialogs and accessibility. No GPU renderer or retained
 full-window client image is initialized. The default allocator is unchanged;
