@@ -1,0 +1,13 @@
+{
+  "status": "frozen before editor optimization; acceptance not yet passed",
+  "private_dirty_limit_bytes_exclusive": 3000000,
+  "swap_limit_bytes": 0,
+  "window_sizes": [[600, 400], [900, 600], [1200, 800]],
+  "ordinary_documents": {"tabs": 3, "utf8_bytes_each": 8192, "content": "deterministic mixed Latin, Cyrillic, Arabic, Hebrew and combining text; wrapped and long lines"},
+  "actions": ["fresh startup", "300 native typing edits", "typed fire", "10 seconds selected fire", "clipboard copy/cut/paste", "undo/redo", "tab switching", "scrollbar drag", "resize sweep", "clean restart and restored tabs/caret/scroll"],
+  "sample_interval_ms": 25,
+  "growth_document_bytes": [1024, 8192, 65536, 262144, 1048576],
+  "growth_tab_counts": [1, 3, 10],
+  "font_configurations": ["default", "full-fonts"],
+  "additional_evidence": ["RSS", "PSS", "private clean", "shared clean and dirty", "display server and compositor deltas", "XRes resources", "DRM fdinfo", "screenshots", "native input and accessibility", "CPU", "pointer and resize latency"]
+}

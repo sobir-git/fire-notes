@@ -1,0 +1,270 @@
+{
+  "binary_sha256": "8bbdedc58482a3336553a650d375d3deee9af6a6c1e69c27167d8a8f5731596b",
+  "scope": "Full default font coverage, normal allocator, private Xvfb and enabled private accessibility bus; all data temporary",
+  "original_target_bytes_exclusive": 3000000,
+  "regression_limit_bytes_exclusive": 4000000,
+  "ordinary": [
+    {
+      "private_dirty_bytes": 3518464,
+      "total_private_resident_bytes": 10170368,
+      "app_cpu_seconds": 4.35,
+      "xvfb_cpu_seconds": 4.82,
+      "idle": {
+        "elapsed_seconds": 2.0012382169952616,
+        "cpu_ticks": 0,
+        "ticks_per_second": 100,
+        "cpu_seconds": 0.0,
+        "one_core_percent": 0.0,
+        "limit_cpu_ticks": 2,
+        "passed": true
+      },
+      "raw": {
+        "path": "ordinary-1.json",
+        "sha256": "5f965f37e9fae30851a8a4a76cd5a107fbbc3497b063c5dc31f02441c475888e"
+      },
+      "rss_bytes": 16986112,
+      "pss_bytes": 10740736,
+      "shared_clean_bytes": 6823936,
+      "shared_dirty_bytes": 0,
+      "swap_bytes": 0,
+      "swap_pss_bytes": 0
+    },
+    {
+      "private_dirty_bytes": 3522560,
+      "total_private_resident_bytes": 10186752,
+      "app_cpu_seconds": 4.2,
+      "xvfb_cpu_seconds": 4.68,
+      "idle": {
+        "elapsed_seconds": 2.000555539969355,
+        "cpu_ticks": 0,
+        "ticks_per_second": 100,
+        "cpu_seconds": 0.0,
+        "one_core_percent": 0.0,
+        "limit_cpu_ticks": 2,
+        "passed": true
+      },
+      "raw": {
+        "path": "ordinary-2.json",
+        "sha256": "3dd550bae7ddb5eb1e3a191f3e5d3efdba7fb4434542dbc5168cd7a7e7723a33"
+      },
+      "rss_bytes": 16957440,
+      "pss_bytes": 10756096,
+      "shared_clean_bytes": 6774784,
+      "shared_dirty_bytes": 0,
+      "swap_bytes": 0,
+      "swap_pss_bytes": 0
+    },
+    {
+      "private_dirty_bytes": 3506176,
+      "total_private_resident_bytes": 10153984,
+      "app_cpu_seconds": 4.24,
+      "xvfb_cpu_seconds": 4.56,
+      "idle": {
+        "elapsed_seconds": 2.000475622015074,
+        "cpu_ticks": 0,
+        "ticks_per_second": 100,
+        "cpu_seconds": 0.0,
+        "one_core_percent": 0.0,
+        "limit_cpu_ticks": 2,
+        "passed": true
+      },
+      "raw": {
+        "path": "ordinary-3.json",
+        "sha256": "1715b48ee193dabad07d2db7c400e06e932a901048f9fc636a3dc2d5084e13cf"
+      },
+      "rss_bytes": 16826368,
+      "pss_bytes": 10707968,
+      "shared_clean_bytes": 6672384,
+      "shared_dirty_bytes": 0,
+      "swap_bytes": 0,
+      "swap_pss_bytes": 0
+    }
+  ],
+  "growth": [
+    {
+      "document_bytes": 1024,
+      "tabs": 1,
+      "scope": "startup",
+      "report": {
+        "path": "startup-1024-1.json",
+        "sha256": "e018158d4fb96635659b82f54706f0868c246f4ea87e5e8e9c0b1c679c02f019"
+      },
+      "private_dirty_bytes": 2150400,
+      "total_private_resident_bytes": 8785920,
+      "app_cpu_seconds": 0.02,
+      "swap_bytes": 0,
+      "swap_pss_bytes": 0
+    },
+    {
+      "document_bytes": 8192,
+      "tabs": 1,
+      "scope": "startup",
+      "report": {
+        "path": "startup-8192-1.json",
+        "sha256": "68bfe277f81fbe83e8c9470a1d07ebd26904d41a4048bfff42e2e77c5789ea22"
+      },
+      "private_dirty_bytes": 2408448,
+      "total_private_resident_bytes": 8945664,
+      "app_cpu_seconds": 0.02,
+      "swap_bytes": 0,
+      "swap_pss_bytes": 0
+    },
+    {
+      "document_bytes": 65536,
+      "tabs": 1,
+      "scope": "startup",
+      "report": {
+        "path": "startup-65536-1.json",
+        "sha256": "e5e0b7edcfa1abe6877ed80c9b7a6c11e6913fb854cf459a19ea9bd754fa7400"
+      },
+      "private_dirty_bytes": 4575232,
+      "total_private_resident_bytes": 11190272,
+      "app_cpu_seconds": 0.12,
+      "swap_bytes": 0,
+      "swap_pss_bytes": 0
+    },
+    {
+      "document_bytes": 262144,
+      "tabs": 1,
+      "scope": "startup",
+      "report": {
+        "path": "startup-262144-1.json",
+        "sha256": "3d3a6cb3f90a6b0bcdbece1540154d401f7588a445c9ba0b17444ccf106ae9ba"
+      },
+      "private_dirty_bytes": 12075008,
+      "total_private_resident_bytes": 18735104,
+      "app_cpu_seconds": 0.62,
+      "swap_bytes": 0,
+      "swap_pss_bytes": 0
+    },
+    {
+      "document_bytes": 1048576,
+      "tabs": 1,
+      "scope": "startup",
+      "report": {
+        "path": "startup-1048576-1.json",
+        "sha256": "ff28057d1b0047e9e486c8b38abecfccd4f7a7d754f52c65fee6237f693cbccf"
+      },
+      "private_dirty_bytes": 42106880,
+      "total_private_resident_bytes": 48766976,
+      "app_cpu_seconds": 1.8,
+      "swap_bytes": 0,
+      "swap_pss_bytes": 0
+    },
+    {
+      "document_bytes": 8192,
+      "tabs": 10,
+      "scope": "editing",
+      "report": {
+        "path": "editing-8192-10.json",
+        "sha256": "2fb4071723b434fb7c7d53c56cef395e352eaf39f8cc41b9da02dc343ae5d099"
+      },
+      "private_dirty_bytes": 3698688,
+      "total_private_resident_bytes": 10387456,
+      "app_cpu_seconds": 4.46,
+      "swap_bytes": 0,
+      "swap_pss_bytes": 0
+    },
+    {
+      "document_bytes": 65536,
+      "tabs": 1,
+      "scope": "editing",
+      "report": {
+        "path": "editing-65536-1.json",
+        "sha256": "a99596d06ae868f6508b8a76dc5dfd0ac09fecc0789a68b21d2a0ddef80f92cf"
+      },
+      "private_dirty_bytes": 9711616,
+      "total_private_resident_bytes": 16371712,
+      "app_cpu_seconds": 8.19,
+      "swap_bytes": 0,
+      "swap_pss_bytes": 0
+    }
+  ],
+  "latency_p95_ms": {
+    "pointer_idle": 4.760446,
+    "pointer_active_fire": 7.286075,
+    "resize": 13.597471
+  },
+  "acceptance_manifest": {
+    "path": "../../artifacts/release-0.7-verified/manifest.json",
+    "sha256": "255696a03a02ebd1314113c4e2e8804e67aef0f2ea0362ac44288bfea2eda83f"
+  },
+  "limitations": [
+    "Original 3 MB private-dirty target not met; revised balanced regression gate passed.",
+    "Total private resident includes private clean pages and exceeds 10 MB.",
+    "Virtual drawable observation is not physical scanout or a hardware-GPU/power benchmark.",
+    "XRes glyph byte estimates are incomplete; whole-server memory and CPU are reported separately.",
+    "Large documents grow beyond the ordinary ceiling; long single logical lines and accessibility query storms were not benchmarked.",
+    "Final review was solo at user request; earlier independent API/ownership reviews are preserved with their original scope."
+  ],
+  "raw_directory": "../../artifacts/release-0.7-verified/memory",
+  "xvfb_run1_ranges_bytes": {
+    "before": {
+      "Rss": [
+        77049856,
+        77389824
+      ],
+      "Pss": [
+        69124096,
+        69463040
+      ],
+      "Private_Dirty": [
+        31600640,
+        31940608
+      ],
+      "Swap": [
+        0,
+        0
+      ],
+      "SwapPss": [
+        0,
+        0
+      ]
+    },
+    "during": {
+      "Rss": [
+        78278656,
+        79462400
+      ],
+      "Pss": [
+        70204416,
+        71371776
+      ],
+      "Private_Dirty": [
+        32423936,
+        33533952
+      ],
+      "Swap": [
+        0,
+        0
+      ],
+      "SwapPss": [
+        0,
+        0
+      ]
+    },
+    "after": {
+      "Rss": [
+        79458304,
+        79458304
+      ],
+      "Pss": [
+        71394304,
+        71395328
+      ],
+      "Private_Dirty": [
+        33533952,
+        33533952
+      ],
+      "Swap": [
+        0,
+        0
+      ],
+      "SwapPss": [
+        0,
+        0
+      ]
+    }
+  },
+  "release_evidence_url": "https://github.com/sobir-git/fire-notes/releases/download/v0.1.0/fire-notes-0.1.0-linux-x86_64.tar.gz"
+}

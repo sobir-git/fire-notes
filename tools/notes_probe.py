@@ -4,10 +4,9 @@ import argparse
 import ctypes
 import hashlib
 import json
-import os
 from pathlib import Path
 import subprocess
-import tempfile
+from private_session import PrivateSession
 import time
 from PIL import ImageGrab, ImageChops, Image
 
@@ -58,8 +57,8 @@ def main():
             command.append('Build screenshots: writing, tabs, pickers, narrow layouts and session restoration. Sample notes use temporary storage.')
             if subprocess.run(command).returncode:
                 raise RuntimeError('Telegram gallery delivery failed')
-    with tempfile.TemporaryDirectory(prefix='fire-notes-probe-') as temporary:
-        directory = Path(temporary)
+    with PrivateSession() as session:
+        directory = session.directory
         notes = directory / 'notes'
         external = directory / 'external.md'
         external.write_text('# Imported note\n\nA note opened from outside the library.\n')
@@ -75,8 +74,8 @@ def main():
                         break
                     time.sleep(.05)
                 assert number, 'Xvfb did not start'
-                env = {**os.environ, 'DISPLAY': ':' + number, 'WINIT_UNIX_BACKEND': 'x11', 'LIBGL_ALWAYS_SOFTWARE': '1', 'FIRE_UI_PROFILE': '1', 'XDG_DATA_HOME':str(directory/'xdg-data'), 'XDG_CONFIG_HOME':str(directory/'xdg-config')}
-                env.pop('WAYLAND_DISPLAY', None)
+                env = session.activate(':' + number)
+                env['FIRE_UI_PROFILE'] = '1'
                 def x(*args):
                     return subprocess.check_output(['xdotool', *map(str, args)], env=env, stderr=subprocess.DEVNULL).decode().strip()
                 log = (output / 'native.log').open('w')
@@ -205,7 +204,7 @@ def main():
                     dialog=None
                     for _ in range(100):
                         windows=[]
-                        for pattern in ['zenity','kdialog']:
+                        for pattern in ['zenity','kdialog','xdg-desktop-portal-gtk']:
                             try: windows+=x('search','--onlyvisible','--class',pattern).splitlines()
                             except subprocess.CalledProcessError:pass
                         if windows: dialog=windows[-1];break
@@ -257,7 +256,10 @@ def main():
                     status=dict(line.split(':',1) for line in Path(f'/proc/{app.pid}/status').read_text().splitlines())
                     return int(fields[11])+int(fields[12]),int(status['VmRSS'].split()[0])
                 before,_=state();time.sleep(2);after,rss=state()
-                metrics={'binary_sha256':fingerprint,'backend':'Xvfb / Mesa software GL','idle_seconds':2,'idle_cpu_ticks':after-before,'rss_kib':rss}
+                metrics={'binary_sha256':fingerprint,'backend':'Xvfb / native Cairo','idle_seconds':2,'idle_cpu_ticks':after-before,'rss_kib':rss}
+                rollup = dict(line.split(':', 1) for line in Path(f'/proc/{app.pid}/smaps_rollup').read_text().splitlines()[1:])
+                metrics['memory_kib'] = {name: int(rollup[name].split()[0]) for name in
+                                         ('Rss', 'Pss', 'Private_Clean', 'Private_Dirty', 'Anonymous', 'Swap')}
                 assert after-before<=2, f'Idle animation did not settle: {after-before} CPU ticks'
                 key('ctrl+q');app.wait(timeout=10);assert app.returncode==0
                 saved=json.loads((notes/'session.json').read_text())

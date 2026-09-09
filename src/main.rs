@@ -1224,16 +1224,16 @@ fn start() -> Result<(), String> {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("tmp/fire-notes"));
     let mut purge_only = false;
-    let mut full_fonts = false;
+    let mut full_fonts = true;
     while let Some(arg) = args.next() {
         if arg == "--data-dir" {
             directory = PathBuf::from(args.next().ok_or("--data-dir requires a path")?);
         } else if arg == "--purge-trash" {
             purge_only = true;
-        } else if arg == "--full-fonts" {
-            full_fonts = true;
+        } else if arg == "--basic-fonts" {
+            full_fonts = false;
         } else if arg == "--help" {
-            println!("fire-notes [--data-dir PATH] [--full-fonts] [--purge-trash]\n--full-fonts loads installed CJK and color-emoji fallback fonts.\nCtrl N new · Ctrl P find · Ctrl O open · Ctrl / commands · Ctrl S save · Ctrl W close · Ctrl Tab switch · Alt Z wrap · Ctrl Q quit");
+            println!("fire-notes [--data-dir PATH] [--basic-fonts] [--purge-trash]\n--basic-fonts omits CJK and color-emoji fallback fonts; note bytes are preserved.\nCtrl N new · Ctrl P find · Ctrl O open · Ctrl / commands · Ctrl S save · Ctrl W close · Ctrl Tab switch · Alt Z wrap · Ctrl Q quit");
             return Ok(());
         } else {
             return Err(format!("Unknown argument: {}", arg.to_string_lossy()));
@@ -1263,6 +1263,12 @@ fn start() -> Result<(), String> {
     }
     let root = Notes::new(directory, library, &session, initial_draft);
     let mut writer: Option<Writer> = None;
+    let mut paths = vec![PathBuf::from(
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    )];
+    paths.extend(fallback_fonts(full_fonts));
+    // Installed font files must remain unchanged while this process is running.
+    let fonts = unsafe { fire_ui_fonts::Fonts::map(&paths) }?;
     run_with(
         root,
         WindowOptions {
@@ -1271,11 +1277,6 @@ fn start() -> Result<(), String> {
             overlay: false,
             min_size: Size::new(420., 360.),
             position: session.position,
-            font: Some(PathBuf::from(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-            )),
-            fallback_fonts: fallback_fonts(full_fonts),
-            partial_repaint: true,
             size,
             background: CANVAS,
             limits: Limits {
@@ -1283,6 +1284,8 @@ fn start() -> Result<(), String> {
                 ..Limits::default()
             },
         },
+        fire_ui_text::Text::new(fonts.clone())?,
+        fire_ui_cairo::Cairo { fonts },
         move |output, wake| match output {
             Output::Trash(directory, operation) => {
                 let wake = wake.clone();
@@ -1363,7 +1366,7 @@ fn start() -> Result<(), String> {
     )
 }
 
-// Broad font coverage is explicit; ordinary notes do not load large CJK/emoji files.
+// Notes selects its original multilingual coverage; the framework has no default fonts.
 fn fallback_fonts(full: bool) -> Vec<std::path::PathBuf> {
     #[cfg(target_os = "linux")]
     {

@@ -3,10 +3,9 @@
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import subprocess
-import tempfile
+from private_session import PrivateSession
 import time
 from PIL import ImageGrab
 
@@ -21,8 +20,8 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     fingerprint=hashlib.sha256(binary.read_bytes()).hexdigest()
     screenshots = []
-    with tempfile.TemporaryDirectory(prefix='fire-notes-probe-') as temporary:
-        directory = Path(temporary)
+    with PrivateSession() as session:
+        directory = session.directory
         notes = directory / 'notes'
         with (directory / 'display').open('w+') as number_file:
             display = subprocess.Popen(['Xvfb', '-displayfd', str(number_file.fileno()), '-screen', '0', '1200x900x24', '-nolisten', 'tcp'], pass_fds=(number_file.fileno(),), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -36,8 +35,8 @@ def main():
                         break
                     time.sleep(.05)
                 assert number, 'Xvfb did not start'
-                env = {**os.environ, 'DISPLAY': ':' + number, 'WINIT_UNIX_BACKEND': 'x11', 'LIBGL_ALWAYS_SOFTWARE': '1', 'FIRE_UI_PROFILE': '1', 'XDG_DATA_HOME':str(directory/'xdg-data'), 'XDG_CONFIG_HOME':str(directory/'xdg-config')}
-                env.pop('WAYLAND_DISPLAY', None)
+                env = session.activate(':' + number)
+                env['FIRE_UI_PROFILE'] = '1'
                 def x(*args):
                     return subprocess.check_output(['xdotool', *map(str, args)], env=env, stderr=subprocess.DEVNULL).decode().strip()
                 log = (output / 'native.log').open('w')

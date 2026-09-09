@@ -1,0 +1,104 @@
+{
+  "installed_fresh": {
+    "binary": "/home/fire/.local/lib/fire-notes/fire-notes",
+    "binary_sha256": "9218a24a4e77105a95a710a437e08bf196e77e2642e7dfb61ab74e8de45f7841",
+    "display": ":0",
+    "software_gl": "unset",
+    "app_args": [],
+    "units": "KiB",
+    "startup": {
+      "Rss": 88840,
+      "Pss": 34499,
+      "Private_Clean": 2460,
+      "Private_Dirty": 25044,
+      "Anonymous": 25044,
+      "Swap": 0
+    },
+    "after_typing": {
+      "Rss": 89788,
+      "Pss": 36308,
+      "Private_Clean": 2460,
+      "Private_Dirty": 25860,
+      "Anonymous": 25860,
+      "Swap": 0
+    },
+    "idle_cpu_ticks_over_2_seconds": 0
+  },
+  "v0_5_default": {
+    "binary": "/home/fire/projects/fire-notes/target/rebuild-0.5.0/release/fire-notes",
+    "binary_sha256": "c0f798df597a9050b2c58e9126589b9f7c2c62bd909cb6949c374510dd6e3818",
+    "display": ":0",
+    "software_gl": "unset",
+    "app_args": [],
+    "units": "KiB",
+    "startup": {
+      "Rss": 90256,
+      "Pss": 36957,
+      "Private_Clean": 76,
+      "Private_Dirty": 25936,
+      "Anonymous": 25936,
+      "Swap": 0
+    },
+    "after_typing": {
+      "Rss": 91048,
+      "Pss": 37653,
+      "Private_Clean": 76,
+      "Private_Dirty": 26628,
+      "Anonymous": 26628,
+      "Swap": 0
+    },
+    "idle_cpu_ticks_over_2_seconds": 0
+  },
+  "v0_5_full_fonts": {
+    "binary": "/home/fire/projects/fire-notes/target/rebuild-0.5.0/release/fire-notes",
+    "binary_sha256": "c0f798df597a9050b2c58e9126589b9f7c2c62bd909cb6949c374510dd6e3818",
+    "display": ":0",
+    "software_gl": "unset",
+    "app_args": [
+      "--full-fonts"
+    ],
+    "units": "KiB",
+    "startup": {
+      "Rss": 104884,
+      "Pss": 51556,
+      "Private_Clean": 4,
+      "Private_Dirty": 40560,
+      "Anonymous": 40560,
+      "Swap": 0
+    },
+    "after_typing": {
+      "Rss": 105672,
+      "Pss": 52236,
+      "Private_Clean": 4,
+      "Private_Dirty": 41236,
+      "Anonymous": 41236,
+      "Swap": 0
+    },
+    "idle_cpu_ticks_over_2_seconds": 0
+  },
+  "v0_5_without_retained_image": {
+    "binary": "/home/fire/projects/fire-notes/target/rebuild-0.5.0/release/fire-notes",
+    "binary_sha256": "504db4082a3b8f96c09bb0c5816a36bba852e0d0499f05fe22883f2d671d39c1",
+    "display": ":0",
+    "software_gl": "unset",
+    "app_args": [],
+    "units": "KiB",
+    "startup": {
+      "Rss": 90148,
+      "Pss": 38339,
+      "Private_Clean": 0,
+      "Private_Dirty": 25944,
+      "Anonymous": 25900,
+      "Swap": 0
+    },
+    "after_typing": {
+      "Rss": 91084,
+      "Pss": 39168,
+      "Private_Clean": 0,
+      "Private_Dirty": 26780,
+      "Anonymous": 26720,
+      "Swap": 0
+    },
+    "idle_cpu_ticks_over_2_seconds": 0
+  }
+}

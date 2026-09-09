@@ -21,8 +21,8 @@ pub struct Flames {
 impl Default for Flames {
     fn default() -> Self {
         Self {
-            particles: Vec::with_capacity(500),
-            recent: Vec::with_capacity(64),
+            particles: Vec::new(),
+            recent: Vec::new(),
             seed: 0xfeed1234,
             time: 0.,
         }
@@ -194,6 +194,7 @@ mod tests {
     #[test]
     fn fire_is_bounded_and_stops_after_typing_or_focus_loss() {
         let paragraph = TestText.layout(TextRequest {
+            previous: None,
             text: "Fire Notes".into(),
             style: TextStyle::default(),
             width: None,

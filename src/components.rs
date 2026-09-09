@@ -218,6 +218,7 @@ impl Widget for PickerRow {
                 .is_none_or(|p| p.service_revision != cx.text_revision())
             {
                 *cached = Some(cx.paragraph(TextRequest {
+                    previous: None,
                     text,
                     style: TextStyle {
                         size: CONTROL_TEXT,
