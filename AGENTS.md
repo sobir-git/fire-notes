@@ -68,3 +68,15 @@ consumer directly. Do not copy framework code into the app.
 Run app tests here; run framework tests in Fire UI when changing its crates. Changes
 across both repositories need both sets of checks. Preserve the user's installed
 notes and session data during builds and native verification; probes use temporary data.
+
+## Proportional verification
+
+Keep iteration checks proportional to the change. For a small, localized edit, run
+formatting, focused unit tests, and Clippy for the affected crates. Add one relevant
+native probe when the edit changes visible pixels or native interaction. Do not run
+the full release suite while a design is still being explored.
+
+Run the complete memory, growth, input, accessibility, latency, packaging, and
+independent-review gates only for a release candidate or when the changed code can
+plausibly affect those properties. A later release gate validates the accumulated
+candidate; it does not need to be repeated after every accepted iteration.
