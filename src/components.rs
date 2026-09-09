@@ -60,7 +60,6 @@ impl Page {
                         .padding(16., 8.)
                         .decoration(crate::flames::Flames::default())
                         .chrome(false)
-                        .caret_blink(false)
                         .max_bytes(crate::storage::MAX_BODY_BYTES),
                 ),
                 |o| PageCommand::Body(o.clone()),
