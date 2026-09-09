@@ -32,13 +32,13 @@ omits the CJK/emoji fallbacks; note files still preserve their Unicode text. Map
 while the app holds them; the framework also supports owned font bytes.
 
 The full native acceptance gate passes on isolated virtual desktops. Three fresh
-ordinary runs measured 3,493,888–3,510,272 private dirty bytes and
-10,203,136–10,252,288 total private resident bytes, with zero swap and zero sampled
+ordinary runs measured 3,506,176–3,522,560 private dirty bytes and
+10,153,984–10,186,752 total private resident bytes, with zero swap and zero sampled
 idle CPU ticks. The original 3 MB target was not met. Following the September 9
 priority change, the regression ceiling is under 4,000,000 private dirty bytes,
 with responsiveness, native behavior and CPU checked alongside memory.
 [Measurements and limitations](docs/performance.md) include display-server costs,
-document growth and the exact binary. No replacement has been installed or released.
+document growth and the exact binary. Verification does not install the app.
 
 ## App behavior
 

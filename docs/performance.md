@@ -12,8 +12,7 @@ The September 9 requirement revision prioritizes CPU, responsiveness and
 correctness alongside memory. The original 3,000,000-byte private-dirty target
 is still reported separately. The ordinary-workload regression ceiling is
 4,000,000 bytes, with zero app swap; total private resident memory, RSS, PSS,
-shared memory and external costs remain separate measurements. No replacement
-has been installed or published. Native verification runs on isolated virtual desktops; it measures drawable
+shared memory and external costs remain separate measurements. Verification does not install the app. Native verification runs on isolated virtual desktops; it measures drawable
 response rather than physical scanout.
 
 The frozen ordinary workload uses three 8 KiB mixed-script notes, 312 native
@@ -35,33 +34,33 @@ installation. See [the release instructions](../README.md#release-and-installati
 
 ## Final native acceptance
 
-The gate passed for binary `5d3e5f7703bbe02e08000342e91ee493e0ab956bf3002b11cd194f30b1c2a60b`.
-[Summary](benchmarks/current.json) and [hash-bound acceptance manifest](../artifacts/acceptance-release/manifest.json)
+The gate passed for binary `8bbdedc58482a3336553a650d375d3deee9af6a6c1e69c27167d8a8f5731596b`.
+[Summary](benchmarks/current.json) and [hash-bound release evidence](https://github.com/sobir-git/fire-notes/releases/download/v0.1.0/fire-notes-0.1.0-linux-x86_64.tar.gz)
 retain the raw captures. All three fresh runs use default multilingual coverage,
 normal allocation and the frozen workload above.
 
 | Measurement | Three ordinary runs |
 |---|---:|
-| Private dirty | 3,493,888–3,510,272 bytes |
-| Total private resident | 10,203,136–10,252,288 bytes |
-| RSS | 17,063,936–17,162,240 bytes |
-| PSS | 10,826,752–10,889,216 bytes |
-| App CPU over complete workload | 2.06–2.11 seconds |
-| Private Xvfb CPU, separately | 2.22–2.29 seconds |
+| Private dirty | 3,506,176–3,522,560 bytes |
+| Total private resident | 10,153,984–10,186,752 bytes |
+| RSS | 16,826,368–16,986,112 bytes |
+| PSS | 10,707,968–10,756,096 bytes |
+| App CPU over complete workload | 4.20–4.35 seconds |
+| Private Xvfb CPU, separately | 4.56–4.82 seconds |
 | App swap / swap PSS | 0 bytes |
 | Idle CPU over two seconds | 0 ticks |
 
 The original private-dirty target is still **not met**. Private clean mappings
 are included in total private resident memory; they are not counted as free.
-Run 1 Xvfb RSS peaked at 75,771,904 bytes versus 73,785,344–74,133,504 before launch.
-Its private dirty peak was 33,001,472 bytes versus 31,588,352–31,936,512 before.
+Run 1 Xvfb RSS peaked at 79,462,400 bytes versus 77,049,856–77,389,824 before launch.
+Its private dirty peak was 33,533,952 bytes versus 31,600,640–31,940,608 before.
 The raw reports retain after-exit values, shared memory, other display processes,
 DRM counters and XRes resource counts. XRes cannot attribute glyph bytes precisely;
 zero glyph/pixmap estimates do not mean zero server cost. These counters overlap
 and must not be added together.
 
-Twenty native samples per response type gave p95 drawable latency of 1.93 ms for
-idle pointer input, 3.14 ms during fire and 8.57 ms for resizing. These are private
+Twenty native samples per response type gave p95 drawable latency of 4.76 ms for
+idle pointer input, 7.29 ms during fire and 13.60 ms for resizing. These are private
 X11 drawable observations, not physical scanout or hardware-GPU/power measurements.
 Native file dialogs, editing, selection, clipboard, undo/redo, tabs, wrapping,
 scrolling, restoration, IBus/Cangjie and Orca checks all pass. Screenshots preserve
@@ -70,13 +69,13 @@ the compact black-and-orange UI and animated text. Existing tab-title clipping a
 
 | Separate growth workload | Peak private dirty bytes |
 |---|---:|
-| 1 KiB, one tab, startup | 2,154,496 |
-| 8 KiB, one tab, startup | 2,404,352 |
+| 1 KiB, one tab, startup | 2,150,400 |
+| 8 KiB, one tab, startup | 2,408,448 |
 | 64 KiB, one tab, startup | 4,575,232 |
-| 256 KiB, one tab, startup | 12,091,392 |
-| 1 MiB, one tab, startup | 42,131,456 |
-| 8 KiB, ten tabs, complete editing | 3,702,784 |
-| 64 KiB, one tab, complete editing | 9,555,968 |
+| 256 KiB, one tab, startup | 12,075,008 |
+| 1 MiB, one tab, startup | 42,106,880 |
+| 8 KiB, ten tabs, complete editing | 3,698,688 |
+| 64 KiB, one tab, complete editing | 9,711,616 |
 
 All growth samples have zero swap. These larger workloads are measured separately;
 they are not represented as fitting the ordinary ceiling. Long single logical
@@ -87,7 +86,7 @@ case consumed 10.5 seconds of CPU and failed before typing finished. The editor
 now supplies its existing layout through `TextRequest::previous`; the text service
 reuses unchanged logical lines after validating text and metrics. A scrollbar
 already required by hard line breaks does not force a second width calculation.
-The complete 64 KiB workload now passes at 4.32 seconds of app CPU. Wide startup
+The complete 64 KiB workload now passes at 8.19 seconds of app CPU. Wide startup
 geometry is released before allocating a narrower layout, avoiding a measured
 66 MB transient peak on the 1 MiB document. No persistent document cache, allocator
 override or history cap was added.

@@ -1,22 +1,16 @@
 {
-  "binary_sha256": "5d3e5f7703bbe02e08000342e91ee493e0ab956bf3002b11cd194f30b1c2a60b",
+  "binary_sha256": "8bbdedc58482a3336553a650d375d3deee9af6a6c1e69c27167d8a8f5731596b",
   "scope": "Full default font coverage, normal allocator, private Xvfb and enabled private accessibility bus; all data temporary",
   "original_target_bytes_exclusive": 3000000,
   "regression_limit_bytes_exclusive": 4000000,
   "ordinary": [
     {
-      "private_dirty_bytes": 3493888,
-      "total_private_resident_bytes": 10235904,
-      "rss_bytes": 17108992,
-      "pss_bytes": 10856448,
-      "shared_clean_bytes": 6959104,
-      "shared_dirty_bytes": 0,
-      "swap_bytes": 0,
-      "swap_pss_bytes": 0,
-      "app_cpu_seconds": 2.06,
-      "xvfb_cpu_seconds": 2.24,
+      "private_dirty_bytes": 3518464,
+      "total_private_resident_bytes": 10170368,
+      "app_cpu_seconds": 4.35,
+      "xvfb_cpu_seconds": 4.82,
       "idle": {
-        "elapsed_seconds": 2.0005180559819564,
+        "elapsed_seconds": 2.0012382169952616,
         "cpu_ticks": 0,
         "ticks_per_second": 100,
         "cpu_seconds": 0.0,
@@ -26,22 +20,22 @@
       },
       "raw": {
         "path": "ordinary-1.json",
-        "sha256": "243f347f700e76e2e790eddf86cb096769fddf22867122218e5ca83c16943238"
-      }
-    },
-    {
-      "private_dirty_bytes": 3510272,
-      "total_private_resident_bytes": 10252288,
-      "rss_bytes": 17162240,
-      "pss_bytes": 10889216,
-      "shared_clean_bytes": 6942720,
+        "sha256": "5f965f37e9fae30851a8a4a76cd5a107fbbc3497b063c5dc31f02441c475888e"
+      },
+      "rss_bytes": 16986112,
+      "pss_bytes": 10740736,
+      "shared_clean_bytes": 6823936,
       "shared_dirty_bytes": 0,
       "swap_bytes": 0,
-      "swap_pss_bytes": 0,
-      "app_cpu_seconds": 2.11,
-      "xvfb_cpu_seconds": 2.29,
+      "swap_pss_bytes": 0
+    },
+    {
+      "private_dirty_bytes": 3522560,
+      "total_private_resident_bytes": 10186752,
+      "app_cpu_seconds": 4.2,
+      "xvfb_cpu_seconds": 4.68,
       "idle": {
-        "elapsed_seconds": 2.0004550429875962,
+        "elapsed_seconds": 2.000555539969355,
         "cpu_ticks": 0,
         "ticks_per_second": 100,
         "cpu_seconds": 0.0,
@@ -51,22 +45,22 @@
       },
       "raw": {
         "path": "ordinary-2.json",
-        "sha256": "123e107cc4f82485a8a7177cb40e0c64672a22d2cca7b601c2f17f62cba7dc56"
-      }
-    },
-    {
-      "private_dirty_bytes": 3510272,
-      "total_private_resident_bytes": 10203136,
-      "rss_bytes": 17063936,
-      "pss_bytes": 10826752,
-      "shared_clean_bytes": 6885376,
+        "sha256": "3dd550bae7ddb5eb1e3a191f3e5d3efdba7fb4434542dbc5168cd7a7e7723a33"
+      },
+      "rss_bytes": 16957440,
+      "pss_bytes": 10756096,
+      "shared_clean_bytes": 6774784,
       "shared_dirty_bytes": 0,
       "swap_bytes": 0,
-      "swap_pss_bytes": 0,
-      "app_cpu_seconds": 2.06,
-      "xvfb_cpu_seconds": 2.22,
+      "swap_pss_bytes": 0
+    },
+    {
+      "private_dirty_bytes": 3506176,
+      "total_private_resident_bytes": 10153984,
+      "app_cpu_seconds": 4.24,
+      "xvfb_cpu_seconds": 4.56,
       "idle": {
-        "elapsed_seconds": 2.0002483350108378,
+        "elapsed_seconds": 2.000475622015074,
         "cpu_ticks": 0,
         "ticks_per_second": 100,
         "cpu_seconds": 0.0,
@@ -76,8 +70,14 @@
       },
       "raw": {
         "path": "ordinary-3.json",
-        "sha256": "7a3b324dd36af945ac7841bb4a18f9bee0283bf7a4905f92cf41fda7c32c43f9"
-      }
+        "sha256": "1715b48ee193dabad07d2db7c400e06e932a901048f9fc636a3dc2d5084e13cf"
+      },
+      "rss_bytes": 16826368,
+      "pss_bytes": 10707968,
+      "shared_clean_bytes": 6672384,
+      "shared_dirty_bytes": 0,
+      "swap_bytes": 0,
+      "swap_pss_bytes": 0
     }
   ],
   "growth": [
@@ -87,11 +87,11 @@
       "scope": "startup",
       "report": {
         "path": "startup-1024-1.json",
-        "sha256": "71ae8eab3e705400d703a60141592ddb7e20bb4a1cd2adaf1491b7a8feb57311"
+        "sha256": "e018158d4fb96635659b82f54706f0868c246f4ea87e5e8e9c0b1c679c02f019"
       },
-      "private_dirty_bytes": 2154496,
-      "total_private_resident_bytes": 8876032,
-      "app_cpu_seconds": 0.01,
+      "private_dirty_bytes": 2150400,
+      "total_private_resident_bytes": 8785920,
+      "app_cpu_seconds": 0.02,
       "swap_bytes": 0,
       "swap_pss_bytes": 0
     },
@@ -101,10 +101,10 @@
       "scope": "startup",
       "report": {
         "path": "startup-8192-1.json",
-        "sha256": "058f5e7e44c083e3cd27482c558b88ea293498a81dea6b24f3fc0bd9f5a93db6"
+        "sha256": "68bfe277f81fbe83e8c9470a1d07ebd26904d41a4048bfff42e2e77c5789ea22"
       },
-      "private_dirty_bytes": 2404352,
-      "total_private_resident_bytes": 9080832,
+      "private_dirty_bytes": 2408448,
+      "total_private_resident_bytes": 8945664,
       "app_cpu_seconds": 0.02,
       "swap_bytes": 0,
       "swap_pss_bytes": 0
@@ -115,11 +115,11 @@
       "scope": "startup",
       "report": {
         "path": "startup-65536-1.json",
-        "sha256": "62ce5df743a10b65d7aa887cfe455ee56b2ab48639a48557110cb6b07624a25d"
+        "sha256": "e5e0b7edcfa1abe6877ed80c9b7a6c11e6913fb854cf459a19ea9bd754fa7400"
       },
       "private_dirty_bytes": 4575232,
-      "total_private_resident_bytes": 11300864,
-      "app_cpu_seconds": 0.07,
+      "total_private_resident_bytes": 11190272,
+      "app_cpu_seconds": 0.12,
       "swap_bytes": 0,
       "swap_pss_bytes": 0
     },
@@ -129,11 +129,11 @@
       "scope": "startup",
       "report": {
         "path": "startup-262144-1.json",
-        "sha256": "dd04ef54a316c006b6e2eb334ab33097ff095693e682aeb8ca021fc4345349e8"
+        "sha256": "3d3a6cb3f90a6b0bcdbece1540154d401f7588a445c9ba0b17444ccf106ae9ba"
       },
-      "private_dirty_bytes": 12091392,
-      "total_private_resident_bytes": 18817024,
-      "app_cpu_seconds": 0.26,
+      "private_dirty_bytes": 12075008,
+      "total_private_resident_bytes": 18735104,
+      "app_cpu_seconds": 0.62,
       "swap_bytes": 0,
       "swap_pss_bytes": 0
     },
@@ -143,11 +143,11 @@
       "scope": "startup",
       "report": {
         "path": "startup-1048576-1.json",
-        "sha256": "b514f2e5a7afb66bac36ffa1006b5da12b067f3dd6dd596dc7acb5d735b77151"
+        "sha256": "ff28057d1b0047e9e486c8b38abecfccd4f7a7d754f52c65fee6237f693cbccf"
       },
-      "private_dirty_bytes": 42131456,
-      "total_private_resident_bytes": 48824320,
-      "app_cpu_seconds": 1.03,
+      "private_dirty_bytes": 42106880,
+      "total_private_resident_bytes": 48766976,
+      "app_cpu_seconds": 1.8,
       "swap_bytes": 0,
       "swap_pss_bytes": 0
     },
@@ -157,11 +157,11 @@
       "scope": "editing",
       "report": {
         "path": "editing-8192-10.json",
-        "sha256": "a2e146d0d97129190a808b94dade038e7db9c75017f0cc43555ecf7f168b0ee2"
+        "sha256": "2fb4071723b434fb7c7d53c56cef395e352eaf39f8cc41b9da02dc343ae5d099"
       },
-      "private_dirty_bytes": 3702784,
-      "total_private_resident_bytes": 10440704,
-      "app_cpu_seconds": 2.18,
+      "private_dirty_bytes": 3698688,
+      "total_private_resident_bytes": 10387456,
+      "app_cpu_seconds": 4.46,
       "swap_bytes": 0,
       "swap_pss_bytes": 0
     },
@@ -171,23 +171,23 @@
       "scope": "editing",
       "report": {
         "path": "editing-65536-1.json",
-        "sha256": "803b5f7d21d50dd56f5fee09dc35251a268a6f99ac09249d728486b38c6cde04"
+        "sha256": "a99596d06ae868f6508b8a76dc5dfd0ac09fecc0789a68b21d2a0ddef80f92cf"
       },
-      "private_dirty_bytes": 9555968,
-      "total_private_resident_bytes": 16334848,
-      "app_cpu_seconds": 4.32,
+      "private_dirty_bytes": 9711616,
+      "total_private_resident_bytes": 16371712,
+      "app_cpu_seconds": 8.19,
       "swap_bytes": 0,
       "swap_pss_bytes": 0
     }
   ],
   "latency_p95_ms": {
-    "pointer_idle": 1.928153,
-    "pointer_active_fire": 3.143408,
-    "resize": 8.565571
+    "pointer_idle": 4.760446,
+    "pointer_active_fire": 7.286075,
+    "resize": 13.597471
   },
   "acceptance_manifest": {
-    "path": "../../artifacts/acceptance-release/manifest.json",
-    "sha256": "d930d11256884f00b73f315e17ed03d667a607dce07464a22e7dcc9a3cc27835"
+    "path": "../../artifacts/release-0.7-verified/manifest.json",
+    "sha256": "255696a03a02ebd1314113c4e2e8804e67aef0f2ea0362ac44288bfea2eda83f"
   },
   "limitations": [
     "Original 3 MB private-dirty target not met; revised balanced regression gate passed.",
@@ -197,5 +197,74 @@
     "Large documents grow beyond the ordinary ceiling; long single logical lines and accessibility query storms were not benchmarked.",
     "Final review was solo at user request; earlier independent API/ownership reviews are preserved with their original scope."
   ],
-  "raw_directory": "../../artifacts/acceptance-release/memory"
+  "raw_directory": "../../artifacts/release-0.7-verified/memory",
+  "xvfb_run1_ranges_bytes": {
+    "before": {
+      "Rss": [
+        77049856,
+        77389824
+      ],
+      "Pss": [
+        69124096,
+        69463040
+      ],
+      "Private_Dirty": [
+        31600640,
+        31940608
+      ],
+      "Swap": [
+        0,
+        0
+      ],
+      "SwapPss": [
+        0,
+        0
+      ]
+    },
+    "during": {
+      "Rss": [
+        78278656,
+        79462400
+      ],
+      "Pss": [
+        70204416,
+        71371776
+      ],
+      "Private_Dirty": [
+        32423936,
+        33533952
+      ],
+      "Swap": [
+        0,
+        0
+      ],
+      "SwapPss": [
+        0,
+        0
+      ]
+    },
+    "after": {
+      "Rss": [
+        79458304,
+        79458304
+      ],
+      "Pss": [
+        71394304,
+        71395328
+      ],
+      "Private_Dirty": [
+        33533952,
+        33533952
+      ],
+      "Swap": [
+        0,
+        0
+      ],
+      "SwapPss": [
+        0,
+        0
+      ]
+    }
+  },
+  "release_evidence_url": "https://github.com/sobir-git/fire-notes/releases/download/v0.1.0/fire-notes-0.1.0-linux-x86_64.tar.gz"
 }
