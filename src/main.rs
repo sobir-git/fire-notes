@@ -1285,7 +1285,7 @@ fn start() -> Result<(), String> {
             },
         },
         fire_ui_text::Text::new(fonts.clone())?,
-        fire_ui_cairo::Cairo { fonts },
+        fire_ui_cairo::Cairo::direct(fonts),
         move |output, wake| match output {
             Output::Trash(directory, operation) => {
                 let wake = wake.clone();

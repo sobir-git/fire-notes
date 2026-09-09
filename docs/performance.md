@@ -1,12 +1,35 @@
 # Fire Notes native measurements
 
+## Installed 0.7.0 consumer
+
+On September 9, the app checkout integrated the released consumer changes and
+the sibling framework advanced to `v0.7.0`, commit `6c6b43e`. The local release
+build, 14 app tests, 46 verification-tool tests, formatting and Clippy passed.
+Fresh notes, tab-menu and inspection probes passed against the released executable;
+their captures are in `artifacts/install-0.7.0/`. The release gate revalidated its
+full existing acceptance evidence before installing that exact binary, SHA-256
+`8bbdedc58482a3336553a650d375d3deee9af6a6c1e69c27167d8a8f5731596b`.
+
+The installed app launched through the existing launcher with the user's existing
+data directory. Its visible desktop window was verified, and its running executable
+hash matches the accepted release. One startup sample recorded 1,798,144 private
+dirty bytes, 8,019,968 total private resident bytes, 15,118,336 RSS bytes and zero
+swap. This quiet startup sample does not replace the ordinary-workload results below.
+Notes, session data and the previous executable were backed up under
+`/home/fire/.local/share/fire-notes-backup-before-0.7.0-u0GZPC` before installation.
+Earlier uncommitted measurements remain recoverable in the Git stash named
+`Preserve pre-0.7 local measurements before integrating released consumer`;
+their historical benchmark records are also retained here.
+
 ## Current framework implementation
 
-Fire UI 0.7 separates native hosting, Cairo/OpenGL drawing, font resources and
+Fire UI 0.8 separates native hosting, Cairo/OpenGL drawing, font resources and
 Unicode shaping. Notes selects Cairo and its original multilingual font coverage,
 plus clipboard, file dialogs and accessibility. No GPU renderer or retained
 full-window client image is initialized. The default allocator is unchanged;
 aggressive allocator tuning was not adopted.
+The acceptance measurements below belong to the installed 0.7 executable and do
+not yet validate a Fire UI 0.8 build.
 
 The September 9 requirement revision prioritizes CPU, responsiveness and
 correctness alongside memory. The original 3,000,000-byte private-dirty target

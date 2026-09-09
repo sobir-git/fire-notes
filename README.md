@@ -12,7 +12,7 @@ projects/
   fire-notes/    # this app
 ```
 
-The Fire UI path dependencies require the sibling 0.6.0 development checkout.
+The Fire UI path dependencies require the sibling 0.8.0 development checkout.
 Framework edits are compiled directly on the next app build. Each project owns
 its Git history, Cargo manifest, lockfile and checks. Fire UI builds independently
 and has no dependency on Fire Notes.
@@ -125,12 +125,12 @@ The probes require Linux, Xvfb, xdotool and Pillow with XCB support. The notes
 probe also requires xclip and a native file chooser such as Zenity. They use
 isolated displays and temporary notes. They check real editing, fire animation,
 menus, Trash, file dialogs, resizing, saving and session restoration.
-The memory probe opens a temporary test window on the current desktop, briefly
-focuses it for typing, then restores focus. It records private memory, RSS, PSS,
-swap and idle CPU. It exits with failure if any sampled startup, editing, animated
-selection or resized state reaches 4,000,000 bytes of private dirty memory or uses
-swap. The current native host fails this acceptance check. Run it without
-interacting with other windows during its test.
+The memory probe uses temporary notes on the current unlocked desktop and
+restores focus afterward. The release verification command runs it on a private
+Xvfb desktop. It records private memory, RSS, PSS, swap and idle CPU, and fails if
+the ordinary workload reaches 4,000,000 bytes of private dirty memory or uses
+swap. The 0.7.0 release passes this ceiling; the original 3 MB target remains
+unmet. Avoid other desktop interaction during a direct memory-probe run.
 The optional `--telegram` flag on the notes probe sends screenshots through the
 locally installed telegram-notify skill, only when delivery is requested.
 
