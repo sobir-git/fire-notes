@@ -60,7 +60,6 @@ impl Flames {
 impl EditorDecoration for Flames {
     fn damage(&self, view: &EditorView<'_>) -> Option<Rect> {
         let mut rects = Self::rects(view);
-        rects.push(view.caret_cell().inset(-1.));
         rects.extend(self.recent.iter().map(|(r, _)| *r));
         rects.extend(self.particles.iter().map(|p| {
             Rect::new(
@@ -71,9 +70,6 @@ impl EditorDecoration for Flames {
             )
         }));
         Some(rects.into_iter().reduce(Rect::union).unwrap_or_default())
-    }
-    fn paints_caret(&self) -> bool {
-        true
     }
     fn frame(&mut self, view: &EditorView<'_>, time: FrameTime, edited: bool) -> bool {
         self.time = time.now.as_secs_f32();
@@ -148,21 +144,6 @@ impl EditorDecoration for Flames {
             return;
         }
         if layer == EditorLayer::AboveText {
-            if !view.composing {
-                let caret = view.caret_cell().inset(-0.75);
-                let hot = if view.caret_visible {
-                    Color(1., 0.42, 0.04, 1.)
-                } else {
-                    Color(0.42, 0.10, 0.015, 0.9)
-                };
-                let bright = if view.caret_visible {
-                    Color(1., 0.78, 0.22, 1.)
-                } else {
-                    Color(0.68, 0.20, 0.025, 0.9)
-                };
-                p.stroke(caret, 1.5, 1.5, hot);
-                p.stroke(caret.inset(1.), 1., 0.75, bright);
-            }
             for r in Self::rects(view) {
                 let cycle =
                     ((self.time * 2.5 + r.x * 0.1 + r.y * 0.07).sin() * 0.5 + 0.5).clamp(0., 1.);
@@ -222,16 +203,11 @@ mod tests {
         let mut view = EditorView {
             paragraph: &paragraph,
             caret: Caret::at(10),
-            caret_visible: true,
-            composing: false,
             selection: Some(0..10),
             viewport: Rect::new(0., 0., 500., 300.),
             focused: true,
         };
         let mut fire = Flames::default();
-        assert!(fire.paints_caret());
-        let caret = view.caret_cell();
-        assert!(caret.width > 0. && caret.height == paragraph.line_height);
         for i in 0..1000 {
             assert!(fire.frame(
                 &view,
