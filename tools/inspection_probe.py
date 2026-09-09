@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Verify semantic automation against a real X11 Fire Notes window and temporary data."""
 import argparse
+import hashlib
 import json
-import os
 from pathlib import Path
 import subprocess
-import tempfile
+from private_session import PrivateSession
 import time
 from PIL import ImageGrab
 
@@ -19,8 +19,8 @@ def main():
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     inspector = Path(__file__).resolve().parents[2] / 'fire-ui/tools/fire_ui_inspect.py'
-    with tempfile.TemporaryDirectory(prefix='fire-inspection-') as temporary:
-        private = Path(temporary)
+    with PrivateSession() as session:
+        private = session.directory
         socket = private / 'ui.sock'
         with (private / 'display').open('w+') as number_file, (output / 'native.log').open('w') as log:
             display = subprocess.Popen(['Xvfb', '-displayfd', str(number_file.fileno()), '-screen', '0', '1200x900x24', '-nolisten', 'tcp'], pass_fds=(number_file.fileno(),), stdout=log, stderr=log)
@@ -32,9 +32,9 @@ def main():
                     if number: break
                     time.sleep(.05)
                 assert number
-                env = {**os.environ, 'DISPLAY': ':'+number, 'WINIT_UNIX_BACKEND': 'x11', 'LIBGL_ALWAYS_SOFTWARE': '1',
-                       'FIRE_UI_INSPECT': str(socket), 'XDG_DATA_HOME': str(private/'data'), 'XDG_CONFIG_HOME': str(private/'config')}
-                env.pop('WAYLAND_DISPLAY', None)
+                env = session.activate(':' + number)
+                env['FIRE_UI_PROFILE'] = '1'
+                env['FIRE_UI_INSPECT'] = str(socket)
                 app = subprocess.Popen([binary, '--data-dir', str(private/'notes')], env=env, stdout=log, stderr=log)
                 for _ in range(100):
                     assert app.poll() is None
@@ -86,7 +86,7 @@ def main():
                 request(label='Close window', action='activate')
                 app.wait(timeout=8)
                 assert not socket.exists(), 'inspection socket was not cleaned up'
-                results = {'semantic_editing': 'passed', 'native_keyboard_undo': 'passed', 'invalid_and_stale_requests': 'rejected',
+                results = {'binary_sha256': hashlib.sha256(Path(binary).read_bytes()).hexdigest(), 'semantic_editing': 'passed', 'native_keyboard_undo': 'passed', 'invalid_and_stale_requests': 'rejected',
                            'idle_cpu_ticks_over_2_seconds': idle, 'socket_cleanup': 'passed', 'temporary_data': True}
                 (output/'results.json').write_text(json.dumps(results, indent=2))
                 print(json.dumps(results, indent=2))

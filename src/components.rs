@@ -4,10 +4,7 @@ use fire_ui_widgets::*;
 use std::{collections::HashMap, rc::Rc, sync::Arc};
 
 pub fn label(text: impl Into<Arc<str>>, size: f32, color: Color) -> Element<Label> {
-    Element::leaf(Label::new(text).appearance(Appearance {
-        font_size: Some(size),
-        foreground: Some(color),
-    }))
+    Element::leaf(Label::new(text).appearance(Appearance::default().size(size).exact(color)))
 }
 pub fn place<W: Widget>(cx: &mut Layout<'_>, child: Child<W>, rect: Rect) {
     cx.measure(child, Constraints::tight(rect.size()));
@@ -221,6 +218,7 @@ impl Widget for PickerRow {
                 .is_none_or(|p| p.service_revision != cx.text_revision())
             {
                 *cached = Some(cx.paragraph(TextRequest {
+                    previous: None,
                     text,
                     style: TextStyle {
                         size: CONTROL_TEXT,
@@ -413,14 +411,7 @@ impl Widget for Picker {
             self.empty,
             self.mode != PickerMode::File && self.filtered().is_empty(),
         );
-        let _ = cx.set_environment(
-            self.list,
-            Rc::new(Theme {
-                radius: 3.,
-                ..popup_theme()
-            }),
-            false,
-        );
+        let _ = cx.set_environment(self.list, Rc::new(with_radius(popup_theme(), 3.)), false);
         self.select_first(cx);
     }
     fn input(&mut self, cx: &mut Update<'_, Self>, phase: Phase, input: &Input) {

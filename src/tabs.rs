@@ -64,12 +64,10 @@ impl Tab {
     fn new(id: usize, state: TabState) -> Element<Self> {
         Element::build(|c| Self {
             id,
-            title: c.add(Element::leaf(Label::new(state.title.clone()).appearance(
-                Appearance {
-                    font_size: Some(CONTROL_TEXT),
-                    foreground: None,
-                },
-            ))),
+            title: c.add(Element::leaf(
+                Label::new(state.title.clone())
+                    .appearance(Appearance::default().size(CONTROL_TEXT)),
+            )),
             editor: c.connect(
                 Element::leaf(
                     Editor::field("")
@@ -90,10 +88,10 @@ impl Tab {
     fn title_theme(&self, cx: &mut Update<'_, Self>) {
         let _ = cx.set_environment(
             self.title,
-            Rc::new(Theme {
-                foreground: if self.state.active { TEXT } else { MUTED },
-                ..editor_theme()
-            }),
+            Rc::new(with_foreground(
+                editor_theme(),
+                if self.state.active { TEXT } else { MUTED },
+            )),
             false,
         );
     }
@@ -117,10 +115,18 @@ impl Widget for Tab {
             let _ = cx.show(self.editor, false);
             let _ = cx.set_environment(
                 self.editor,
-                Rc::new(Theme {
-                    font_size: 14.,
-                    background: ACTIVE_TAB,
-                    ..editor_theme()
+                Rc::new({
+                    let base = editor_theme();
+                    Theme {
+                        color: Palette {
+                            background: ACTIVE_TAB,
+                            ..base.color
+                        },
+                        scale: Scale {
+                            font_size: 14.,
+                            ..base.scale
+                        },
+                    }
                 }),
                 true,
             );
@@ -312,12 +318,12 @@ impl Widget for Tab {
         }
     }
 }
-pub enum TabsCommand {
+pub enum TabBarCommand {
     Sync(Vec<(usize, Arc<str>)>, Option<usize>),
     Action(TabAction),
     Rename(usize),
 }
-impl Data for TabsCommand {
+impl Data for TabBarCommand {
     fn bytes(&self) -> usize {
         std::mem::size_of::<Self>()
             + match self {
@@ -327,7 +333,7 @@ impl Data for TabsCommand {
             }
     }
 }
-pub struct Tabs {
+pub struct TabBar {
     children: Vec<(usize, Arc<str>, Child<Tab>)>,
     active: Option<usize>,
     offset: f32,
@@ -336,7 +342,7 @@ pub struct Tabs {
     drag: Option<(usize, f32)>,
     reveal: bool,
 }
-impl Tabs {
+impl TabBar {
     pub fn new(items: Vec<(usize, Arc<str>)>, active: Option<usize>) -> Element<Self> {
         Element::build(|c| Self {
             children: items
@@ -350,7 +356,7 @@ impl Tabs {
                                 active: Some(id) == active,
                             },
                         ),
-                        |a| TabsCommand::Action(a.clone()),
+                        |a| TabBarCommand::Action(a.clone()),
                     );
                     (id, title, child)
                 })
@@ -364,12 +370,12 @@ impl Tabs {
         })
     }
 }
-impl Widget for Tabs {
-    type Command = TabsCommand;
+impl Widget for TabBar {
+    type Command = TabBarCommand;
     type Output = TabAction;
-    fn update(&mut self, cx: &mut Update<'_, Self>, c: TabsCommand) {
+    fn update(&mut self, cx: &mut Update<'_, Self>, c: TabBarCommand) {
         match c {
-            TabsCommand::Action(TabAction::Context(id, point)) => {
+            TabBarCommand::Action(TabAction::Context(id, point)) => {
                 if let Some((_, rect)) = self.rects.iter().find(|(key, _)| *key == id) {
                     let _ = cx.emit(TabAction::Context(
                         id,
@@ -377,15 +383,15 @@ impl Widget for Tabs {
                     ));
                 }
             }
-            TabsCommand::Action(a) => {
+            TabBarCommand::Action(a) => {
                 let _ = cx.emit(a);
             }
-            TabsCommand::Rename(id) => {
+            TabBarCommand::Rename(id) => {
                 if let Some((_, _, child)) = self.children.iter().find(|(key, _, _)| *key == id) {
                     let _ = cx.send(*child, TabCommand::Rename);
                 }
             }
-            TabsCommand::Sync(items, active) => {
+            TabBarCommand::Sync(items, active) => {
                 self.children.retain(|(id, _, child)| {
                     items.iter().any(|(key, _)| key == id) || cx.remove(*child).is_err()
                 });
@@ -400,7 +406,7 @@ impl Widget for Tabs {
                         let _ = cx.send(*child, TabCommand::State(state));
                         next.push((id, title, *child));
                     } else if let Ok(child) =
-                        cx.insert(Tab::new(id, state), |a| TabsCommand::Action(a.clone()))
+                        cx.insert(Tab::new(id, state), |a| TabBarCommand::Action(a.clone()))
                     {
                         next.push((id, title, child));
                     }
@@ -513,29 +519,46 @@ impl Data for ChromeAction {
 pub struct ChromeIcon {
     action: ChromeAction,
 }
-pub fn chrome_button(action: ChromeAction) -> Element<fire_ui_widgets::Button<ChromeIcon>> {
+pub type ChromeButton = AppearanceScope<fire_ui_widgets::Button<ChromeIcon>>;
+
+/// A window-chrome icon button. Each one carries its own theme so the close button
+/// can fill red on hover while the rest fill with the ordinary raised colour.
+pub fn chrome_button(action: ChromeAction) -> Element<ChromeButton> {
     let label = match action {
         ChromeAction::New => "New note",
         ChromeAction::Close => "Close window",
         ChromeAction::Minimize => "Minimize",
         ChromeAction::Maximize => "Maximize or restore",
     };
-    fire_ui_widgets::Button::styled(
-        Element::leaf(ChromeIcon { action }),
-        label,
-        fire_ui_widgets::Theme {
-            panel: CHROME,
+    let base = editor_theme();
+    let theme = Theme {
+        color: Palette {
+            surface: CHROME,
             raised: if matches!(action, ChromeAction::Close) {
                 DANGER
             } else {
                 RAISED
             },
             border: CHROME,
+            border_strong: CHROME,
             accent: EMBER,
+            ..base.color
+        },
+        scale: Scale {
             inset: 0.,
             radius: 4.,
-            ..Default::default()
+            control: 28.,
+            halo: 0.,
+            ..base.scale
         },
+    };
+    AppearanceScope::new(
+        fire_ui_widgets::Button::styled(
+            Element::leaf(ChromeIcon { action }),
+            label,
+            ButtonStyle::Ghost,
+        ),
+        theme,
     )
 }
 impl Widget for ChromeIcon {

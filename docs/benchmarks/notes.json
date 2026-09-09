@@ -1,32 +1,21 @@
 {
-  "binary_sha256": "cb4bb5647a5f7ad4bbba8831040ae8cb59681b504d541cd23651cf7bfeb4a6f7",
+  "binary_sha256": "c0f798df597a9050b2c58e9126589b9f7c2c62bd909cb6949c374510dd6e3818",
   "backend": "Xvfb / Mesa software GL",
   "idle_seconds": 2,
   "idle_cpu_ticks": 0,
-  "rss_kib": 166772,
+  "rss_kib": 153248,
+  "memory_kib": {
+    "Rss": 153248,
+    "Pss": 105102,
+    "Private_Clean": 21900,
+    "Private_Dirty": 73204,
+    "Anonymous": 73204,
+    "Swap": 0
+  },
   "resize_event_to_swap_ms": {
     "samples": 66,
-    "p50": 7.531,
-    "p95": 10.726,
-    "max": 11.968
-  },
-  "inspection": {
-    "semantic_editing": "passed",
-    "native_keyboard_undo": "passed",
-    "invalid_and_stale_requests": "rejected",
-    "idle_cpu_ticks_over_2_seconds": 0,
-    "socket_cleanup": "passed",
-    "temporary_data": true
-  },
-  "pre_modularity_reference": {
-    "binary_sha256": "4ad775a6516b7e21e90413f61fcd9d9579d4eb1bfc8a376348d75bd4afab0c63",
-    "idle_cpu_ticks": 0,
-    "rss_kib": 175148,
-    "resize_event_to_swap_ms": {
-      "samples": 66,
-      "p50": 6.355,
-      "p95": 8.514,
-      "max": 9.209
-    }
+    "p50": 6.611,
+    "p95": 7.887,
+    "max": 8.814
   }
 }

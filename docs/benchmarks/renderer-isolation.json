@@ -1,0 +1,45 @@
+{
+  "date": "2026-09-08",
+  "display": ":0",
+  "units": "KiB",
+  "framework_release": "v0.5.0",
+  "framework_commit": "92e900bbda4edfdeba881127004ba464e9145764",
+  "minimal_binary_sha256": "4b98d7c3fe0dd831bc50d748ce8cf1b5e468b6ea20c2dee042d2c4bc13cdba5b",
+  "minimal_features": [
+    "x11"
+  ],
+  "window": [
+    640,
+    480
+  ],
+  "minimal_draw_only": {
+    "Rss": 84008,
+    "Pss": 35064,
+    "Private_Clean": 0,
+    "Private_Dirty": 26228,
+    "Anonymous": 23968,
+    "Swap": 0
+  },
+  "native_controls": {
+    "gl": {
+      "Rss": 67516,
+      "Pss": 20415,
+      "Private_Clean": 60,
+      "Private_Dirty": 13104,
+      "Anonymous": 13092,
+      "Swap": 0
+    },
+    "cairo": {
+      "Rss": 9412,
+      "Pss": 2256,
+      "Private_Clean": 12,
+      "Private_Dirty": 1348,
+      "Anonymous": 1336,
+      "Swap": 0
+    }
+  },
+  "gl_renderer": "GL renderer: Mesa Intel(R) Iris(R) Xe Graphics (ADL GT2)",
+  "control_compile": "cc -O2 native.c -o native $(pkg-config --cflags --libs x11 cairo) -lGL",
+  "control_source": "#include <X11/Xlib.h>\n#include <GL/glx.h>\n#include <cairo/cairo-xlib.h>\n#include <stdio.h>\n#include <string.h>\n#include <unistd.h>\nint main(int argc, char **argv) {\n Display *d=XOpenDisplay(NULL); if(!d)return 1;\n int s=DefaultScreen(d), gl=argc>1 && strcmp(argv[1],\"gl\")==0;\n XVisualInfo *v=NULL; Visual *visual=DefaultVisual(d,s); int depth=DefaultDepth(d,s);\n if(gl){int a[]={GLX_RGBA,GLX_DOUBLEBUFFER,GLX_STENCIL_SIZE,8,None}; v=glXChooseVisual(d,s,a);if(!v)return 2;visual=v->visual;depth=v->depth;}\n XSetWindowAttributes a={0};a.colormap=XCreateColormap(d,RootWindow(d,s),visual,AllocNone);a.event_mask=ExposureMask|StructureNotifyMask;\n Window w=XCreateWindow(d,RootWindow(d,s),0,0,640,480,0,depth,InputOutput,visual,CWColormap|CWEventMask,&a);\n XStoreName(d,w,gl?\"Memory isolation GL\":\"Memory isolation Cairo\");XMapWindow(d,w);XSync(d,False);\n if(gl){GLXContext c=glXCreateContext(d,v,NULL,True);glXMakeCurrent(d,w,c);glClearColor(0.1,0.1,0.1,1);glClear(GL_COLOR_BUFFER_BIT);glXSwapBuffers(d,w);glFinish();fprintf(stderr,\"GL renderer: %s\\n\",glGetString(GL_RENDERER));}\n else {cairo_surface_t *sf=cairo_xlib_surface_create(d,w,visual,640,480);cairo_t *c=cairo_create(sf);cairo_set_source_rgb(c,0,0,0);cairo_paint(c);cairo_set_source_rgb(c,1,.5,.1);cairo_select_font_face(c,\"DejaVu Sans Mono\",CAIRO_FONT_SLANT_NORMAL,CAIRO_FONT_WEIGHT_NORMAL);cairo_set_font_size(c,16);cairo_move_to(c,16,40);cairo_show_text(c,\"Fire Notes memory isolation\");cairo_surface_flush(sf);XSync(d,False);}\n for(;;){XEvent e;XNextEvent(d,&e);}\n}\n",
+  "scope": "Single-run fresh process samples after three seconds for minimal, two seconds for controls. No forced software rendering, paging, or swap. Cairo control is text drawing only, not a working Fire Notes backend."
+}
