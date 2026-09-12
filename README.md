@@ -45,7 +45,13 @@ document growth and the exact binary. Verification does not install the app.
 Fire Notes reproduces the original compact black-and-orange interface: inline tab
 titles, warm monospaced text, a caret-anchored command palette, and animated fire on
 typed and selected text. The app composes the new framework's public widgets and
-editor decoration API. The old renderer and widgets are not part of the build.
+editor extension API. The old renderer and widgets are not part of the build.
+
+Markdown task markers such as `- [ ] task` render as inline checkboxes. Click a
+box or press Ctrl+Enter on its line to toggle it; checked text is struck through.
+Enter continues the list, and Enter on an empty item exits it. Selecting or editing
+a marker reveals its source text, and dragging from a box selects text. Toggles
+and list continuation are undoable; checkbox toggles do not trigger typing fire.
 
 Notes live in `tmp/fire-notes` by default. Set `FIRE_NOTES_DIR` or pass
 `--data-dir PATH` to choose another folder. Files contain raw Markdown or plain text;

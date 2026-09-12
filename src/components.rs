@@ -58,7 +58,8 @@ impl Page {
                         .key("note-body")
                         .restore(state)
                         .padding(16., 8.)
-                        .decoration(crate::flames::Flames::default())
+                        .extension(crate::flames::Flames::default())
+                        .extension(crate::checklist::Checklist::default())
                         .chrome(false)
                         .max_bytes(crate::storage::MAX_BODY_BYTES),
                 ),

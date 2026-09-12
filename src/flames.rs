@@ -1,5 +1,5 @@
 use fire_ui::*;
-use fire_ui_widgets::{EditorDecoration, EditorLayer, EditorView};
+use fire_ui_widgets::{EditorExtension, EditorLayer, EditorView};
 use std::time::Duration;
 struct Particle {
     x: f32,
@@ -57,7 +57,7 @@ impl Flames {
         p.restore();
     }
 }
-impl EditorDecoration for Flames {
+impl EditorExtension for Flames {
     fn damage(&self, view: &EditorView<'_>) -> Option<Rect> {
         let mut rects = Self::rects(view);
         rects.extend(self.recent.iter().map(|(r, _)| *r));
@@ -69,9 +69,9 @@ impl EditorDecoration for Flames {
                 p.size * 2. + 4.,
             )
         }));
-        Some(rects.into_iter().reduce(Rect::union).unwrap_or_default())
+        rects.into_iter().reduce(Rect::union)
     }
-    fn frame(&mut self, view: &EditorView<'_>, time: FrameTime, edited: bool) -> bool {
+    fn frame(&mut self, view: &EditorView<'_>, time: FrameTime, inserted: bool) -> bool {
         self.time = time.now.as_secs_f32();
         let dt = time.elapsed.as_secs_f32().min(0.05);
         if !view.focused {
@@ -79,7 +79,7 @@ impl EditorDecoration for Flames {
             self.recent.clear();
             return false;
         }
-        if edited {
+        if inserted {
             let point = view.paragraph.caret_point(view.caret);
             if point.x > 0. {
                 self.recent.push((

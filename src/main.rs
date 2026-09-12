@@ -1,3 +1,4 @@
+mod checklist;
 mod components;
 mod design;
 mod flames;
