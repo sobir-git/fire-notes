@@ -552,7 +552,7 @@ impl Notes {
                 .hint("Ctrl Shift T")
                 .enabled(self.file_work.is_none()),
         ];
-        let menu = Menu::new(items, at);
+        let menu = Menu::new(items, at, None);
         if let Ok(menu) = cx.insert_at(menu, Anchor::To(self.anchor), |o| Message::Menu(o.clone()))
         {
             let _ = cx.set_environment(menu, std::rc::Rc::new(popup_theme()), true);
