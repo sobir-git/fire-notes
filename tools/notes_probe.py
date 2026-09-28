@@ -33,6 +33,29 @@ def notify_position(display_name,window,x,y,width,height):
     finally:lib.XCloseDisplay(connection)
 
 
+def paste_chooser_path(key, env, path):
+    """Own the X clipboard through GTK while the chooser requests the path."""
+    script = '''
+import gi
+import sys
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gdk, Gtk
+clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+clipboard.set_text(sys.argv[1], -1)
+print('ready', flush=True)
+Gtk.main()
+'''
+    owner = subprocess.Popen(['python3', '-c', script, str(path)], env=env,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        assert owner.stdout.readline().strip() == 'ready', 'GTK clipboard owner failed'
+        key('ctrl+v')
+        time.sleep(.3)
+    finally:
+        owner.terminate()
+        owner.communicate(timeout=5)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', default='target/release/fire-notes')
@@ -213,8 +236,8 @@ def main():
                     assert dialog,'Native file chooser did not appear'
                     time.sleep(.8)  # GTK maps its top-level before the chooser is ready for focus.
                     x('windowfocus',dialog);time.sleep(.2);key('ctrl+l');key('ctrl+a')
-                    subprocess.run(['xclip','-selection','clipboard'],input=str(path).encode(),env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=True)
-                    key('ctrl+v');time.sleep(.3);key('Return');time.sleep(.5)
+                    paste_chooser_path(key, env, path)
+                    time.sleep(.3);key('Return');time.sleep(.5)
                     # GTK location entry may require a second Return to accept the file.
                     try:
                         x('getwindowname',dialog);key('Return')
