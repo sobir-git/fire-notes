@@ -69,7 +69,8 @@ impl Tab {
                     .appearance(Appearance::default().size(CONTROL_TEXT)),
             ),
             editor: c.connect(
-                Editor::field("")
+                Editor::new("")
+                    .single_line()
                     .label("Rename note")
                     .key(format!("rename-note-{id}"))
                     .chrome(false)
@@ -551,11 +552,8 @@ pub fn chrome_button(action: ChromeAction) -> Element<ChromeButton> {
         },
     };
     AppearanceScope::new(
-        fire_ui_widgets::Button::styled(
-            Element::leaf(ChromeIcon { action }),
-            label,
-            ButtonStyle::Ghost,
-        ),
+        fire_ui_widgets::Button::new(Element::leaf(ChromeIcon { action }), label)
+            .style(ButtonStyle::Ghost),
         theme,
     )
 }

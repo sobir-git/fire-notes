@@ -293,7 +293,8 @@ impl Picker {
     pub fn new() -> Element<Self> {
         Element::build(|c| Self {
             search: c.connect(
-                Editor::field("")
+                Editor::new("")
+                    .single_line()
                     .label("Find in note")
                     .key("find-query")
                     .caret_blink(false)
