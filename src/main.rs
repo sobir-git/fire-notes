@@ -553,7 +553,7 @@ impl Notes {
                 .enabled(self.file_work.is_none()),
         ];
         let menu = Menu::new(items, at, None);
-        if let Ok(menu) = cx.insert_at(menu, Anchor::To(self.anchor), |o| Message::Menu(o.clone()))
+        if let Ok(menu) = cx.insert_at(menu, Anchor::to(self.anchor), |o| Message::Menu(o.clone()))
         {
             let _ = cx.set_environment(menu, std::rc::Rc::new(popup_theme()), true);
             let _ = cx.open_modal(menu);
@@ -667,7 +667,7 @@ impl Widget for Notes {
                 let _ = cx.after(self.cleanup_timer, std::time::Duration::from_secs(3600));
                 let _ = cx.show(self.picker, false);
                 let _ = cx.show(self.footer, false);
-                let _ = cx.anchor(self.picker, Anchor::To(self.anchor));
+                let _ = cx.anchor(self.picker, Anchor::to(self.anchor));
                 let _ = cx.show(self.empty, self.active.is_none());
                 for (id, r) in self.records.iter().enumerate() {
                     if let Some(page) = r.page {
