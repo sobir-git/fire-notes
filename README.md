@@ -12,7 +12,7 @@ projects/
   fire-notes/    # this app
 ```
 
-The Fire UI path dependencies require the sibling 0.8.0 development checkout.
+The Fire UI path dependencies require the sibling 0.9.0 development checkout.
 Framework edits are compiled directly on the next app build. Each project owns
 its Git history, Cargo manifest, lockfile and checks. Fire UI builds independently
 and has no dependency on Fire Notes.
