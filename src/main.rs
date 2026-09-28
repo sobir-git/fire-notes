@@ -45,7 +45,6 @@ struct Notes {
     empty: Child<Label>,
     picker: Child<Picker>,
     menu: Option<(usize, Child<Menu<Choice>>)>,
-    menu_pending: bool,
     trash: Vec<trash::Entry>,
     file_work: Option<FileWork>,
     cleanup_timer: Timer,
@@ -255,7 +254,6 @@ impl Notes {
                 )),
                 picker: c.connect(Picker::new(), |o| Message::Pick(o.clone())),
                 menu: None,
-                menu_pending: false,
                 trash: vec![],
                 file_work: None,
                 cleanup_timer: Timer::new(),
@@ -534,7 +532,6 @@ impl Notes {
     }
     fn hide_menu(&mut self, cx: &mut Update<'_, Self>) -> Option<usize> {
         let (id, menu) = self.menu.take()?;
-        self.menu_pending = false;
         let _ = cx.close_modal();
         let _ = cx.remove(menu);
         Some(id)
@@ -555,10 +552,12 @@ impl Notes {
                 .hint("Ctrl Shift T")
                 .enabled(self.file_work.is_none()),
         ];
-        if let Ok(menu) = cx.insert(Menu::new(items, at), |o| Message::Menu(o.clone())) {
+        let menu = Menu::new(items, at);
+        if let Ok(menu) = cx.insert_at(menu, Anchor::To(self.anchor), |o| Message::Menu(o.clone()))
+        {
+            let _ = cx.set_environment(menu, std::rc::Rc::new(popup_theme()), true);
+            let _ = cx.open_modal(menu);
             self.menu = Some((id, menu));
-            self.menu_pending = true;
-            cx.request_frame();
             cx.relayout();
         }
     }
@@ -990,14 +989,6 @@ impl Widget for Notes {
         }
     }
     fn frame(&mut self, cx: &mut Update<'_, Self>, _: FrameTime) {
-        // Insertions commit after their callback; configure the mounted overlay here.
-        if std::mem::take(&mut self.menu_pending) {
-            if let Some((_, menu)) = self.menu {
-                let _ = cx.set_environment(menu, std::rc::Rc::new(popup_theme()), true);
-                let _ = cx.anchor(menu, Anchor::To(self.anchor));
-                let _ = cx.open_modal(menu);
-            }
-        }
         if let Some(id) = self.focus_pending.take() {
             if let Some(page) = self.records[id].page {
                 if self.rename_pending.take() == Some(id) {
@@ -1275,7 +1266,8 @@ fn start() -> Result<(), String> {
         WindowOptions {
             title: "Fire Notes".into(),
             decorations: false,
-            overlay: false,
+            kind: fire_ui_native::WindowKind::Normal,
+            transparent: false,
             min_size: Size::new(420., 360.),
             position: session.position,
             size,
