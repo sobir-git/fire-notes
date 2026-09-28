@@ -163,13 +163,14 @@ def main():
                 click(40,65)  # Clicking the editor commits rename without stealing its focus.
                 # Drag the second tab ahead of the first and back.
                 x('mousemove','--window',window,170,20);x('mousedown',1);x('mousemove','--window',window,40,20);time.sleep(.2);x('mouseup',1)
-                key('ctrl+1');key('ctrl+End');type_text(' Dragged.')
-                eventually(lambda:'Dragged.' in created.read_text(),'Tab drag did not reorder')
-                for _ in ' Dragged.':key('ctrl+z')
+                key('ctrl+1');key('ctrl+End');type_text('!')
+                eventually(lambda:created.read_text()=='A second note.!','Tab drag did not reorder')
+                key('ctrl+z');eventually(lambda:created.read_text()=='A second note.','Undo did not remove the drag marker')
                 x('mousemove','--window',window,40,20);x('mousedown',1);x('mousemove','--window',window,170,20);time.sleep(.2);x('mouseup',1)
                 key('ctrl+2')
                 key('ctrl+z');eventually(lambda:created.read_text()!='A second note.','Undo failed')
-                key('ctrl+y');eventually(lambda:created.read_text()=='A second note.','Redo failed')
+                key('ctrl+y')
+                eventually(lambda:created.read_text()=='A second note.','Redo failed')
                 key('ctrl+a');key('ctrl+c');key('Right');key('ctrl+v')
                 eventually(lambda:created.read_text()=='A second note.A second note.','Clipboard copy/paste failed')
                 key('ctrl+z');eventually(lambda:created.read_text()=='A second note.','Paste undo failed')

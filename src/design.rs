@@ -39,6 +39,7 @@ pub fn editor_theme() -> Theme {
         },
         scale: Scale {
             font_size: 16.,
+            line_height: 1.29,
             unit: 8.,
             inset: 0.,
             radius: 0.,

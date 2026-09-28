@@ -223,6 +223,7 @@ impl Widget for PickerRow {
                     style: TextStyle {
                         size: CONTROL_TEXT,
                         font: 0,
+                        line_height: theme(cx).scale.line_height,
                     },
                     width: None,
                     revision: 0,
