@@ -257,7 +257,7 @@ impl Notes {
                 trash: vec![],
                 file_work: None,
                 cleanup_timer: Timer::new(),
-                anchor: c.add(Element::leaf(Label::new(""))),
+                anchor: c.add(Label::new("")),
                 focus_pending: active,
                 rename_pending: None,
                 pending_saves: BTreeSet::new(),

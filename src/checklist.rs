@@ -1,5 +1,7 @@
 use crate::design::*;
 use fire_ui::*;
+#[cfg(test)]
+use fire_ui_widgets::EditorElementExt;
 use fire_ui_widgets::{revealed, EditorExtension, EditorLayer, EditorView, Target, Transaction};
 
 /// One parsed task-list line, as byte positions into the paragraph text.
@@ -689,12 +691,10 @@ mod tests {
     /// A bare editor with the checklist, settled and ready.
     fn bare(body: &str) -> Ui<Editor> {
         let mut ui = Ui::new(
-            Element::leaf(
-                Editor::new(body)
-                    .extension(crate::checklist::Checklist::default())
-                    .padding(16., 8.)
-                    .chrome(false),
-            ),
+            Editor::new(body)
+                .extension(crate::checklist::Checklist::default())
+                .padding(16., 8.)
+                .chrome(false),
             Size::new(600., 400.),
             Limits::default(),
         )

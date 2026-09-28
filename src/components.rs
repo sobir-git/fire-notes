@@ -4,7 +4,7 @@ use fire_ui_widgets::*;
 use std::{collections::HashMap, rc::Rc, sync::Arc};
 
 pub fn label(text: impl Into<Arc<str>>, size: f32, color: Color) -> Element<Label> {
-    Element::leaf(Label::new(text).appearance(Appearance::default().size(size).exact(color)))
+    Label::new(text).appearance(Appearance::default().size(size).exact(color))
 }
 pub fn place<W: Widget>(cx: &mut Layout<'_>, child: Child<W>, rect: Rect) {
     cx.measure(child, Constraints::tight(rect.size()));
@@ -52,17 +52,15 @@ impl Page {
     pub fn new(_title: Arc<str>, body: Arc<str>, state: EditorState) -> Element<Self> {
         Element::build(|c| Self {
             body: c.connect(
-                Element::leaf(
-                    Editor::new(body.to_string())
-                        .label("Note body")
-                        .key("note-body")
-                        .restore(state)
-                        .padding(16., 8.)
-                        .extension(crate::flames::Flames::default())
-                        .extension(crate::checklist::Checklist::default())
-                        .chrome(false)
-                        .max_bytes(crate::storage::MAX_BODY_BYTES),
-                ),
+                Editor::new(body.to_string())
+                    .label("Note body")
+                    .key("note-body")
+                    .restore(state)
+                    .padding(16., 8.)
+                    .extension(crate::flames::Flames::default())
+                    .extension(crate::checklist::Checklist::default())
+                    .chrome(false)
+                    .max_bytes(crate::storage::MAX_BODY_BYTES),
                 |o| PageCommand::Body(o.clone()),
             ),
         })
@@ -278,7 +276,7 @@ fn list(items: &[PickerItem]) -> Element<NoteList> {
     let entries: HashMap<_, _> = items.iter().cloned().map(|i| (i.key, i)).collect();
     let keys = items.iter().map(|i| i.key).collect();
     let factory: RowFactory = Box::new(move |key| PickerRow::new(&entries[key]));
-    Element::leaf(VirtualList::new(keys, 32., factory).select_on_hover(true))
+    VirtualList::new(keys, 32., factory).select_on_hover(true)
 }
 pub struct Picker {
     search: Child<Editor>,
@@ -295,15 +293,13 @@ impl Picker {
     pub fn new() -> Element<Self> {
         Element::build(|c| Self {
             search: c.connect(
-                Element::leaf(
-                    Editor::field("")
-                        .label("Find in note")
-                        .key("find-query")
-                        .caret_blink(false)
-                        .placeholder("Search notes...")
-                        .chrome(false)
-                        .padding(8., 7.),
-                ),
+                Editor::field("")
+                    .label("Find in note")
+                    .key("find-query")
+                    .caret_blink(false)
+                    .placeholder("Search notes...")
+                    .chrome(false)
+                    .padding(8., 7.),
                 |o| PickerCommand::Query(o.clone()),
             ),
             list: c.connect(list(&[]), |o| PickerCommand::List(o.clone())),

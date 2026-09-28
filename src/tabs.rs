@@ -64,19 +64,17 @@ impl Tab {
     fn new(id: usize, state: TabState) -> Element<Self> {
         Element::build(|c| Self {
             id,
-            title: c.add(Element::leaf(
+            title: c.add(
                 Label::new(state.title.clone())
                     .appearance(Appearance::default().size(CONTROL_TEXT)),
-            )),
+            ),
             editor: c.connect(
-                Element::leaf(
-                    Editor::field("")
-                        .label("Rename note")
-                        .key(format!("rename-note-{id}"))
-                        .chrome(false)
-                        .caret_blink(false)
-                        .max_bytes(crate::storage::MAX_TITLE_BYTES),
-                ),
+                Editor::field("")
+                    .label("Rename note")
+                    .key(format!("rename-note-{id}"))
+                    .chrome(false)
+                    .caret_blink(false)
+                    .max_bytes(crate::storage::MAX_TITLE_BYTES),
                 |o| TabCommand::Edit(o.clone()),
             ),
             draft: state.title.clone(),
