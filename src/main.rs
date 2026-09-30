@@ -1265,6 +1265,9 @@ fn start() -> Result<(), String> {
         root,
         WindowOptions {
             title: "Fire Notes".into(),
+            visible: true,
+            content_height: None,
+            placement: None,
             decorations: false,
             kind: fire_ui_native::WindowKind::Normal,
             transparent: false,

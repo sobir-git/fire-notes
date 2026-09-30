@@ -715,6 +715,7 @@ dependencies = [
  "serde_json",
  "unicode-segmentation",
  "winit",
+ "x11rb",
  "zbus",
 ]
 
