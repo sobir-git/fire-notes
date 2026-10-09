@@ -436,7 +436,7 @@ impl Widget for Picker {
                 cx.stop();
             }
             Input::Button {
-                button: 1,
+                button: PointerButton::Primary,
                 down: true,
                 position,
                 ..

@@ -181,7 +181,7 @@ impl Widget for Tab {
     }
     fn input(&mut self, cx: &mut Update<'_, Self>, phase: Phase, input: &Input) {
         if let Input::Button {
-            button: 2,
+            button: PointerButton::Secondary,
             down: true,
             position,
             ..
@@ -212,7 +212,7 @@ impl Widget for Tab {
         }
         match input {
             Input::Button {
-                button: 3,
+                button: PointerButton::Middle,
                 down: true,
                 ..
             } => {
@@ -221,7 +221,7 @@ impl Widget for Tab {
             }
             Input::Button {
                 pointer,
-                button: 1,
+                button: PointerButton::Primary,
                 down: true,
                 ..
             } => {
@@ -232,7 +232,7 @@ impl Widget for Tab {
             }
             Input::Button {
                 pointer,
-                button: 1,
+                button: PointerButton::Primary,
                 down: false,
                 ..
             } => {
@@ -420,7 +420,7 @@ impl Widget for TabBar {
     fn input(&mut self, cx: &mut Update<'_, Self>, phase: Phase, input: &Input) {
         match input {
             Input::Button {
-                button: 1,
+                button: PointerButton::Primary,
                 down: true,
                 ..
             } if phase == Phase::Target => {
@@ -435,7 +435,7 @@ impl Widget for TabBar {
                 cx.stop();
             }
             Input::Button {
-                button: 1,
+                button: PointerButton::Primary,
                 down: true,
                 position,
                 ..
@@ -462,7 +462,7 @@ impl Widget for TabBar {
                 }
             }
             Input::Button {
-                button: 1,
+                button: PointerButton::Primary,
                 down: false,
                 ..
             } => self.drag = None,

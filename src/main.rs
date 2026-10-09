@@ -1056,7 +1056,7 @@ impl Widget for Notes {
             return;
         }
         if let Input::Button {
-            button: 1,
+            button: PointerButton::Primary,
             down: true,
             position,
             ..

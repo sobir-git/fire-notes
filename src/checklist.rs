@@ -588,7 +588,7 @@ mod tests {
         ui.dispatch(
             Input::Button {
                 pointer: 0,
-                button: 1,
+                button: PointerButton::Primary,
                 down: true,
                 position: at,
             },
@@ -598,7 +598,7 @@ mod tests {
         ui.dispatch(
             Input::Button {
                 pointer: 0,
-                button: 1,
+                button: PointerButton::Primary,
                 down: false,
                 position: at,
             },
@@ -612,7 +612,7 @@ mod tests {
         ui.dispatch(
             Input::Button {
                 pointer: 0,
-                button: 1,
+                button: PointerButton::Primary,
                 down: true,
                 position: at,
             },
@@ -626,7 +626,7 @@ mod tests {
         ui.dispatch(
             Input::Button {
                 pointer: 0,
-                button: 1,
+                button: PointerButton::Primary,
                 down: false,
                 position: at,
             },
