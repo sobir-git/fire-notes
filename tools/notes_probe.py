@@ -39,6 +39,7 @@ def paste_chooser_path(key, env, path):
 import gi
 import sys
 gi.require_version('Gtk', '3.0')
+gi.require_version('Gdk', '3.0')
 from gi.repository import Gdk, Gtk
 clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
 clipboard.set_text(sys.argv[1], -1)
@@ -48,7 +49,10 @@ Gtk.main()
     owner = subprocess.Popen(['python3', '-c', script, str(path)], env=env,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
-        assert owner.stdout.readline().strip() == 'ready', 'GTK clipboard owner failed'
+        if owner.stdout.readline().strip() != 'ready':
+            owner.terminate()
+            _, error = owner.communicate(timeout=5)
+            raise AssertionError(f'GTK clipboard owner failed: {error}')
         key('ctrl+v')
         time.sleep(.3)
     finally:

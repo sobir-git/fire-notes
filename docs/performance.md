@@ -1,5 +1,34 @@
 # Fire Notes native measurements
 
+## October 11 X11 focus correction
+
+Fire UI's grab-time focus filter could leave an editor focused after switching
+applications, so selected-text fire kept running in the background. The native
+host now consumes ordered X11 core focus events, including changes during grabs,
+without periodic polling. The app inspection probe exercises this regression;
+the framework's independent `tools/focus_probe.py` passed 90 repeated popup/input
+cases. App tests, native tests and Clippy passed.
+
+The full release gate and independent visual/resource review accepted and installed
+binary `b160aa1e45e4fec1d720762707b5b9b5fdf4bb4f4061030b64c9c56ca3c3191a`.
+Evidence is in `artifacts/install-focus-20261011/`. Three ordinary runs peaked at
+3,506,176–3,584,000 private dirty bytes with no app swap and zero sampled idle CPU
+ticks. Drawable p95 latency was 3.315 ms idle, 8.815 ms during fire and 13.661 ms
+for resize. The original 3 MB target remains unmet; the 4 MB ceiling passed.
+
+On the real GNOME/Xorg desktop, the restored 84-character selection used 8.5%
+app CPU and 41% Xorg CPU while focused. After a keyboard-grab focus transfer,
+the editor correctly became unfocused: app CPU was 0% and Xorg CPU 6.5% over
+four seconds. One core is 100%; Xorg includes other desktop work. This repairs
+background animation, not the remaining active-animation rendering cost. Note
+file hashes were unchanged after the normal save/close and restart. Rollback
+data and executable are under `~/.local/state/fire-notes/rollback/20261011-focus/`.
+
+The first interaction capture failed because its GTK 3 clipboard helper imported
+GDK 4. Pinning GDK 3 fixed the helper. Fresh interaction captures passed; unchanged
+memory/input/latency evidence was reused with exact binary hashes, not presented
+as recaptured. The original failed capture is retained separately.
+
 ## Installed 0.7.0 consumer
 
 On September 9, the app checkout integrated the released consumer changes and

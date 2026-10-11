@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Verify semantic automation against a real X11 Fire Notes window and temporary data."""
 import argparse
+import ctypes as C
 import hashlib
 import json
 from pathlib import Path
@@ -8,6 +9,57 @@ import subprocess
 from private_session import PrivateSession
 import time
 from PIL import ImageGrab
+
+
+def check_focus_during_grab(display_name, window, request, editor):
+    """A real keyboard grab followed by focus transfer used to leave fire running."""
+    x = C.CDLL('libX11.so.6')
+    def api(name, args, result=C.c_int):
+        fn = getattr(x, name); fn.argtypes = args; fn.restype = result
+        return fn
+    D, W = C.c_void_p, C.c_ulong
+    open_display = api('XOpenDisplay', [C.c_char_p], D)
+    close = api('XCloseDisplay', [D])
+    root = api('XDefaultRootWindow', [D], W)
+    create = api('XCreateSimpleWindow', [D, W, C.c_int, C.c_int, C.c_uint, C.c_uint, C.c_uint, W, W], W)
+    map_window = api('XMapWindow', [D, W])
+    sync = api('XSync', [D, C.c_int])
+    grab = api('XGrabKeyboard', [D, W, C.c_int, C.c_int, C.c_int, W])
+    ungrab = api('XUngrabKeyboard', [D, W])
+    focus = api('XSetInputFocus', [D, W, C.c_int, W])
+    display = open_display(display_name.encode())
+    assert display, 'private X display unavailable'
+    try:
+        target = create(display, root(display), 0, 0, 100, 100, 0, 0, 0)
+        map_window(display, target); sync(display, 0)
+        request(key='note-body', action='focus')
+        value = editor(request())['value']
+        # Synchronize the app while the grab is active, so it has processed the
+        # transient focus-out before the real focus change arrives.
+        assert grab(display, root(display), 0, 1, 1, 0) == 0
+        sync(display, 0); time.sleep(.1)
+        assert request()['window_focused'], 'temporary grab deactivated the app'
+        ungrab(display, 0); sync(display, 0); time.sleep(.1)
+        assert request()['window_focused']
+        assert grab(display, root(display), 0, 1, 1, 0) == 0
+        sync(display, 0); time.sleep(.1)
+        assert request()['window_focused']
+        focus(display, target, 1, 0); sync(display, 0)
+        deadline = time.monotonic() + 3
+        while (snapshot := request())['window_focused'] and time.monotonic() < deadline:
+            time.sleep(.02)
+        assert not snapshot['window_focused'], 'real focus loss during grab was missed'
+        assert not editor(snapshot)['focused'], 'editor kept animating without native focus'
+        ungrab(display, 0); sync(display, 0)
+        focus(display, int(window), 1, 0); sync(display, 0)
+        deadline = time.monotonic() + 3
+        while not (snapshot := request())['window_focused'] and time.monotonic() < deadline:
+            time.sleep(.02)
+        assert snapshot['window_focused'] and editor(snapshot)['focused']
+        assert editor(snapshot)['value'] == value, 'focus transfer changed document text'
+    finally:
+        ungrab(display, 0)
+        close(display)
 
 
 def main():
@@ -75,6 +127,7 @@ def main():
                 snapshot = request()
                 (output/'tree.json').write_text(json.dumps(snapshot, ensure_ascii=False, indent=2))
                 ImageGrab.grab(xdisplay=env['DISPLAY']).save(output/'bidi-selection.png')
+                check_focus_during_grab(env['DISPLAY'], window, request, node)
                 # Allow fire to stop and confirm the inspection server has no polling CPU cost.
                 request(key='note-body', action='set_selection', anchor=0, caret=0)
                 request(label='New note', action='focus')
@@ -87,6 +140,7 @@ def main():
                 app.wait(timeout=8)
                 assert not socket.exists(), 'inspection socket was not cleaned up'
                 results = {'binary_sha256': hashlib.sha256(Path(binary).read_bytes()).hexdigest(), 'semantic_editing': 'passed', 'native_keyboard_undo': 'passed', 'invalid_and_stale_requests': 'rejected',
+                           'keyboard_grab_focus_transfer': 'passed',
                            'idle_cpu_ticks_over_2_seconds': idle, 'socket_cleanup': 'passed', 'temporary_data': True}
                 (output/'results.json').write_text(json.dumps(results, indent=2))
                 print(json.dumps(results, indent=2))
