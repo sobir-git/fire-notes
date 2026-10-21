@@ -12,6 +12,8 @@ pub const MUTED: Color = Color::hex(0xb69b86);
 pub const EMBER: Color = Color::hex(0xff8a36);
 pub const ACTIVE_TAB: Color = Color::hex(0x291510);
 pub const SELECTION: Color = Color::hex(0x422619);
+/// Find matches other than the selected one: dimmer than the selection.
+pub const HIGHLIGHT: Color = Color::hex(0x2e1b10);
 pub const DANGER: Color = Color::hex(0x792c21);
 pub const POPUP_RADIUS: f32 = 6.;
 pub const CONTROL_TEXT: f32 = 14.;
@@ -34,6 +36,7 @@ pub fn editor_theme() -> Theme {
             on_accent: CANVAS,
             focus: EMBER,
             selection: SELECTION,
+            highlight: HIGHLIGHT,
             danger: DANGER,
             success: EMBER,
         },

@@ -1,4 +1,7 @@
-use crate::{components::place, design::*};
+use crate::{
+    components::{icon_button, place, Icon, IconButton},
+    design::*,
+};
 use fire_ui::*;
 use fire_ui_widgets::*;
 use std::{rc::Rc, sync::Arc};
@@ -515,89 +518,13 @@ impl Data for ChromeAction {
         1
     }
 }
-pub struct ChromeIcon {
-    action: ChromeAction,
-}
-pub type ChromeButton = AppearanceScope<fire_ui_widgets::Button<ChromeIcon>>;
-
-/// A window-chrome icon button. Each one carries its own theme so the close button
-/// can fill red on hover while the rest fill with the ordinary raised colour.
-pub fn chrome_button(action: ChromeAction) -> Element<ChromeButton> {
-    let label = match action {
-        ChromeAction::New => "New note",
-        ChromeAction::Close => "Close window",
-        ChromeAction::Minimize => "Minimize",
-        ChromeAction::Maximize => "Maximize or restore",
+/// A window-chrome button. The close button fills red under the pointer.
+pub fn chrome_button(action: ChromeAction) -> Element<IconButton> {
+    let (icon, label) = match action {
+        ChromeAction::New => (Icon::Plus, "New note"),
+        ChromeAction::Close => (Icon::Cross, "Close window"),
+        ChromeAction::Minimize => (Icon::Minus, "Minimize"),
+        ChromeAction::Maximize => (Icon::Square, "Maximize or restore"),
     };
-    let base = editor_theme();
-    let theme = Theme {
-        color: Palette {
-            surface: CHROME,
-            raised: if matches!(action, ChromeAction::Close) {
-                DANGER
-            } else {
-                RAISED
-            },
-            border: CHROME,
-            border_strong: CHROME,
-            accent: EMBER,
-            ..base.color
-        },
-        scale: Scale {
-            inset: 0.,
-            radius: 4.,
-            control: 28.,
-            halo: 0.,
-            ..base.scale
-        },
-    };
-    AppearanceScope::new(
-        fire_ui_widgets::Button::new(Element::leaf(ChromeIcon { action }), label)
-            .style(ButtonStyle::Ghost),
-        theme,
-    )
-}
-impl Widget for ChromeIcon {
-    type Command = ();
-    type Output = std::convert::Infallible;
-    fn layout(&mut self, _: &mut Layout<'_>, c: Constraints) -> Metrics {
-        Metrics::new(c.constrain(Size::new(28., 28.)))
-    }
-    fn paint(&self, cx: &mut Paint<'_>) {
-        let color = if cx.hovered && matches!(self.action, ChromeAction::Close) {
-            TEXT
-        } else {
-            EMBER
-        };
-        let x = cx.bounds.width / 2.;
-        let y = cx.bounds.height / 2.;
-        let line = |p: &mut dyn Painter, a: Point, b: Point| {
-            p.path(&[Path::Move(a), Path::Line(b)], color.into(), Some(1.5))
-        };
-        match self.action {
-            ChromeAction::Close => {
-                line(
-                    cx.painter,
-                    Point::new(x - 5., y - 5.),
-                    Point::new(x + 5., y + 5.),
-                );
-                line(
-                    cx.painter,
-                    Point::new(x + 5., y - 5.),
-                    Point::new(x - 5., y + 5.),
-                );
-            }
-            ChromeAction::Maximize => {
-                cx.painter
-                    .stroke(Rect::new(x - 5., y - 5., 10., 10.), 0., 1.5, color)
-            }
-            ChromeAction::Minimize => {
-                line(cx.painter, Point::new(x - 5., y), Point::new(x + 5., y))
-            }
-            ChromeAction::New => {
-                line(cx.painter, Point::new(x - 5., y), Point::new(x + 5., y));
-                line(cx.painter, Point::new(x, y - 5.), Point::new(x, y + 5.));
-            }
-        }
-    }
+    icon_button(icon, label, matches!(action, ChromeAction::Close))
 }

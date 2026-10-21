@@ -1,4 +1,4 @@
-use crate::design::*;
+use crate::{design::*, find::*};
 use fire_ui::*;
 use fire_ui_widgets::*;
 use std::{collections::HashMap, rc::Rc, sync::Arc};
@@ -9,6 +9,94 @@ pub fn label(text: impl Into<Arc<str>>, size: f32, color: Color) -> Element<Labe
 pub fn place<W: Widget>(cx: &mut Layout<'_>, child: Child<W>, rect: Rect) {
     cx.measure(child, Constraints::tight(rect.size()));
     cx.place(child, Point::new(rect.x, rect.y));
+}
+#[derive(Clone, Copy)]
+pub enum Icon {
+    Plus,
+    Minus,
+    Square,
+    Cross,
+    Up,
+    Down,
+}
+pub struct IconGlyph {
+    icon: Icon,
+    danger: bool,
+}
+pub type IconButton = AppearanceScope<Button<IconGlyph>>;
+/// A borderless ember icon button on chrome. Each one carries its own theme so
+/// a `danger` button can fill red on hover while the rest fill with the
+/// ordinary raised colour.
+pub fn icon_button(icon: Icon, label: &str, danger: bool) -> Element<IconButton> {
+    let base = editor_theme();
+    let theme = Theme {
+        color: Palette {
+            surface: CHROME,
+            raised: if danger { DANGER } else { RAISED },
+            border: CHROME,
+            border_strong: CHROME,
+            accent: EMBER,
+            ..base.color
+        },
+        scale: Scale {
+            inset: 0.,
+            radius: 4.,
+            control: 28.,
+            halo: 0.,
+            ..base.scale
+        },
+    };
+    AppearanceScope::new(
+        Button::new(Element::leaf(IconGlyph { icon, danger }), label).style(ButtonStyle::Ghost),
+        theme,
+    )
+}
+impl Widget for IconGlyph {
+    type Command = ();
+    type Output = std::convert::Infallible;
+    fn layout(&mut self, _: &mut Layout<'_>, c: Constraints) -> Metrics {
+        Metrics::new(c.constrain(Size::new(28., 28.)))
+    }
+    fn paint(&self, cx: &mut Paint<'_>) {
+        let color = if cx.hovered && self.danger {
+            TEXT
+        } else {
+            EMBER
+        };
+        let x = cx.bounds.width / 2.;
+        let y = cx.bounds.height / 2.;
+        let stroke = |p: &mut dyn Painter, points: &[(f32, f32)]| {
+            let path: Vec<_> = points
+                .iter()
+                .enumerate()
+                .map(|(i, (dx, dy))| {
+                    let at = Point::new(x + dx, y + dy);
+                    if i == 0 {
+                        Path::Move(at)
+                    } else {
+                        Path::Line(at)
+                    }
+                })
+                .collect();
+            p.path(&path, color.into(), Some(1.5))
+        };
+        match self.icon {
+            Icon::Cross => {
+                stroke(cx.painter, &[(-5., -5.), (5., 5.)]);
+                stroke(cx.painter, &[(5., -5.), (-5., 5.)]);
+            }
+            Icon::Square => cx
+                .painter
+                .stroke(Rect::new(x - 5., y - 5., 10., 10.), 0., 1.5, color),
+            Icon::Minus => stroke(cx.painter, &[(-5., 0.), (5., 0.)]),
+            Icon::Plus => {
+                stroke(cx.painter, &[(-5., 0.), (5., 0.)]);
+                stroke(cx.painter, &[(0., -5.), (0., 5.)]);
+            }
+            Icon::Up => stroke(cx.painter, &[(-5., 2.5), (0., -2.5), (5., 2.5)]),
+            Icon::Down => stroke(cx.painter, &[(-5., -2.5), (0., 2.5), (5., -2.5)]),
+        }
+    }
 }
 #[derive(Clone, Debug)]
 pub enum PageOutput {
@@ -31,6 +119,9 @@ impl Data for PageOutput {
 #[derive(Clone, Debug)]
 pub enum PageCommand {
     Body(EditorOutput),
+    FindBar(FindOutput),
+    /// Open the find strip, or return to its query.
+    Find,
     Focus,
     Palette,
     Wrap(bool),
@@ -41,12 +132,15 @@ impl Data for PageCommand {
         std::mem::size_of::<Self>()
             + match self {
                 Self::Body(o) => o.bytes(),
+                Self::FindBar(o) => o.bytes(),
                 _ => 0,
             }
     }
 }
 pub struct Page {
     body: Child<Editor>,
+    find: Child<FindBar>,
+    finding: bool,
 }
 impl Page {
     pub fn new(_title: Arc<str>, body: Arc<str>, state: EditorState) -> Element<Self> {
@@ -63,7 +157,16 @@ impl Page {
                     .max_bytes(crate::storage::MAX_BODY_BYTES),
                 |o| PageCommand::Body(o.clone()),
             ),
+            find: c.connect(FindBar::new(), |o| PageCommand::FindBar(o.clone())),
+            finding: false,
         })
+    }
+    fn close_find(&mut self, cx: &mut Update<'_, Self>) {
+        self.finding = false;
+        let _ = cx.send(self.body, Edit::Find(Arc::from("")));
+        let _ = cx.show(self.find, false);
+        let _ = cx.focus_child(self.body);
+        cx.relayout();
     }
 }
 impl Widget for Page {
@@ -72,10 +175,32 @@ impl Widget for Page {
     fn lifecycle(&mut self, cx: &mut Update<'_, Self>, event: Lifecycle) {
         if event == Lifecycle::Mount {
             let _ = cx.set_environment(self.body, Rc::new(editor_theme()), true);
+            let _ = cx.show(self.find, false);
         }
     }
     fn update(&mut self, cx: &mut Update<'_, Self>, command: PageCommand) {
         match command {
+            PageCommand::Find => {
+                if !self.finding {
+                    self.finding = true;
+                    let _ = cx.show(self.find, true);
+                    cx.relayout();
+                }
+                let _ = cx.send(self.find, FindCommand::Open);
+            }
+            PageCommand::FindBar(FindOutput::Query(query)) => {
+                let _ = cx.send(self.body, Edit::Find(query));
+            }
+            PageCommand::FindBar(FindOutput::Next) => {
+                let _ = cx.send(self.body, Edit::FindNext);
+            }
+            PageCommand::FindBar(FindOutput::Previous) => {
+                let _ = cx.send(self.body, Edit::FindPrevious);
+            }
+            PageCommand::FindBar(FindOutput::Close) => self.close_find(cx),
+            PageCommand::Body(EditorOutput::Found { selected, count }) => {
+                let _ = cx.send(self.find, FindCommand::Found { selected, count });
+            }
             PageCommand::Body(EditorOutput::StateChanged(state)) => {
                 let _ = cx.emit(PageOutput::State(state));
             }
@@ -103,14 +228,47 @@ impl Widget for Page {
             _ => {}
         }
     }
+    fn input(&mut self, cx: &mut Update<'_, Self>, phase: Phase, input: &Input) {
+        // Escape leaves find before it reaches the note or the window.
+        if self.finding
+            && phase == Phase::Preview
+            && matches!(
+                input,
+                Input::Key {
+                    key: Key::Escape,
+                    down: true,
+                    ..
+                }
+            )
+        {
+            self.close_find(cx);
+            cx.stop();
+        }
+    }
     fn layout(&mut self, cx: &mut Layout<'_>, c: Constraints) -> Metrics {
-        place(cx, self.body, Rect::from_size(c.max));
+        let strip = if self.finding { FIND_HEIGHT } else { 0. };
+        place(
+            cx,
+            self.body,
+            Rect::new(0., 0., c.max.width, (c.max.height - strip).max(0.)),
+        );
+        place(
+            cx,
+            self.find,
+            Rect::new(
+                0.,
+                (c.max.height - FIND_HEIGHT).max(0.),
+                c.max.width,
+                FIND_HEIGHT,
+            ),
+        );
         Metrics::new(c.max)
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Choice {
     Note(usize),
+    Find,
     Trash,
     ShowTrash,
     Restore(u64),
@@ -124,6 +282,7 @@ impl Choice {
     pub fn shortcut(self) -> &'static str {
         match self {
             Self::New => "Ctrl N",
+            Self::Find => "Ctrl F",
             Self::Save => "Ctrl S",
             Self::Rename => "Ctrl R",
             Self::Wrap => "Alt Z",
@@ -295,8 +454,8 @@ impl Picker {
             search: c.connect(
                 Editor::new("")
                     .single_line()
-                    .label("Find in note")
-                    .key("find-query")
+                    .label("Search")
+                    .key("picker-query")
                     .caret_blink(false)
                     .placeholder("Search notes...")
                     .chrome(false)
@@ -318,10 +477,11 @@ impl Picker {
         })
     }
     fn filtered(&self) -> Vec<Choice> {
-        let q = self.query.to_lowercase();
         self.items
             .iter()
-            .filter(|i| i.title.to_lowercase().contains(&q))
+            .filter(|i| {
+                self.query.is_empty() || occurrences(&i.title, &self.query).next().is_some()
+            })
             .map(|i| i.key)
             .collect()
     }

@@ -1,6 +1,7 @@
 mod checklist;
 mod components;
 mod design;
+mod find;
 mod flames;
 mod storage;
 mod tabs;
@@ -36,10 +37,10 @@ struct Notes {
     records: Vec<Record>,
     open: Vec<usize>,
     active: Option<usize>,
-    new_button: Child<ChromeButton>,
-    minimize: Child<ChromeButton>,
-    maximize: Child<ChromeButton>,
-    close: Child<ChromeButton>,
+    new_button: Child<IconButton>,
+    minimize: Child<IconButton>,
+    maximize: Child<IconButton>,
+    close: Child<IconButton>,
     tabs: Child<TabBar>,
     footer: Child<Label>,
     empty: Child<Label>,
@@ -565,6 +566,7 @@ impl Notes {
         let items = if mode == PickerMode::Commands {
             [
                 (Choice::New, "New tab"),
+                (Choice::Find, "Find in note"),
                 (Choice::Save, "Save"),
                 (Choice::Wrap, "Word wrap"),
                 (Choice::Close, "Close tab"),
@@ -629,6 +631,11 @@ impl Notes {
                 }
             }
             Choice::Note(id) => self.display(cx, id),
+            Choice::Find => {
+                if let Some(page) = self.active.and_then(|id| self.records[id].page) {
+                    let _ = cx.send(page, PageCommand::Find);
+                }
+            }
             Choice::New => self.create(cx),
             Choice::Save => {
                 if let Some(id) = self.active {
@@ -1109,6 +1116,7 @@ impl Widget for Notes {
                         }
                     }
                     Key::Character('p') => self.show_picker(cx, PickerMode::Notes),
+                    Key::Character('f') => self.choose(cx, Choice::Find),
                     Key::Character('o') => {
                         if modifiers.shift {
                             self.show_picker(cx, PickerMode::File);
@@ -1225,7 +1233,7 @@ fn start() -> Result<(), String> {
         } else if arg == "--basic-fonts" {
             full_fonts = false;
         } else if arg == "--help" {
-            println!("fire-notes [--data-dir PATH] [--basic-fonts] [--purge-trash]\n--basic-fonts omits CJK and color-emoji fallback fonts; note bytes are preserved.\nCtrl N new · Ctrl P find · Ctrl O open · Ctrl / commands · Ctrl S save · Ctrl W close · Ctrl Tab switch · Alt Z wrap · Ctrl Q quit");
+            println!("fire-notes [--data-dir PATH] [--basic-fonts] [--purge-trash]\n--basic-fonts omits CJK and color-emoji fallback fonts; note bytes are preserved.\nCtrl N new · Ctrl P notes · Ctrl F find in note · Ctrl O open · Ctrl / commands · Ctrl S save · Ctrl W close · Ctrl Tab switch · Alt Z wrap · Ctrl Q quit");
             return Ok(());
         } else {
             return Err(format!("Unknown argument: {}", arg.to_string_lossy()));
@@ -1603,6 +1611,91 @@ mod tests {
         assert!(!outputs.iter().any(|o| matches!(o, Output::Load { .. })));
         assert!(ui.root().records[0].page.is_some());
         assert_eq!(&*ui.root().records[0].note.body, "unsaved idea");
+    }
+    #[test]
+    fn ctrl_f_finds_in_the_note_and_escape_returns_to_it() {
+        let mut ui = app();
+        settle(&mut ui);
+        assert!(ui.send(Message::Chrome(ChromeAction::New)).is_ok());
+        settle(&mut ui);
+        let press = |ui: &mut Ui<Notes>, key: Key, modifiers: Modifiers| {
+            ui.dispatch(
+                Input::Key {
+                    key,
+                    physical: 1,
+                    down: true,
+                    repeat: false,
+                    modifiers,
+                },
+                &mut TestText,
+            );
+            let mut closed = false;
+            for _ in 0..10 {
+                ui.frame(std::time::Duration::ZERO, 100);
+                ui.pump(1000, |_| {}, |r| closed |= matches!(r, HostRequest::Close));
+                ui.layout(&mut TestText);
+            }
+            closed
+        };
+        let write = |ui: &mut Ui<Notes>, text: &str| {
+            ui.dispatch(
+                Input::Text {
+                    session: ui.session(),
+                    text: text.into(),
+                },
+                &mut TestText,
+            );
+            settle(ui);
+        };
+        let node = |ui: &Ui<Notes>, key: &str| {
+            ui.semantics()
+                .into_iter()
+                .find(|n| n.semantics.key.as_deref() == Some(key))
+        };
+        let status = |ui: &Ui<Notes>| {
+            let bar = node(ui, "find-bar").unwrap().id;
+            ui.semantics()
+                .into_iter()
+                .find(|n| n.parent == Some(bar) && n.semantics.role == Role::Text)
+                .map(|n| n.semantics.label)
+        };
+        let selection = |ui: &Ui<Notes>| {
+            let text = node(ui, "note-body").unwrap().semantics.text.unwrap();
+            (text.anchor, text.caret.byte)
+        };
+        let control = Modifiers {
+            control: true,
+            ..Modifiers::default()
+        };
+        write(&mut ui, "Fire, fire everywhere");
+        assert!(node(&ui, "find-bar").is_none());
+        assert!(!press(&mut ui, Key::Character('f'), control));
+        assert!(node(&ui, "find-query").unwrap().focused);
+        write(&mut ui, "FIRE");
+        assert_eq!(status(&ui).as_deref(), Some("1 of 2"));
+        assert_eq!(selection(&ui), (0, 4));
+        press(&mut ui, Key::Enter, Modifiers::default());
+        assert_eq!(status(&ui).as_deref(), Some("2 of 2"));
+        assert_eq!(selection(&ui), (6, 10));
+        let shift = Modifiers {
+            shift: true,
+            ..Modifiers::default()
+        };
+        press(&mut ui, Key::Enter, shift);
+        assert_eq!(status(&ui).as_deref(), Some("1 of 2"));
+        write(&mut ui, "x");
+        assert_eq!(status(&ui).as_deref(), Some("No results"));
+        assert_eq!(selection(&ui), (0, 4));
+        // Escape closes find without closing the window, keeping the match selected.
+        assert!(!press(&mut ui, Key::Escape, Modifiers::default()));
+        assert!(node(&ui, "find-bar").is_none());
+        assert!(node(&ui, "note-body").unwrap().focused);
+        assert_eq!(selection(&ui), (0, 4));
+        // Reopening selects the previous query so typing replaces it.
+        press(&mut ui, Key::Character('f'), control);
+        write(&mut ui, "every");
+        assert_eq!(status(&ui).as_deref(), Some("1 of 1"));
+        assert_eq!(selection(&ui), (11, 16));
     }
     #[test]
     fn file_drop_reaches_the_app_when_unfocused_and_modal_is_open() {

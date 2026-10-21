@@ -32,7 +32,8 @@ through the framework's `Theme`; Fire Notes' palette is not a framework default.
 
 Supporting colors stay in the same family: `#3B261D` for hovered or selected
 actions, `#62432F` for popup borders, `#291510` for active tabs, and `#422619`
-for text selection. A hovered window-close button uses `#792C21` with light text.
+for text selection. Find matches other than the selected one use the dimmer
+`#2E1B10`. A hovered window-close button uses `#792C21` with light text.
 Fire itself retains its orange, red, and yellow animation colors.
 
 ## Type and spacing
@@ -60,6 +61,11 @@ to commands. An orange dot identifies an open note; a check identifies an enable
 toggle in the tab menu. Disabled actions remain legible. Empty searches explain
 that there are no matches and retain the editable query.
 
+Find is a 36-pixel chrome strip under the note, so it never covers text: a search
+field of at most 320 pixels, the match count, previous and next, and close at the
+right edge. Typing selects the first match from the selection; Enter and Shift
+Enter step and wrap; Escape closes it and leaves the match selected and on fire.
+
 The command palette stays near the caret without covering its line when space
 allows. Note lookup is centered. Popups stay inside the window at minimum size.
 Escape and outside clicks dismiss them and return focus to writing.
@@ -79,6 +85,7 @@ let it settle when writing stops. Menus, hover, and focus do not start animation
 or recurring timers. Maintain responsive resizing and low idle CPU use.
 
 Check native screenshots of writing, selected fire, tabs and rename, the command
-palette, note lookup, empty search, context actions, and narrow windows. Run
-`tools/notes_probe.py` and `tools/tab_menu_probe.py` against a release build using
+palette, note lookup, empty search, find in a note, context actions, and narrow
+windows. Run `tools/notes_probe.py`, `tools/tab_menu_probe.py` and
+`tools/find_probe.py` against a release build using
 temporary notes. Verify keyboard and pointer behavior as well as appearance.

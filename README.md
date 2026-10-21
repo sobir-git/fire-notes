@@ -68,6 +68,7 @@ outstanding note saves and keeps the window open if a note cannot be saved.
 | Ctrl R / middle click tab | Rename; Enter or blur commits, Escape cancels |
 | Drag tab / wheel over tabs | Reorder / scroll tabs |
 | Ctrl P | Search saved notes |
+| Ctrl F | Find in this note; Enter / Shift Enter step through matches, Escape returns to writing |
 | Ctrl Shift T | Open Trash and restore a note |
 | Ctrl O / drop a file | Open a Markdown or text file |
 | Ctrl Shift O | Open by entering a path |
@@ -124,6 +125,7 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo build --locked --release
 python3 tools/notes_probe.py --output artifacts/notes
 python3 tools/tab_menu_probe.py --output artifacts/tab-menu
+python3 tools/find_probe.py --output artifacts/find
 python3 tools/memory_probe.py --output artifacts/memory.json
 ```
 
