@@ -27,7 +27,7 @@ INPUT_CHECKS = ('ibus_cangjie', 'ibus_selection', 'ibus_window_focus', 'ibus_foc
                 'orca_editor_focus', 'orca_caret_navigation', 'orca_insertion',
                 'orca_deletion', 'orca_selection', 'orca_button_focus',
                 'orca_tab_navigation', 'orca_button_activation')
-VISUAL_STATES = ('startup', 'typed_fire', 'selected_fire', 'scrolled', 'resized', 'restored', 'unicode')
+VISUAL_STATES = ('startup', 'typed_fire', 'selected_fire', 'scrolled', 'resized', 'restored', 'unicode', 'find')
 EXTERNAL_FINDINGS = ('process_resident_and_swap', 'xres_backing_pixmaps', 'glyph_storage',
                      'drm_shared_buffers', 'growth')
 
@@ -243,6 +243,7 @@ def validate_interactions(report, directory, _manifest):
     notes, _ = checked_report(receipts['notes'], directory, binary_hash)
     tabs, _ = checked_report(receipts['tabs'], directory, binary_hash)
     inspection, _ = checked_report(receipts['inspection'], directory, binary_hash)
+    find, _ = checked_report(receipts['find'], directory, binary_hash)
     log = checked_file(receipts['notes_completion'], directory).read_text()
     require('PASS: original layout, animated fire, typing, clipboard, undo/redo, rename, tabs, search, commands, native file opening, raw Markdown, wrap, scrollbar, resize, idle, session restoration and save-before-close.' in log
             and 'Traceback (most recent call last)' not in log, 'full Notes probe did not complete')
@@ -254,6 +255,11 @@ def validate_interactions(report, directory, _manifest):
                      'last-tab trash', 'close waits for trash', '30-day cleanup'}
     require(isinstance(tabs.get('passed'), list) and required_tabs <= set(tabs['passed']),
             'tab context probe assertions missing')
+    required_find = {'ctrl f focuses query', 'incremental first occurrence', 'enter and shift enter step',
+                     'step buttons', 'no results keeps selection', 'escape returns focus without closing',
+                     'typing replaces the match', 'reopen replaces query', 'narrow layout', 'close button'}
+    require(isinstance(find.get('passed'), list) and required_find <= set(find['passed']),
+            'find probe assertions missing')
     for key, value in {'semantic_editing': 'passed', 'native_keyboard_undo': 'passed',
                        'invalid_and_stale_requests': 'rejected', 'socket_cleanup': 'passed',
                        'temporary_data': True}.items():
@@ -275,13 +281,15 @@ def validate_interactions(report, directory, _manifest):
         'tabs': ('00-hover-padding', '00-hover-text', '01-actions', '02-checked-wrap',
                  '03-renamed', '04-last-tab', '05-trash', '06-restored-note', '07-empty-trash'),
         'inspection': ('bidi-selection',),
+        'find': ('01-first-of-three', '02-third-revealed', '03-no-results',
+                 '04-selected-on-fire', '05-narrow'),
     }
     from PIL import Image
     for group, names in required_images.items():
         for name in names:
             with Image.open(checked_file(report['screenshots'][group][name], directory)) as image:
                 image.verify()
-    for name in ('notes_probe.py', 'tab_menu_probe.py', 'inspection_probe.py', 'private_session.py'):
+    for name in ('notes_probe.py', 'tab_menu_probe.py', 'inspection_probe.py', 'find_probe.py', 'private_session.py'):
         require(checked_file(report['sources'][name], directory).name == name,
                 'probe source receipt missing')
 

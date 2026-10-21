@@ -193,7 +193,7 @@ growth matrix. Raw reports record `accessibility_bus: "private_enabled"` and
 `software_gl_override: false`. `native_input`
 uses the framework's `linux_input_probe.py --target notes` result, with an
 `artifacts` map hashing `ime-preedit.json`, `ime-preedit.png` and `orca-speech.log`.
-`interactions` aggregates the three native Notes probes: their actual completion
+`interactions` aggregates the four native Notes probes (notes, tab menu, inspection and find): their actual completion
 receipts, idle measurements, tab assertions, semantic tree, restored session,
 screenshots and probe sources are hash-bound. It does not synthesize expected or
 observed outcomes. `tools/verify.py` collects these reports sequentially on private

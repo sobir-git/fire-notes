@@ -2,7 +2,7 @@
 """Collect virtual native evidence sequentially; independent review remains required.
 
 --assemble-existing accepts a JSON object with paths named memory (benchmark.json aggregate),
-native_input, interactions (directory containing notes/, tab-menu/, inspection/),
+native_input, interactions (directory containing notes/, tab-menu/, inspection/, find/),
 and pointer_latency. Relative paths resolve against that JSON's directory.
 Existing captures are validated and copied, never rewritten as fresh measurements.
 """
@@ -36,17 +36,18 @@ def aggregate_interactions(captures, output, binary_hash, sources):
     source_dir = output / 'sources'
     source_dir.mkdir()
     source_refs = {}
-    for name in ('notes_probe.py', 'tab_menu_probe.py', 'inspection_probe.py', 'private_session.py'):
+    for name in ('notes_probe.py', 'tab_menu_probe.py', 'inspection_probe.py', 'find_probe.py', 'private_session.py'):
         shutil.copyfile(sources / name, source_dir / name)
         source_refs[name] = reference(source_dir / name, output)
     notes_log = copied / 'notes-runner.log'
     if not notes_log.exists():
         notes_log = copied / 'notes/runner.log'
     receipt_paths = {'notes': copied/'notes/metrics.json', 'tabs': copied/'tab-menu/result.json',
-                     'inspection': copied/'inspection/results.json', 'notes_completion': notes_log,
+                     'inspection': copied/'inspection/results.json', 'find': copied/'find/result.json',
+                     'notes_completion': notes_log,
                      'session': copied/'notes/session.json', 'tree': copied/'inspection/tree.json'}
     screenshots = {}
-    for name, subdir in [('notes', 'notes'), ('tabs', 'tab-menu'), ('inspection', 'inspection')]:
+    for name, subdir in [('notes', 'notes'), ('tabs', 'tab-menu'), ('inspection', 'inspection'), ('find', 'find')]:
         screenshots[name] = {
             path.stem: reference(path, output)
             for path in sorted((copied / subdir).glob('*.png'))
@@ -119,7 +120,8 @@ def main(argv=None):
         run('native-input', scripts.parents[1]/'fire-ui/tools/linux_input_probe.py', raw/'native-input', '--target', 'notes')
         captures = raw/'interactions'
         captures.mkdir()
-        for name, script in [('notes', 'notes_probe.py'), ('tab-menu', 'tab_menu_probe.py'), ('inspection', 'inspection_probe.py')]:
+        for name, script in [('notes', 'notes_probe.py'), ('tab-menu', 'tab_menu_probe.py'),
+                             ('inspection', 'inspection_probe.py'), ('find', 'find_probe.py')]:
             run(name, scripts/script, captures/name)
             shutil.move(raw/(name+'-runner.log'), captures/(name+'-runner.log'))
         paths = {'memory': raw/'benchmark/benchmark.json',

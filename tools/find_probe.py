@@ -144,7 +144,7 @@ def main():
                 key('ctrl+q')
                 app.wait(timeout=10)
                 assert app.returncode == 0
-                (output / 'result.json').write_text(json.dumps({'binary_sha256': fingerprint, 'passed': ['ctrl f focuses query', 'incremental first occurrence', 'enter and shift enter wrap', 'step buttons', 'no results keeps selection', 'escape returns focus without closing', 'typing replaces the match', 'reopen replaces query', 'narrow layout', 'close button']}, indent=2) + '\n')
+                (output / 'result.json').write_text(json.dumps({'binary_sha256': fingerprint, 'passed': ['ctrl f focuses query', 'incremental first occurrence', 'enter and shift enter step', 'step buttons', 'no results keeps selection', 'escape returns focus without closing', 'typing replaces the match', 'reopen replaces query', 'narrow layout', 'close button']}, indent=2) + '\n')
                 print('PASS: native find in note', flush=True)
             finally:
                 if app and app.poll() is None:

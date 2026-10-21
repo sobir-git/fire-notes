@@ -1,5 +1,23 @@
 # Fire Notes native measurements
 
+## October 21 find in a note
+
+Ctrl F finds in the open note through the editor's new find. The release gate now
+runs `tools/find_probe.py` as a fourth interaction probe and requires its ten
+assertions and five screenshots; `find` is a reviewed visual state. App tests,
+framework tests and Clippy passed.
+
+The full release gate and independent visual/resource review accepted and installed
+binary `be8f2abfa73ffa19083f724065cfe741c83702b034fc76c55c243cba4c912728`.
+Evidence is in `artifacts/verification-find-20261021/`, all freshly captured. Three
+ordinary runs peaked at 3,563,520–3,629,056 private dirty bytes with no app swap,
+about 68 KB above 0.10.0: every open tab builds its hidden find strip, roughly
+14 KB per tab. Drawable p95 latency was 3.71 ms idle, 3.64 ms during fire and
+12.75 ms for resize (one 20.3 ms resize maximum). Idle CPU stayed at zero ticks.
+The 3 MB target remains unmet; the 4 MB ceiling passed. Note files were unchanged
+across the graceful close and restart. The previous executable and a copy of the
+notes are under `~/.local/state/fire-notes/rollback/20261021-find/`.
+
 ## October 21 Fire UI 0.10.0
 
 Fire UI 0.10.0 counts clicks in the native host from the desktop's XSETTINGS
