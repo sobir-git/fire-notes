@@ -591,6 +591,7 @@ mod tests {
                 button: PointerButton::Primary,
                 down: true,
                 position: at,
+                clicks: 1,
             },
             &mut TestText,
         );
@@ -601,6 +602,7 @@ mod tests {
                 button: PointerButton::Primary,
                 down: false,
                 position: at,
+                clicks: 1,
             },
             &mut TestText,
         );
@@ -615,6 +617,7 @@ mod tests {
                 button: PointerButton::Primary,
                 down: true,
                 position: at,
+                clicks: 1,
             },
             &mut TestText,
         );
@@ -629,6 +632,7 @@ mod tests {
                 button: PointerButton::Primary,
                 down: false,
                 position: at,
+                clicks: 1,
             },
             &mut TestText,
         );

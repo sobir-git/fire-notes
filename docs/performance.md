@@ -1,5 +1,23 @@
 # Fire Notes native measurements
 
+## October 21 Fire UI 0.10.0
+
+Fire UI 0.10.0 counts clicks in the native host from the desktop's XSETTINGS
+double-click time, and double- or triple-click drags extend by whole words or
+paragraphs while keeping the original unit. On the candidate binary, a native
+double-click on a word followed by a leftward drag selected the whole span and
+kept the word. App tests and Clippy passed.
+
+The full release gate and independent visual/resource review accepted and installed
+binary `f117b7d002c58d75758e30582a362d6cbb45a23417da4bbb97750d8d475219d7`.
+Evidence is in `artifacts/verification-0.10.0/`, all freshly captured. Three
+ordinary runs peaked at 3,530,752–3,543,040 private dirty bytes with no app swap.
+Drawable p95 latency was 4.230 ms idle, 5.384 ms during fire and 9.339 ms for
+resize. The 3 MB target remains unmet; the 4 MB ceiling passed. The probes do not
+exercise multi-click selection, so the review accepted that behavior on framework
+tests and the separate native check above. The previous executable is under
+`~/.local/state/fire-notes/rollback/20261021-0.10.0/`.
+
 ## October 11 X11 focus correction
 
 Fire UI's grab-time focus filter could leave an editor focused after switching
